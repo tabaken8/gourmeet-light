@@ -1,26 +1,29 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;  // ← await が必要（Next.js 15 仕様）
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/auth/login", req.url));
 
-  const post_id = params.id;
-  const uid = user.id;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const { data: exists } = await supabase
+  if (!user)
+    return NextResponse.json({ error: "Not logged in" }, { status: 401 });
+
+  const { data: existing } = await supabase
     .from("post_bookmarks")
     .select("id")
-    .eq("post_id", post_id)
-    .eq("user_id", uid)
+    .eq("post_id", id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
-  if (exists) {
-    await supabase.from("post_bookmarks").delete().eq("id", exists.id);
+  if (existing) {
+    await supabase.from("post_bookmarks").delete().eq("id", existing.id);
+    return NextResponse.json({ bookmarked: false });
   } else {
-    await supabase.from("post_bookmarks").insert({ post_id, user_id: uid });
+    await supabase.from("post_bookmarks").insert({ post_id: id, user_id: user.id });
+    return NextResponse.json({ bookmarked: true });
   }
-
-  return NextResponse.redirect(new URL(req.headers.get("referer") ?? "/timeline", req.url));
 }
