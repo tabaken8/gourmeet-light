@@ -7,21 +7,45 @@ import ClientAuthNav from "../components/ClientAuthNav";
 
 export const metadata: Metadata = {
   title: "Gourmeet",
-  description: "Find great restaurants recommended by trusted friends",
+  description: "友達のおすすめだけで選べる、新しいレストランアプリ。",
+  metadataBase: new URL("https://gourmeet.jp"),
+  openGraph: {
+    title: "Gourmeet",
+    description: "友達のおすすめだけで選べる、新しいレストランアプリ。",
+    url: "https://gourmeet.jp",
+    siteName: "Gourmeet",
+    images: [
+      {
+        url: "/ogp.png",   // public/ogp.png を作ればOK
+        width: 1200,
+        height: 630,
+      },
+    ],
+    locale: "ja_JP",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Gourmeet",
+    description: "友達のおすすめだけで選べる、新しいレストランアプリ。",
+    images: ["/ogp.png"],
+  },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="ja">
       <body className="min-h-screen bg-[#fffaf5] text-black/90">
-        {/* 共通ヘッダー（ログイン・ログアウトは ClientAuthNav が処理） */}
+        {/* 共通ヘッダー */}
         <header className="border-b border-black/[.06] bg-white/90 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
             <Link href="/" className="font-semibold tracking-wide">
               Gourmeet
             </Link>
-
-            {/* ユーザー情報をクライアントで取得 */}
             <ClientAuthNav />
           </div>
         </header>
