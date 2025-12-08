@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { MapPin } from "lucide-react";                 // ★ 追加
+import { MapPin } from "lucide-react";
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions from "@/components/PostActions";
@@ -146,153 +146,172 @@ export default async function TimelinePage({
 
   // ---- UI ---------------------------------------------------------
   return (
-    <main className="flex flex-col items-center">
-      <div className="w-full max-w-[960px] px-4 py-4 space-y-4">
-        {/* タブ行 */}
-        <div className="flex border-b border-black/10">
-          <Link
-            href="?tab=friends"
-            className={[
-              "flex-1 px-3 py-2 text-center text-sm font-medium border-b-2 transition-colors",
-              activeTab === "friends"
-                ? "border-orange-500 text-orange-500"
-                : "border-transparent text-black/50 hover:text-black/80",
-            ].join(" ")}
-          >
-            友達
-          </Link>
-          <Link
-            href="?tab=discover"
-            className={[
-              "flex-1 px-3 py-2 text-center text-sm font-medium border-b-2 transition-colors",
-              activeTab === "discover"
-                ? "border-orange-500 text-orange-500"
-                : "border-transparent text-black/50 hover:text-black/80",
-            ].join(" ")}
-          >
-            もっと見つけたい
-          </Link>
-        </div>
+    <main className="min-h-screen bg-orange-50 text-slate-800">
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8">
+        {/* ヘッダー */}
+        <header className="mb-4">
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+            Timeline
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            友達や公開ユーザーの “いま食べてるもの” を、ふわっと流し見する場所。
+          </p>
+        </header>
 
-        {/* コンテンツ */}
-        {posts.length === 0 ? (
-          <div className="flex min-h-[50vh] items-center justify-center pt-4 text-sm text-black/60">
-            {activeTab === "friends"
-              ? "まだ投稿がありません。"
-              : "まだ公開ユーザーの投稿がありません。"}
+        {/* カード全体 */}
+        <section className="overflow-hidden rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur">
+          {/* タブ行 */}
+          <div className="border-b border-orange-50 px-4 pt-4">
+            <div className="inline-flex w-full gap-1 rounded-full bg-orange-50/80 p-1 text-xs font-medium text-slate-600">
+              <Link
+                href="?tab=friends"
+                className={[
+                  "flex-1 rounded-full px-3 py-2 text-center transition",
+                  activeTab === "friends"
+                    ? "bg-white text-orange-600 shadow-sm"
+                    : "text-slate-500 hover:text-orange-500",
+                ].join(" ")}
+              >
+                友達
+              </Link>
+              <Link
+                href="?tab=discover"
+                className={[
+                  "flex-1 rounded-full px-3 py-2 text-center transition",
+                  activeTab === "discover"
+                    ? "bg-white text-orange-600 shadow-sm"
+                    : "text-slate-500 hover:text-orange-500",
+                ].join(" ")}
+              >
+                もっと見つけたい
+              </Link>
+            </div>
+            <p className="mt-2 pb-3 text-[11px] text-slate-500">
+              {activeTab === "friends"
+                ? "フォローしている人の投稿が時系列で流れます。"
+                : "公開プロフィールのユーザーから、気になる人を見つけられます。"}
+            </p>
           </div>
-        ) : (
-          <div className="flex flex-col items-center gap-8 pt-4">
-            {posts.map((p) => {
-              const prof = profiles[p.user_id] ?? null;
-              const display = prof?.display_name ?? "ユーザー";
-              const avatar = prof?.avatar_url ?? null;
-              const initial = (display || "U").slice(0, 1).toUpperCase();
 
-              // ★ 位置情報用の URL 復活
-              const mapUrl = p.place_id
-                ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
-                : p.place_address
-                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                    p.place_address
-                  )}`
-                : null;
+          {/* コンテンツ */}
+          {posts.length === 0 ? (
+            <div className="flex min-h-[50vh] items-center justify-center px-4 pb-6 text-xs text-slate-500">
+              {activeTab === "friends"
+                ? "まだ投稿がありません。まずはどこかで一枚、撮ってみましょう。"
+                : "まだ公開ユーザーの投稿がありません。"}
+            </div>
+          ) : (
+            <div className="flex flex-col items-stretch gap-6 px-4 pb-6 pt-3">
+              {posts.map((p) => {
+                const prof = profiles[p.user_id] ?? null;
+                const display = prof?.display_name ?? "ユーザー";
+                const avatar = prof?.avatar_url ?? null;
+                const initial = (display || "U").slice(0, 1).toUpperCase();
 
-              return (
-                <article
-                  key={p.id}
-                  className="w-full max-w-[600px] rounded-xl bg-white shadow-sm"
-                >
-                  {/* 投稿者ヘッダー */}
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Link
-                        href={`/u/${p.user_id}`}
-                        className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-orange-100 font-semibold text-orange-900"
-                      >
-                        {avatar ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={avatar}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          initial
-                        )}
-                      </Link>
-                      <div className="min-w-0">
+                const mapUrl = p.place_id
+                  ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
+                  : p.place_address
+                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      p.place_address
+                    )}`
+                  : null;
+
+                return (
+                  <article
+                    key={p.id}
+                    className="w-full rounded-2xl border border-orange-100 bg-white shadow-sm"
+                  >
+                    {/* 投稿者ヘッダー */}
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-3">
                         <Link
                           href={`/u/${p.user_id}`}
-                          className="truncate text-sm font-semibold hover:underline"
+                          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700 ring-1 ring-orange-200"
                         >
-                          {display}
+                          {avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={avatar}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            initial
+                          )}
                         </Link>
-                        <div className="text-xs text-black/50">
-                          {new Date(p.created_at!).toLocaleString()}
+                        <div className="min-w-0">
+                          <Link
+                            href={`/u/${p.user_id}`}
+                            className="truncate text-xs font-medium text-slate-900 hover:underline"
+                          >
+                            {display}
+                          </Link>
+                          <div className="text-[11px] text-slate-500">
+                            {new Date(p.created_at!).toLocaleString()}
+                          </div>
                         </div>
                       </div>
+                      <PostMoreMenu
+                        postId={p.id}
+                        isMine={user?.id === p.user_id}
+                      />
                     </div>
-                    <PostMoreMenu
-                      postId={p.id}
-                      isMine={user?.id === p.user_id}
-                    />
-                  </div>
 
-                  {/* 画像カルーセル */}
-                  {p.image_urls && p.image_urls.length > 0 && (
-                    <PostImageCarousel
-                      postId={p.id}
-                      imageUrls={p.image_urls}
-                      syncUrl={false}
-                    />
-                  )}
-
-                  {/* 本文 + 店舗情報（位置情報を復活） */}
-                  <div className="space-y-2 px-4 py-3">
-                    {p.content && (
-                      <p className="whitespace-pre-wrap text-sm text-black/80">
-                        {p.content}
-                      </p>
+                    {/* 画像カルーセル */}
+                    {p.image_urls && p.image_urls.length > 0 && (
+                      <PostImageCarousel
+                        postId={p.id}
+                        imageUrls={p.image_urls}
+                        syncUrl={false}
+                      />
                     )}
-                    {p.place_name && (
-                      <div className="flex items-center gap-1 text-sm text-orange-700">
-                        <MapPin size={16} />
-                        {mapUrl ? (
-                          <a
-                            href={mapUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline"
-                          >
-                            {p.place_name}
-                          </a>
-                        ) : (
-                          <span>{p.place_name}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* アクション（Like + コレクション追加） */}
-                  <div className="flex items-center justify-between px-4 pb-4">
-                    <PostActions
-                      postId={p.id}
-                      postUserId={p.user_id}
-                      initialLiked={likedSet.has(p.id)}
-                      initialLikeCount={likeCount[p.id] ?? 0}
-                      initialWanted={false}
-                      initialBookmarked={false}
-                      initialWantCount={0}
-                      initialBookmarkCount={0}
-                    />
-                    <PostCollectionButton postId={p.id} />
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
+                    {/* 本文 + 店舗情報 */}
+                    <div className="space-y-2 px-4 py-3">
+                      {p.content && (
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                          {p.content}
+                        </p>
+                      )}
+                      {p.place_name && (
+                        <div className="flex items-center gap-1 text-xs text-orange-700">
+                          <MapPin size={14} />
+                          {mapUrl ? (
+                            <a
+                              href={mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              {p.place_name}
+                            </a>
+                          ) : (
+                            <span className="truncate">{p.place_name}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* アクション（Like + コレクション追加） */}
+                    <div className="flex items-center justify-between px-4 pb-3 pt-1">
+                      <PostActions
+                        postId={p.id}
+                        postUserId={p.user_id}
+                        initialLiked={likedSet.has(p.id)}
+                        initialLikeCount={likeCount[p.id] ?? 0}
+                        initialWanted={false}
+                        initialBookmarked={false}
+                        initialWantCount={0}
+                        initialBookmarkCount={0}
+                      />
+                      <PostCollectionButton postId={p.id} />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );

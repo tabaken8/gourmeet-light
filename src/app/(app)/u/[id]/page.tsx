@@ -5,11 +5,17 @@ import FollowButton from "@/components/FollowButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function UserPublicPage({ params }: { params: { id: string } }) {
+export default async function UserPublicPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const supabase = createClient();
 
-  // ログイン必須のまま（公開にしたいならこの2行を削除）
-  const { data: { user: me } } = await supabase.auth.getUser();
+  // ログイン必須
+  const {
+    data: { user: me },
+  } = await supabase.auth.getUser();
   if (!me) redirect("/auth/login");
 
   const userId = params.id;
@@ -23,17 +29,29 @@ export default async function UserPublicPage({ params }: { params: { id: string 
 
   if (!profile) return notFound();
 
-  // 統計（投稿/フォロワー/フォロー中/行きたい件数）
+  // 統計
   const [
     { count: postsCount = 0 },
     { count: followersCount = 0 },
     { count: followingCount = 0 },
     { count: wantsCount = 0 },
   ] = await Promise.all([
-    supabase.from("posts").select("*", { count: "exact", head: true }).eq("user_id", userId),
-    supabase.from("follows").select("*", { count: "exact", head: true }).eq("followee_id", userId),
-    supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", userId),
-    supabase.from("post_wants").select("*", { count: "exact", head: true }).eq("user_id", userId),
+    supabase
+      .from("posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
+    supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("followee_id", userId),
+    supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("follower_id", userId),
+    supabase
+      .from("post_wants")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
   ]);
 
   // 自分→相手のフォロー状態
@@ -47,7 +65,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
     initiallyFollowing = (count ?? 0) > 0;
   }
 
-  // 投稿（グリッド用）
+  // 投稿
   const { data: posts } = await supabase
     .from("posts")
     .select("id, image_urls, created_at")
@@ -55,7 +73,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
     .order("created_at", { ascending: false })
     .limit(24);
 
-  // 行きたい！リスト（グリッド用）
+  // 行きたい！リスト
   const { data: wantRows } = await supabase
     .from("post_wants")
     .select("post_id")
@@ -78,143 +96,175 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   const handle = profile.username ? `@${profile.username}` : null;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 space-y-8">
-      {/* Instagram風ヘッダー */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-        {/* Avatar */}
-        <div className="flex items-center justify-center">
-          {avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatar}
-              alt=""
-              className="h-28 w-28 md:h-36 md:w-36 rounded-full object-cover border"
-            />
+    <main className="min-h-screen bg-orange-50 text-slate-800">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 md:px-6">
+        {/* プロフィールカード */}
+        <section className="rounded-2xl border border-orange-100 bg-white/95 p-5 shadow-sm backdrop-blur md:p-6">
+          <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
+            {/* Avatar */}
+            <div className="flex items-center justify-center">
+              {avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatar}
+                  alt=""
+                  className="h-28 w-28 rounded-full border border-orange-100 object-cover shadow-sm md:h-36 md:w-36"
+                />
+              ) : (
+                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-orange-100 text-3xl font-bold text-orange-700 ring-1 ring-orange-200 shadow-sm md:h-36 md:w-36">
+                  {(display || "U").slice(0, 1).toUpperCase()}
+                </div>
+              )}
+            </div>
+
+            {/* Right side */}
+            <div className="md:col-span-2 space-y-4">
+              {/* 1行目: ハンドル/表示名 + フォローボタン */}
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
+                  {profile.username ?? display}
+                </h1>
+                {me.id === userId ? (
+                  <span className="text-xs text-slate-500 md:text-sm">
+                    （あなたの公開プロフィール）
+                  </span>
+                ) : (
+                  <FollowButton
+                    targetUserId={profile.id}
+                    targetUsername={profile.username}
+                    initiallyFollowing={initiallyFollowing}
+                  />
+                )}
+              </div>
+
+              {/* 2行目: 統計 */}
+              <ul className="flex flex-wrap gap-3 text-xs text-slate-700 md:text-sm">
+                <li className="rounded-full bg-orange-50 px-3 py-1">
+                  <span className="font-semibold text-slate-900">
+                    {postsCount}
+                  </span>{" "}
+                  投稿
+                </li>
+                <li className="rounded-full bg-orange-50 px-3 py-1">
+                  <Link
+                    href={`/u/${userId}/followers`}
+                    className="hover:underline"
+                  >
+                    <span className="font-semibold text-slate-900">
+                      {followersCount}
+                    </span>{" "}
+                    フォロワー
+                  </Link>
+                </li>
+                <li className="rounded-full bg-orange-50 px-3 py-1">
+                  <Link
+                    href={`/u/${userId}/following`}
+                    className="hover:underline"
+                  >
+                    <span className="font-semibold text-slate-900">
+                      {followingCount}
+                    </span>{" "}
+                    フォロー中
+                  </Link>
+                </li>
+                <li className="rounded-full bg-orange-50 px-3 py-1">
+                  <span className="font-semibold text-slate-900">
+                    {wantsCount}
+                  </span>{" "}
+                  行きたい
+                </li>
+              </ul>
+
+              {/* 3行目: 表示名 + Bio + ハンドル */}
+              <div className="space-y-1 text-sm">
+                <p className="font-semibold text-slate-900">{display}</p>
+                {profile.bio && (
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-700 md:text-sm">
+                    {profile.bio}
+                  </p>
+                )}
+                {handle && (
+                  <p className="text-xs text-slate-500 md:text-sm">{handle}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 投稿グリッド */}
+        <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">
+            投稿
+          </h2>
+          {posts && posts.length ? (
+            <div className="grid grid-cols-3 gap-[2px] sm:grid-cols-4 sm:gap-[3px] md:grid-cols-5">
+              {posts!.map((p) => {
+                const thumb = p.image_urls?.[0] ?? null;
+                return (
+                  <a
+                    key={p.id}
+                    href={`/posts/${p.id}`}
+                    className="block aspect-square overflow-hidden bg-slate-100"
+                  >
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt={""}
+                        className="h-full w-full object-cover transition hover:opacity-95"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-slate-500" />
+                    )}
+                  </a>
+                );
+              })}
+            </div>
           ) : (
-            <div className="h-28 w-28 md:h-36 md:w-36 rounded-full bg-gray-200 flex items-center justify-center text-3xl font-bold">
-              {(display || "U").slice(0, 1).toUpperCase()}
+            <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+              投稿はまだありません。
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Right side */}
-        <div className="md:col-span-2 space-y-4">
-          {/* 1行目: ハンドル/表示名 + フォローボタン */}
-          <div className="flex flex-wrap items-center gap-4">
-            <h1 className="text-2xl md:text-3xl font-semibold">
-              {profile.username ?? display}
-            </h1>
-            {me.id === userId ? (
-              <span className="text-sm text-black/60">(あなたの公開プロフィール)</span>
-            ) : (
-              <FollowButton
-                targetUserId={profile.id}
-                targetUsername={profile.username}
-                initiallyFollowing={initiallyFollowing}
-              />
-            )}
-          </div>
-
-          {/* 2行目: 統計 */}
-          <ul className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
-            <li><span className="font-semibold">{postsCount}</span> 投稿</li>
-            <li>
-              <Link href={`/u/${userId}/followers`} className="hover:underline">
-                <span className="font-semibold">{followersCount}</span> フォロワー
-              </Link>
-            </li>
-            <li>
-              <Link href={`/u/${userId}/following`} className="hover:underline">
-                <span className="font-semibold">{followingCount}</span> フォロー中
-              </Link>
-            </li>
-            <li><span className="font-semibold">{wantsCount}</span> 行きたい</li>
-          </ul>
-
-          {/* 3行目: 表示名 + Bio + ハンドル */}
-          <div className="space-y-1">
-            <p className="font-semibold">{display}</p>
-            {profile.bio && (
-              <p className="text-sm text-black/70 whitespace-pre-wrap">
-                {profile.bio}
-              </p>
-            )}
-            {handle && <p className="text-sm text-black/60">{handle}</p>}
-          </div>
-        </div>
-      </section>
-
-      {/* 投稿グリッド */}
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">投稿</h2>
-        {posts && posts.length ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-[2px]">
-            {posts!.map((p) => {
-              const thumb = p.image_urls?.[0] ?? null;
-              return (
-                <a
-                  key={p.id}
-                  href={`/posts/${p.id}`}
-                  className="block aspect-square overflow-hidden bg-gray-100"
-                >
-                  {thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={thumb}
-                      alt={ ""}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center text-xs text-gray-600 p-2 text-center">
-
-                    </div>
-                  )}
-                </a>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-black/10 bg-white p-8 text-center text-black/70">
-            投稿はまだありません。
-          </div>
-        )}
-      </section>
-
-      {/* 行きたい！リスト */}
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">行きたい店リスト</h2>
-        {wantPosts.length ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-[2px]">
-            {wantPosts.map((p) => {
-              const thumb = p.image_urls?.[0] ?? null;
-              return (
-                <a
-                  key={p.id}
-                  href={`/posts/${p.id}`}
-                  className="block aspect-square overflow-hidden bg-orange-50"
-                >
-                  {thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={thumb}
-                      alt={p.title ?? ""}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center text-xs text-orange-900/80 p-2 text-center">
-                      {p.title}
-                    </div>
-                  )}
-                </a>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-black/10 bg-white p-8 text-center text-black/70">
-            まだ登録がありません。
-          </div>
-        )}
-      </section>
+        {/* 行きたい！リスト */}
+        <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">
+            行きたい店リスト
+          </h2>
+          {wantPosts.length ? (
+            <div className="grid grid-cols-3 gap-[2px] sm:grid-cols-4 sm:gap-[3px] md:grid-cols-5">
+              {wantPosts.map((p) => {
+                const thumb = p.image_urls?.[0] ?? null;
+                return (
+                  <a
+                    key={p.id}
+                    href={`/posts/${p.id}`}
+                    className="block aspect-square overflow-hidden bg-orange-50"
+                  >
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt={p.title ?? ""}
+                        className="h-full w-full object-cover transition hover:opacity-95"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-orange-900/80">
+                        {p.title}
+                      </div>
+                    )}
+                  </a>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+              まだ登録がありません。
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }
