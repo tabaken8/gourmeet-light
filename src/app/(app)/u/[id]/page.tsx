@@ -50,7 +50,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   // 投稿（グリッド用）
   const { data: posts } = await supabase
     .from("posts")
-    .select("id, title, image_urls, created_at")
+    .select("id, image_urls, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(24);
@@ -66,7 +66,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
     const ids = wantRows.map((r) => r.post_id);
     const { data } = await supabase
       .from("posts")
-      .select("id, title, image_urls, created_at")
+      .select("id, image_urls, created_at")
       .in("id", ids)
       .order("created_at", { ascending: false })
       .limit(24);
@@ -161,12 +161,12 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={thumb}
-                      alt={p.title ?? ""}
+                      alt={ ""}
                       className="h-full w-full object-cover"
                     />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center text-xs text-gray-600 p-2 text-center">
-                      {p.title}
+
                     </div>
                   )}
                 </a>

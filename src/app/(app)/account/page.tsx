@@ -46,7 +46,7 @@ export default async function AccountPage() {
   // 投稿
   const { data: posts } = await supabase
     .from("posts")
-    .select("id,title,image_urls,created_at")
+    .select("id,image_urls,created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(24);
@@ -60,7 +60,7 @@ export default async function AccountPage() {
     const ids = wantRows.map((r) => r.post_id);
     const { data } = await supabase
       .from("posts")
-      .select("id,title,image_urls,created_at")
+      .select("id,image_urls,created_at")
       .in("id", ids)
       .order("created_at", { ascending: false })
       .limit(24);
@@ -126,24 +126,29 @@ export default async function AccountPage() {
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-[2px] sm:gap-[3px]">
             {posts.map((p) => {
               const first = p.image_urls?.[0] ?? null;
-              return (
-                <a key={p.id} href={`/posts/${p.id}`} className="relative block group bg-white">
-                  {first ? (
-                    <>
-                      <img src={first} alt={p.title ?? ""}
-                        className="aspect-square w-full object-cover group-hover:opacity-95" />
-                      {p.image_urls?.length > 1 && (
-                        <Images size={16}
-                          className="absolute top-1 right-1 text-white drop-shadow" />
-                      )}
-                    </>
-                  ) : (
-                    <div className="aspect-square flex items-center justify-center bg-gray-100 text-xs text-gray-600">
-                      {p.title}
-                    </div>
-                  )}
-                </a>
-              );
+        return (
+          <a key={p.id} href={`/posts/${p.id}`} className="relative block group bg-white">
+            {first ? (
+              <>
+                <img
+                  src={first}
+                  alt=""
+                  className="aspect-square w-full object-cover group-hover:opacity-95"
+                />
+                {p.image_urls?.length > 1 && (
+                  <Images
+                    size={16}
+                    className="absolute top-1 right-1 text-white drop-shadow"
+                  />
+                )}
+              </>
+            ) : (
+              <div className="aspect-square flex items-center justify-center bg-gray-100 text-xs text-gray-600" />
+            )}
+          </a>
+        );
+
+
             })}
           </div>
         ) : (

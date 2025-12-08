@@ -1,12 +1,11 @@
-// src/app/(app)/search/page.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client"; // ← ここを修正：createClient ではなく supabase を使う
+import { supabase } from "@/lib/supabase/client";
 
 type UserLite = {
-  id: string;               // UIには出さない（内部キーのみ）
+  id: string;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
@@ -20,10 +19,9 @@ export default function SearchPage() {
   const [q, setQ] = useState("");
   const [suggests, setSuggests] = useState<UserLite[]>([]);
   const [loading, setLoading] = useState(false);
-  const [active, setActive] = useState(0); // キーボード選択
+  const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 入力デバウンスしつつリアルタイム検索
   useEffect(() => {
     if (!q.trim()) {
       setSuggests([]);
@@ -33,12 +31,13 @@ export default function SearchPage() {
     const handle = setTimeout(async () => {
       setLoading(true);
       try {
-        // ① RPC を優先
-        const { data, error } = await supabase.rpc("search_users", { q, limit_n: 8 });
+        const { data, error } = await supabase.rpc("search_users", {
+          q,
+          limit_n: 8,
+        });
         if (!error && Array.isArray(data)) {
           setSuggests(data as UserLite[]);
         } else {
-          // ② フォールバック（RPC未導入時）
           const qAt = q.replace(/^@+/, "");
           const [byUser, byName] = await Promise.all([
             supabase
@@ -66,7 +65,6 @@ export default function SearchPage() {
     return () => clearTimeout(handle);
   }, [q]);
 
-  // キーボード操作
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!suggests.length) return;
     if (e.key === "ArrowDown") {
@@ -78,19 +76,19 @@ export default function SearchPage() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const pick = suggests[active];
-      if (pick?.id) router.push(`/u/${pick.id}`);
+      if (pick?.id) router.push(`/u/${pick.id}`); // ★ id ベース
     }
   };
 
+  // ★ ここを id に変更
   const goProfile = (u: UserLite) => {
-    if (u.username) router.push(`/u/${u.username}`);
+    router.push(`/u/${u.id}`);
   };
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-4 text-2xl font-semibold">検索</h1>
 
-      {/* 検索ボックス + サジェスト */}
       <div className="relative">
         <input
           ref={inputRef}
@@ -103,7 +101,6 @@ export default function SearchPage() {
           inputMode="search"
         />
 
-        {/* ドロップダウンサジェスト */}
         {q.trim() && (loading || suggests.length > 0) && (
           <div className="absolute z-10 mt-2 w-full overflow-hidden rounded-xl border bg-white shadow-lg">
             {loading && suggests.length === 0 && (
@@ -139,14 +136,17 @@ export default function SearchPage() {
             ))}
 
             {!loading && suggests.length === 0 && (
-              <div className="px-4 py-3 text-sm text-black/60">該当ユーザーが見つかりませんでした</div>
+              <div className="px-4 py-3 text-sm text-black/60">
+                該当ユーザーが見つかりませんでした
+              </div>
             )}
           </div>
         )}
       </div>
 
       <p className="mt-3 text-xs text-black/60">
-        例: <span className="font-mono">@kenta</span> / <span className="font-mono">Ken</span>
+        例: <span className="font-mono">@kenta</span> /{" "}
+        <span className="font-mono">Ken</span>
       </p>
     </main>
   );

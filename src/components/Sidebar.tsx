@@ -165,7 +165,7 @@ export default function Sidebar({ name }: { name: string }) {
           icon={MessageCircle}
           count={dmCount}
         />
-        <NavItem href="/bookmarks" label="ブックマーク" icon={Bookmark} />
+        <NavItem href="/collection" label="コレクション" icon={Bookmark} />
         <NavItem href="/account" label="プロフィール" icon={UserRound} />
 
         <Link

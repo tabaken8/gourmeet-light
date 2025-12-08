@@ -1,109 +1,127 @@
 "use client";
 
-import { useState } from "react";
-import { Heart, MapPin, Bookmark } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Heart } from "lucide-react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-type Props = {
+type PostActionsProps = {
   postId: string;
-  postUserId: string; // 👈 投稿者のIDを追加
+  postUserId: string;
   initialLiked: boolean;
-  initialWanted: boolean;
-  initialBookmarked: boolean;
   initialLikeCount: number;
-  initialWantCount: number;
-  initialBookmarkCount: number;
+  // 既存呼び出しと型互換のために残しておくが、使わない
+  initialWanted?: boolean;
+  initialBookmarked?: boolean;
+  initialWantCount?: number;
+  initialBookmarkCount?: number;
 };
 
 export default function PostActions({
   postId,
   postUserId,
   initialLiked,
-  initialWanted,
-  initialBookmarked,
   initialLikeCount,
-  initialWantCount,
-  initialBookmarkCount,
-}: Props) {
+}: PostActionsProps) {
+  const supabase = createClientComponentClient();
+
   const [liked, setLiked] = useState(initialLiked);
   const [likeCount, setLikeCount] = useState(initialLikeCount);
+  const [loading, setLoading] = useState(false);
 
-  const [wanted, setWanted] = useState(initialWanted);
-  const [wantCount, setWantCount] = useState(initialWantCount);
+  // props が変わった時に同期（SSR → CSR のズレ対策）
+  useEffect(() => {
+    setLiked(initialLiked);
+    setLikeCount(initialLikeCount);
+  }, [initialLiked, initialLikeCount]);
 
-  const [bookmarked, setBookmarked] = useState(initialBookmarked);
-  const [bookmarkCount, setBookmarkCount] = useState(initialBookmarkCount);
+  const toggleLike = async () => {
+    if (loading) return;
+    setLoading(true);
 
-  const toggle = async (
-    type: "like" | "want" | "bookmark",
-    state: boolean,
-    setState: (v: boolean) => void,
-    count: number,
-    setCount: (n: number) => void
-  ) => {
-    // フロント側で即時反映
-    setState(!state);
-    setCount(count + (state ? -1 : 1));
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-    try {
-      // サーバーAPIを呼んでDB & 通知を更新
-      await fetch(`/posts/${postId}/${type}/toggle`, {
-        method: "POST",
-        body: JSON.stringify({ postUserId }), // 👈 投稿者IDを送る
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (e) {
-      console.error(e);
+    if (sessionError) {
+      console.error(sessionError);
+      alert("ユーザー情報の取得に失敗しました");
+      setLoading(false);
+      return;
     }
+
+    const user = session?.user;
+    if (!user) {
+      alert("ログインが必要です");
+      setLoading(false);
+      return;
+    }
+
+    if (!liked) {
+      // 楽観的更新（先にUIだけ反映）
+      setLiked(true);
+      setLikeCount((c) => c + 1);
+
+      const { error } = await supabase.from("post_likes").insert({
+        post_id: postId,
+        user_id: user.id,
+      });
+
+      if (error && (error as any).code !== "23505") {
+        console.error("like insert error:", error);
+        // ロールバック
+        setLiked(false);
+        setLikeCount((c) => Math.max(0, c - 1));
+      } else {
+        // 通知テーブルを使っているなら（mobile版と合わせて）
+        if (postUserId && postUserId !== user.id) {
+          await supabase.from("notifications").insert({
+            user_id: postUserId,
+            actor_id: user.id,
+            post_id: postId,
+            type: "like",
+            read: false,
+          });
+        }
+      }
+    } else {
+      // いいね解除
+      setLiked(false);
+      setLikeCount((c) => Math.max(0, c - 1));
+
+      const { error } = await supabase
+        .from("post_likes")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("like delete error:", error);
+        // ロールバック
+        setLiked(true);
+        setLikeCount((c) => c + 1);
+      }
+    }
+
+    setLoading(false);
   };
 
   return (
-    <div className="flex items-center gap-6 px-4 pb-3">
-      {/* Like */}
+    <div className="flex items-center gap-2">
       <button
-        onClick={() => toggle("like", liked, setLiked, likeCount, setLikeCount)}
-        className={`transition-transform hover:scale-110 ${
-          liked ? "text-red-500" : "text-black/70"
-        }`}
+        type="button"
+        onClick={toggleLike}
+        disabled={loading}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-red-500 hover:bg-red-50 disabled:cursor-not-allowed"
+        aria-label={liked ? "いいねを取り消す" : "いいね"}
       >
         <Heart
-          size={26}
+          className="h-5 w-5"
           fill={liked ? "currentColor" : "none"}
-          strokeWidth={liked ? 0 : 2}
+          strokeWidth={1.8}
         />
-        <span className="ml-1 text-sm">{likeCount}</span>
       </button>
-
-      {/* Want */}
-      <button
-        onClick={() => toggle("want", wanted, setWanted, wantCount, setWantCount)}
-        className={`transition-transform hover:scale-110 ${
-          wanted ? "text-blue-500" : "text-black/70"
-        }`}
-      >
-        <MapPin
-          size={26}
-          fill={wanted ? "currentColor" : "none"}
-          strokeWidth={wanted ? 0 : 2}
-        />
-        <span className="ml-1 text-sm">{wantCount}</span>
-      </button>
-
-      {/* Bookmark */}
-      <button
-        onClick={() =>
-          toggle("bookmark", bookmarked, setBookmarked, bookmarkCount, setBookmarkCount)
-        }
-        className={`transition-transform hover:scale-110 ${
-          bookmarked ? "text-yellow-500" : "text-black/70"
-        }`}
-      >
-        <Bookmark
-          size={26}
-          fill={bookmarked ? "currentColor" : "none"}
-          strokeWidth={bookmarked ? 0 : 2}
-        />
-        <span className="ml-1 text-sm">{bookmarkCount}</span>
-      </button>
+      <span className="text-xs text-gray-600">{likeCount}</span>
     </div>
   );
 }
