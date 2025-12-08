@@ -1,15 +1,24 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/auth/login", req.url));
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id: post_id } = await context.params;
 
-  const post_id = params.id;
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.redirect(new URL("/auth/login", req.url));
+  }
+
   const uid = user.id;
 
-  // その投稿が誰のものか取得（通知用）
+  // 投稿情報取得（通知のため）
   const { data: post } = await supabase
     .from("posts")
     .select("id, user_id")
@@ -17,10 +26,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .maybeSingle();
 
   if (!post) {
-    return NextResponse.redirect(new URL(req.headers.get("referer") ?? "/timeline", req.url));
+    return NextResponse.redirect(
+      new URL(req.headers.get("referer") ?? "/timeline", req.url)
+    );
   }
 
-  // 自分が既にいいねしているか？
+  // いいね済みか？
   const { data: exists } = await supabase
     .from("post_likes")
     .select("id")
@@ -35,16 +46,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // いいね追加
     await supabase.from("post_likes").insert({ post_id, user_id: uid });
 
-    // 通知を追加（自分自身の投稿には通知しない）
+    // 通知（自分自身には送らない）
     if (post.user_id !== uid) {
       await supabase.from("notifications").insert({
-        user_id: post.user_id, // 通知を受け取る側（投稿者）
-        actor_id: uid,         // 行動を起こした人
-        post_id: post_id,
+        user_id: post.user_id,
+        actor_id: uid,
+        post_id,
         type: "like",
       });
     }
   }
 
-  return NextResponse.redirect(new URL(req.headers.get("referer") ?? "/timeline", req.url));
+  return NextResponse.redirect(
+    new URL(req.headers.get("referer") ?? "/timeline", req.url)
+  );
 }
