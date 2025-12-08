@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     siteName: "Gourmeet",
     images: [
       {
-        url: "/ogp.png",   // public/ogp.png を作ればOK
+        url: "/ogp.png", // public/ogp.png
         width: 1200,
         height: 630,
       },
@@ -29,6 +29,10 @@ export const metadata: Metadata = {
     title: "Gourmeet",
     description: "友達のおすすめだけで選べる、新しいレストランアプリ。",
     images: ["/ogp.png"],
+  },
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
   },
 };
 
