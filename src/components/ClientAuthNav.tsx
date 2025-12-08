@@ -1,18 +1,14 @@
-"use client";
-
+// components/ClientAuthNav.tsx
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
-export default function ClientAuthNav() {
-  const supabase = createClientComponentClient();
-  const [user, setUser] = useState<any>(null);
+export default async function ClientAuthNav() {
+  const supabase = createServerComponentClient({ cookies });
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-    });
-  }, []);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return (
@@ -24,7 +20,7 @@ export default function ClientAuthNav() {
           className="inline-flex h-9 items-center rounded-full border border-orange-800 px-4 font-medium text-orange-900 hover:bg-orange-800 hover:text-white"
           href="/auth/signup"
         >
-          会員登録
+          会員登録する
         </Link>
       </>
     );

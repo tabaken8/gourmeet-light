@@ -170,7 +170,7 @@ export default async function TimelinePage({
                 : "border-transparent text-black/50 hover:text-black/80",
             ].join(" ")}
           >
-            もっと見つける
+            もっと見つけたい
           </Link>
         </div>
 
