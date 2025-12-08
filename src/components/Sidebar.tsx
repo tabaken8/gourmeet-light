@@ -52,7 +52,7 @@ function NavItem({
   );
 }
 
-export default function Sidebar({ name }: { name: string }) {
+export default function Sidebar({ name }: { name?: string }) {
   const supabase = createClientComponentClient();
   const pathname = usePathname();
 
