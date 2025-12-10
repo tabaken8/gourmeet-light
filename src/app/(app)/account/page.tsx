@@ -1,7 +1,8 @@
+// src/app/(app)/account/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Images } from "lucide-react";
+import { Images, Globe2, Lock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,9 @@ export default async function AccountPage() {
   // プロフィール
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, bio, avatar_url, username")
+    .select(
+      "display_name, bio, avatar_url, username, is_public, header_image_url"
+    )
     .eq("id", user.id)
     .single();
 
@@ -26,6 +29,21 @@ export default async function AccountPage() {
   const bio = profile?.bio ?? "";
   const avatarUrl = profile?.avatar_url ?? "";
   const username = profile?.username ?? "";
+  const isPublic = profile?.is_public ?? true; // null は公開扱い
+  const headerImageUrl = profile?.header_image_url ?? null;
+
+  // Joined 表示用
+  let joinedLabel: string | null = null;
+  if (user.created_at) {
+    try {
+      joinedLabel = new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
+        month: "short",
+      }).format(new Date(user.created_at));
+    } catch {
+      joinedLabel = null;
+    }
+  }
 
   // 統計
   const [{ count: postsCount = 0 }, { count: wantsCount = 0 }] =
@@ -46,14 +64,16 @@ export default async function AccountPage() {
     const followers = await supabase
       .from("follows")
       .select("*", { count: "exact", head: true })
-      .eq("followee_id", user.id);
+      .eq("followee_id", user.id)
+      .eq("status", "accepted");
     if (!followers.error && typeof followers.count === "number")
       followersCount = followers.count;
 
     const following = await supabase
       .from("follows")
       .select("*", { count: "exact", head: true })
-      .eq("follower_id", user.id);
+      .eq("follower_id", user.id)
+      .eq("status", "accepted");
     if (!following.error && typeof following.count === "number")
       followingCount = following.count;
   }
@@ -77,7 +97,7 @@ export default async function AccountPage() {
     const ids = wantRows.map((r) => r.post_id);
     const { data } = await supabase
       .from("posts")
-      .select("id,image_urls,created_at")
+      .select("id,image_urls,created_at,title")
       .in("id", ids)
       .order("created_at", { ascending: false })
       .limit(24);
@@ -86,96 +106,141 @@ export default async function AccountPage() {
 
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 md:px-6">
-        {/* ヘッダー */}
-        <section className="rounded-2xl border border-orange-100 bg-white/95 p-5 shadow-sm backdrop-blur md:p-6">
-          <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
-            {/* Avatar */}
-            <div className="flex items-center justify-center">
-              {avatarUrl ? (
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
+        {/* プロフィールヘッダー（X 風＋カバー画像） */}
+        <section className="overflow-hidden rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur">
+          <div className="relative">
+            {/* カバー画像 */}
+            <div className="relative z-0 h-24 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
+              {headerImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={avatarUrl}
-                  alt="avatar"
-                  className="h-28 w-28 rounded-full border border-orange-100 object-cover shadow-sm md:h-36 md:w-36"
+                  src={headerImageUrl}
+                  alt="header"
+                  className="h-full w-full object-cover"
                 />
-              ) : (
-                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-orange-100 text-3xl font-bold text-orange-700 ring-1 ring-orange-200 shadow-sm md:h-36 md:w-36">
-                  {displayName.slice(0, 1).toUpperCase()}
+              )}
+              {/* ほんのりオレンジ＋暗めのオーバーレイで今の味も残す */}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-orange-900/25 via-orange-500/5 to-transparent" />
+
+              {!isPublic && (
+                <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/35 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+                  <Lock size={14} />
+                  <span>非公開アカウント</span>
                 </div>
               )}
             </div>
 
-            {/* Profile info */}
-            <div className="md:col-span-2 space-y-4">
-              {/* 名前 + 編集ボタン */}
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
-                  {username || displayName}
-                </h1>
+            {/* 本文 */}
+            <div className="px-4 pb-5 md:px-6">
+              <div className="-mt-10 flex items-end justify-between gap-4 md:-mt-12">
+                <div className="flex items-end gap-4">
+                  {/* アイコン：カバーより前面に出す */}
+                  <div className="relative z-10">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={avatarUrl}
+                        alt="avatar"
+                        className="h-20 w-20 rounded-full border-4 border-white bg-orange-100 object-cover shadow-md md:h-24 md:w-24"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-orange-100 text-2xl font-bold text-orange-700 shadow-md md:h-24 md:w-24">
+                        {displayName.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 名前 / username / 公開状態 */}
+                  <div className="space-y-1">
+                    {/* 表示名＝ハンドルネームを一番大きく太字で */}
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl">
+                      {displayName}
+                    </h1>
+
+                    {/* username はその下で小さめ */}
+                    {username && (
+                      <p className="text-sm font-medium text-slate-600">
+                        @{username}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 md:text-[13px]">
+                      <span className="inline-flex items-center gap-1">
+                        {isPublic ? (
+                          <>
+                            <Globe2 size={14} />
+                            <span>公開プロフィール</span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock size={14} />
+                            <span>非公開プロフィール</span>
+                          </>
+                        )}
+                      </span>
+                      {joinedLabel && (
+                        <>
+                          <span className="h-1 w-1 rounded-full bg-slate-400" />
+                          <span>{joinedLabel} から利用</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <Link
                   href="/account/edit"
-                  className="inline-flex items-center rounded-full border border-orange-100 bg-orange-50/60 px-4 py-1.5 text-xs font-medium text-slate-700 transition hover:border-orange-300 hover:bg-orange-100"
+                  className="inline-flex items-center rounded-full border border-orange-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-orange-400 hover:bg-orange-50"
                 >
                   プロフィールを編集
                 </Link>
               </div>
 
+              {/* Bio */}
+              {bio && (
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                  {bio}
+                </p>
+              )}
+
               {/* 統計 */}
-              <ul className="flex flex-wrap gap-3 text-xs text-slate-700 md:text-sm">
-                <li className="rounded-full bg-orange-50 px-3 py-1">
+              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
+                <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900">
                     {postsCount}
-                  </span>{" "}
-                  投稿
+                  </span>
+                  <span>投稿</span>
                 </li>
-                <li className="rounded-full bg-orange-50 px-3 py-1">
-                  <Link
-                    href={`/u/${user.id}/followers`}
-                    className="hover:underline"
-                  >
-                    <span className="font-semibold text-slate-900">
-                      {followersCount}
-                    </span>{" "}
-                    フォロワー
-                  </Link>
-                </li>
-                <li className="rounded-full bg-orange-50 px-3 py-1">
+                <li className="flex items-center gap-1.5">
                   <Link
                     href={`/u/${user.id}/following`}
-                    className="hover:underline"
+                    className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900">
                       {followingCount}
-                    </span>{" "}
-                    フォロー中
+                    </span>
+                    <span>フォロー中</span>
                   </Link>
                 </li>
-                <li className="rounded-full bg-orange-50 px-3 py-1">
+                <li className="flex items-center gap-1.5">
+                  <Link
+                    href={`/u/${user.id}/followers`}
+                    className="flex items-center gap-1.5 hover:underline"
+                  >
+                    <span className="font-semibold text-slate-900">
+                      {followersCount}
+                    </span>
+                    <span>フォロワー</span>
+                  </Link>
+                </li>
+                <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900">
                     {wantsCount}
-                  </span>{" "}
-                  行きたい
+                  </span>
+                  <span>行きたい</span>
                 </li>
               </ul>
-
-              {/* 表示名 + Bio + ハンドル */}
-              <div className="space-y-1 text-sm">
-                <p className="font-semibold text-slate-900">{displayName}</p>
-                {bio && (
-                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-700 md:text-sm">
-                    {bio}
-                  </p>
-                )}
-                {username && (
-                  <p className="text-xs text-slate-500 md:text-sm">
-                    <a
-                      className="underline"
-                      href={`/u/${username}`}
-                    >{`@${username}`}</a>
-                  </p>
-                )}
-              </div>
             </div>
           </div>
         </section>

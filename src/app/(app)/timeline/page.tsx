@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { MapPin, Lock } from "lucide-react";
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions from "@/components/PostActions";
@@ -23,6 +23,12 @@ type PostRow = {
   place_id: string | null;
 };
 
+type ProfileLite = {
+  display_name: string | null;
+  avatar_url: string | null;
+  is_public: boolean | null;
+};
+
 export default async function TimelinePage({
   searchParams,
 }: {
@@ -39,35 +45,56 @@ export default async function TimelinePage({
 
   // ---- 投稿 & プロフィール取得 --------------------------------------
   let posts: PostRow[] = [];
-  let profiles: Record<
-    string,
-    { display_name: string | null; avatar_url: string | null }
-  > = {};
+  let profiles: Record<string, ProfileLite> = {};
 
   if (activeTab === "friends") {
-    const { data: postRows } = await supabase
-      .from("posts")
-      .select(
-        "id,content,user_id,created_at,image_urls,place_name,place_address,place_id"
-      )
-      .order("created_at", { ascending: false });
+    // 1. 自分が「承認済みで」フォローしているユーザーを取得
+    let followeeIds: string[] = [];
+    if (user) {
+      const { data: follows } = await supabase
+        .from("follows")
+        .select("followee_id")
+        .eq("follower_id", user.id)
+        .eq("status", "accepted");
 
-    posts = (postRows ?? []) as PostRow[];
+      followeeIds = (follows ?? []).map((f: any) => f.followee_id);
+    }
 
-    const userIds = Array.from(new Set(posts.map((p) => p.user_id)));
-    if (userIds.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_url")
-        .in("id", userIds);
-      for (const p of profs ?? []) {
-        profiles[p.id] = {
-          display_name: p.display_name,
-          avatar_url: p.avatar_url,
-        };
+    // 2. 自分自身も TL 対象に含める
+    const visibleUserIds = user
+      ? Array.from(new Set<string>([user.id, ...followeeIds]))
+      : followeeIds;
+
+    // フォローしている人も自分もいなければ TL は空
+    if (visibleUserIds.length) {
+      const { data: postRows } = await supabase
+        .from("posts")
+        .select(
+          "id,content,user_id,created_at,image_urls,place_name,place_address,place_id"
+        )
+        .in("user_id", visibleUserIds)
+        .order("created_at", { ascending: false });
+
+      posts = (postRows ?? []) as PostRow[];
+
+      const userIds = Array.from(new Set(posts.map((p) => p.user_id)));
+      if (userIds.length) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, display_name, avatar_url, is_public")
+          .in("id", userIds);
+
+        for (const p of profs ?? []) {
+          profiles[p.id] = {
+            display_name: p.display_name,
+            avatar_url: p.avatar_url,
+            is_public: p.is_public,
+          };
+        }
       }
     }
   } else {
+    // discover: 公開プロフィールの投稿だけ
     const { data: rows } = await supabase
       .from("posts")
       .select(`
@@ -106,6 +133,7 @@ export default async function TimelinePage({
         profiles[prof.id] = {
           display_name: prof.display_name,
           avatar_url: prof.avatar_url,
+          is_public: prof.is_public,
         };
       }
     }
@@ -188,7 +216,7 @@ export default async function TimelinePage({
             </div>
             <p className="mt-2 pb-3 text-[11px] text-slate-500">
               {activeTab === "friends"
-                ? "フォローしている人の投稿が時系列で流れます。"
+                ? "フォローしている人と自分の投稿が時系列で流れます。"
                 : "公開プロフィールのユーザーから、気になる人を見つけられます。"}
             </p>
           </div>
@@ -197,7 +225,7 @@ export default async function TimelinePage({
           {posts.length === 0 ? (
             <div className="flex min-h-[50vh] items-center justify-center px-4 pb-6 text-xs text-slate-500">
               {activeTab === "friends"
-                ? "まだ投稿がありません。まずはどこかで一枚、撮ってみましょう。"
+                ? "まだタイムラインに投稿がありません。まずは誰かをフォローするか、自分で投稿してみましょう。"
                 : "まだ公開ユーザーの投稿がありません。"}
             </div>
           ) : (
@@ -206,6 +234,7 @@ export default async function TimelinePage({
                 const prof = profiles[p.user_id] ?? null;
                 const display = prof?.display_name ?? "ユーザー";
                 const avatar = prof?.avatar_url ?? null;
+                const isPublic = prof?.is_public ?? true;
                 const initial = (display || "U").slice(0, 1).toUpperCase();
 
                 const mapUrl = p.place_id
@@ -240,12 +269,21 @@ export default async function TimelinePage({
                           )}
                         </Link>
                         <div className="min-w-0">
-                          <Link
-                            href={`/u/${p.user_id}`}
-                            className="truncate text-xs font-medium text-slate-900 hover:underline"
-                          >
-                            {display}
-                          </Link>
+                          <div className="flex items-center gap-1">
+                            <Link
+                              href={`/u/${p.user_id}`}
+                              className="truncate text-xs font-medium text-slate-900 hover:underline"
+                            >
+                              {display}
+                            </Link>
+                            {/* 鍵垢なら小さめの鍵アイコン */}
+                            {!isPublic && (
+                              <Lock
+                                size={12}
+                                className="shrink-0 text-slate-500"
+                              />
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-500">
                             {new Date(p.created_at!).toLocaleString()}
                           </div>

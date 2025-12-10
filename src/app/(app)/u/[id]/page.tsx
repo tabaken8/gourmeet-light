@@ -1,7 +1,9 @@
+// src/app/(app)/u/[id]/page.tsx
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import FollowButton from "@/components/FollowButton";
+import { Images, Globe2, Lock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +25,22 @@ export default async function UserPublicPage({
   // プロフィール取得
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, display_name, bio, avatar_url")
+    .select(
+      "id, username, display_name, bio, avatar_url, is_public, header_image_url"
+    )
     .eq("id", userId)
     .maybeSingle();
 
   if (!profile) return notFound();
 
-  // 統計
+  const displayName = profile.display_name || "ユーザー";
+  const username = profile.username || "";
+  const bio = profile.bio || "";
+  const avatarUrl = profile.avatar_url || "";
+  const isPublic = profile.is_public ?? true;
+  const headerImageUrl = profile.header_image_url || null;
+
+  // 統計（accepted のみカウント）
   const [
     { count: postsCount = 0 },
     { count: followersCount = 0 },
@@ -43,32 +54,41 @@ export default async function UserPublicPage({
     supabase
       .from("follows")
       .select("*", { count: "exact", head: true })
-      .eq("followee_id", userId),
+      .eq("followee_id", userId)
+      .eq("status", "accepted"),
     supabase
       .from("follows")
       .select("*", { count: "exact", head: true })
-      .eq("follower_id", userId),
+      .eq("follower_id", userId)
+      .eq("status", "accepted"),
     supabase
       .from("post_wants")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId),
   ]);
 
-  // 自分→相手のフォロー状態
+  // 自分→相手のフォロー状態（accepted / pending）
   let initiallyFollowing = false;
+  let initiallyRequested = false;
+
   if (me && me.id !== userId) {
-    const { count } = await supabase
+    const { data: rel, error: relErr } = await supabase
       .from("follows")
-      .select("*", { count: "exact", head: true })
+      .select("status")
       .eq("follower_id", me.id)
-      .eq("followee_id", userId);
-    initiallyFollowing = (count ?? 0) > 0;
+      .eq("followee_id", userId)
+      .maybeSingle();
+
+    if (!relErr && rel) {
+      if (rel.status === "accepted") initiallyFollowing = true;
+      if (rel.status === "pending") initiallyRequested = true;
+    }
   }
 
   // 投稿
   const { data: posts } = await supabase
     .from("posts")
-    .select("id, image_urls, created_at")
+    .select("id, image_urls, created_at, title")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(24);
@@ -84,109 +104,149 @@ export default async function UserPublicPage({
     const ids = wantRows.map((r) => r.post_id);
     const { data } = await supabase
       .from("posts")
-      .select("id, image_urls, created_at")
+      .select("id, image_urls, created_at, title")
       .in("id", ids)
       .order("created_at", { ascending: false })
       .limit(24);
     wantPosts = data ?? [];
   }
 
-  const display = profile.display_name || "ユーザー";
-  const avatar = profile.avatar_url;
-  const handle = profile.username ? `@${profile.username}` : null;
-
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 md:px-6">
-        {/* プロフィールカード */}
-        <section className="rounded-2xl border border-orange-100 bg-white/95 p-5 shadow-sm backdrop-blur md:p-6">
-          <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
-            {/* Avatar */}
-            <div className="flex items-center justify-center">
-              {avatar ? (
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
+        {/* プロフィールヘッダー */}
+        <section className="overflow-hidden rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur">
+          <div className="relative">
+            {/* カバー画像 */}
+            <div className="relative z-0 h-24 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
+              {headerImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={avatar}
-                  alt=""
-                  className="h-28 w-28 rounded-full border border-orange-100 object-cover shadow-sm md:h-36 md:w-36"
+                  src={headerImageUrl}
+                  alt="header"
+                  className="h-full w-full object-cover"
                 />
-              ) : (
-                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-orange-100 text-3xl font-bold text-orange-700 ring-1 ring-orange-200 shadow-sm md:h-36 md:w-36">
-                  {(display || "U").slice(0, 1).toUpperCase()}
+              )}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-orange-900/25 via-orange-500/5 to-transparent" />
+
+              {!isPublic && (
+                <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/35 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+                  <Lock size={14} />
+                  <span>非公開アカウント</span>
                 </div>
               )}
             </div>
 
-            {/* Right side */}
-            <div className="md:col-span-2 space-y-4">
-              {/* 1行目: ハンドル/表示名 + フォローボタン */}
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
-                  {profile.username ?? display}
-                </h1>
+            {/* 本文 */}
+            <div className="px-4 pb-5 md:px-6">
+              <div className="-mt-10 flex items-end justify-between gap-4 md:-mt-12">
+                <div className="flex items-end gap-4">
+                  {/* アイコン */}
+                  <div className="relative z-10">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={avatarUrl}
+                        alt="avatar"
+                        className="h-20 w-20 rounded-full border-4 border-white bg-orange-100 object-cover shadow-md md:h-24 md:w-24"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-orange-100 text-2xl font-bold text-orange-700 shadow-md md:h-24 md:w-24">
+                        {displayName.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 名前 / username / 公開状態 */}
+                  <div className="space-y-1">
+                    {/* 表示名を一番大きく太字で */}
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl">
+                      {displayName}
+                    </h1>
+
+                    {username && (
+                      <p className="text-sm font-medium text-slate-600">
+                        @{username}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 md:text-[13px]">
+                      <span className="inline-flex items-center gap-1">
+                        {isPublic ? (
+                          <>
+                            <Globe2 size={14} />
+                            <span>公開プロフィール</span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock size={14} />
+                            <span>非公開プロフィール</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 右側：自分ならバッジ、他人ならフォローボタン */}
                 {me.id === userId ? (
-                  <span className="text-xs text-slate-500 md:text-sm">
-                    （あなたの公開プロフィール）
+                  <span className="rounded-full bg-orange-50 px-3 py-1 text-xs text-slate-600">
+                    あなたのプロフィール
                   </span>
                 ) : (
                   <FollowButton
                     targetUserId={profile.id}
                     targetUsername={profile.username}
                     initiallyFollowing={initiallyFollowing}
+                    initiallyRequested={initiallyRequested}
                   />
                 )}
               </div>
 
-              {/* 2行目: 統計 */}
-              <ul className="flex flex-wrap gap-3 text-xs text-slate-700 md:text-sm">
-                <li className="rounded-full bg-orange-50 px-3 py-1">
+              {/* Bio */}
+              {bio && (
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                  {bio}
+                </p>
+              )}
+
+              {/* 統計 */}
+              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
+                <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900">
                     {postsCount}
-                  </span>{" "}
-                  投稿
+                  </span>
+                  <span>投稿</span>
                 </li>
-                <li className="rounded-full bg-orange-50 px-3 py-1">
-                  <Link
-                    href={`/u/${userId}/followers`}
-                    className="hover:underline"
-                  >
-                    <span className="font-semibold text-slate-900">
-                      {followersCount}
-                    </span>{" "}
-                    フォロワー
-                  </Link>
-                </li>
-                <li className="rounded-full bg-orange-50 px-3 py-1">
+                <li className="flex items-center gap-1.5">
                   <Link
                     href={`/u/${userId}/following`}
-                    className="hover:underline"
+                    className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900">
                       {followingCount}
-                    </span>{" "}
-                    フォロー中
+                    </span>
+                    <span>フォロー中</span>
                   </Link>
                 </li>
-                <li className="rounded-full bg-orange-50 px-3 py-1">
+                <li className="flex items-center gap-1.5">
+                  <Link
+                    href={`/u/${userId}/followers`}
+                    className="flex items-center gap-1.5 hover:underline"
+                  >
+                    <span className="font-semibold text-slate-900">
+                      {followersCount}
+                    </span>
+                    <span>フォロワー</span>
+                  </Link>
+                </li>
+                <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900">
                     {wantsCount}
-                  </span>{" "}
-                  行きたい
+                  </span>
+                  <span>行きたい</span>
                 </li>
               </ul>
-
-              {/* 3行目: 表示名 + Bio + ハンドル */}
-              <div className="space-y-1 text-sm">
-                <p className="font-semibold text-slate-900">{display}</p>
-                {profile.bio && (
-                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-700 md:text-sm">
-                    {profile.bio}
-                  </p>
-                )}
-                {handle && (
-                  <p className="text-xs text-slate-500 md:text-sm">{handle}</p>
-                )}
-              </div>
             </div>
           </div>
         </section>
@@ -198,23 +258,29 @@ export default async function UserPublicPage({
           </h2>
           {posts && posts.length ? (
             <div className="grid grid-cols-3 gap-[2px] sm:grid-cols-4 sm:gap-[3px] md:grid-cols-5">
-              {posts!.map((p) => {
+              {posts.map((p) => {
                 const thumb = p.image_urls?.[0] ?? null;
                 return (
                   <a
                     key={p.id}
                     href={`/posts/${p.id}`}
-                    className="block aspect-square overflow-hidden bg-slate-100"
+                    className="group relative block aspect-square overflow-hidden bg-slate-100"
                   >
                     {thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={thumb}
-                        alt={""}
-                        className="h-full w-full object-cover transition hover:opacity-95"
+                        alt={p.title ?? ""}
+                        className="h-full w-full object-cover transition group-hover:opacity-95"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-slate-500" />
+                      <div className="flex h-full w-full items-center justifycenter p-2 text-center text-[10px] text-slate-500" />
+                    )}
+                    {p.image_urls?.length > 1 && (
+                      <Images
+                        size={16}
+                        className="absolute right-1 top-1 text-white drop-shadow"
+                      />
                     )}
                   </a>
                 );
@@ -240,19 +306,25 @@ export default async function UserPublicPage({
                   <a
                     key={p.id}
                     href={`/posts/${p.id}`}
-                    className="block aspect-square overflow-hidden bg-orange-50"
+                    className="group relative block aspect-square overflow-hidden bg-orange-50"
                   >
                     {thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={thumb}
                         alt={p.title ?? ""}
-                        className="h-full w-full object-cover transition hover:opacity-95"
+                        className="h-full w-full object-cover transition group-hover:opacity-95"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-orange-900/80">
+                      <div className="flex h-full w-full items-center justifycenter p-2 text-center text-[10px] text-orange-900/80">
                         {p.title}
                       </div>
+                    )}
+                    {p.image_urls?.length > 1 && (
+                      <Images
+                        size={16}
+                        className="absolute right-1 top-1 text-white drop-shadow"
+                      />
                     )}
                   </a>
                 );
