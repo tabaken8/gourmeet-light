@@ -108,8 +108,8 @@ export default function LoginPage() {
                     >
                         <h2 className="mb-2 text-lg font-bold">新規会員登録（無料）</h2>
                         <p className="mb-6 text-sm leading-6 text-black/70">
-                            会員の方には新機能の先行体験や限定コンテンツをご用意しています。
-                            入会費・年会費とか結構かかります。
+                            おいしいを友達とシェアしよう。
+                            
                         </p>
                         <a
                             href="/auth/signup"
