@@ -69,6 +69,7 @@ export default async function UserPublicPage({
 
   // 自分→相手のフォロー状態（accepted / pending）
   let initiallyFollowing = false;
+  let initiallyRequested = false;
 
   if (me && me.id !== userId) {
     const { data: rel } = await supabase
@@ -79,6 +80,7 @@ export default async function UserPublicPage({
       .maybeSingle();
 
     if (rel?.status === "accepted") initiallyFollowing = true;
+    if (rel?.status === "pending") initiallyRequested = true;
   }
 
   // 非公開 & 未承認フォロワー → 投稿閲覧不可
@@ -161,7 +163,7 @@ export default async function UserPublicPage({
                     )}
                   </div>
 
-                  <div className="pt-4">
+                  <div className="pt-18">
                     <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
                       {displayName}
                     </h1>
@@ -199,7 +201,7 @@ export default async function UserPublicPage({
                       targetUserId={profile.id}
                       targetUsername={profile.username}
                       initiallyFollowing={initiallyFollowing}
-                      initiallyRequested={false}
+                      initiallyRequested={initiallyRequested}
                     />
                   </div>
                 )}

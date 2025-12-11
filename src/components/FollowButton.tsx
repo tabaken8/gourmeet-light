@@ -116,7 +116,7 @@ export default function FollowButton({
         className={`rounded-full border border-slate-400 bg-white px-4 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50 ${className ?? ""}`}
         aria-pressed="mixed"
       >
-        リクエスト中
+        リクエスト済み
       </button>
     );
   }
