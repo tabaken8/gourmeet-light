@@ -1,4 +1,3 @@
-// src/components/FollowButton.tsx
 "use client";
 
 import { useState, useTransition } from "react";
@@ -53,7 +52,6 @@ export default function FollowButton({
         } else if (json.status === "pending") {
           setStatus("requested");
         } else {
-          // サーバーからよく分からない値が来たときのフォールバック
           setStatus("following");
         }
       } catch {
@@ -62,7 +60,6 @@ export default function FollowButton({
     });
   };
 
-  // フォロー解除 or リクエスト取消
   const doCancelOrUnfollow = () => {
     if (status === "none") return;
 
@@ -88,13 +85,17 @@ export default function FollowButton({
     });
   };
 
+  /** --------------------------
+   *  フォロー中 (following)
+   *  Twitter 仕様に寄せて白背景＋黒文字
+   * -------------------------- */
   if (status === "following") {
     return (
       <button
         type="button"
         onClick={doCancelOrUnfollow}
         disabled={pending}
-        className={`rounded-full border border-slate-900 bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${className ?? ""}`}
+        className={`rounded-full border border-slate-300 bg-white px-4 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50 ${className ?? ""}`}
         aria-pressed="true"
       >
         フォロー中
@@ -102,13 +103,17 @@ export default function FollowButton({
     );
   }
 
+  /** --------------------------
+   *  リクエスト中 (requested)
+   *  白背景 + 黒文字 (Twitter風)
+   * -------------------------- */
   if (status === "requested") {
     return (
       <button
         type="button"
         onClick={doCancelOrUnfollow}
         disabled={pending}
-        className={`rounded-full border border-slate-300 bg-white px-4 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50 ${className ?? ""}`}
+        className={`rounded-full border border-slate-400 bg-white px-4 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50 ${className ?? ""}`}
         aria-pressed="mixed"
       >
         リクエスト中
@@ -116,13 +121,16 @@ export default function FollowButton({
     );
   }
 
-  // status === "none"
+  /** --------------------------
+   *  フォローしていない状態 (none)
+   *  ★ Twitter 仕様：黒背景・白文字
+   * -------------------------- */
   return (
     <button
       type="button"
       onClick={doFollow}
       disabled={pending}
-      className={`rounded-full border border-slate-300 bg-white px-4 py-1.5 text-sm font-medium hover:bg-slate-900 hover:text-white disabled:opacity-50 ${className ?? ""}`}
+      className={`rounded-full border border-slate-900 bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${className ?? ""}`}
       aria-pressed="false"
     >
       フォローする

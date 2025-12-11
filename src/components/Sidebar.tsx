@@ -1,3 +1,4 @@
+// src/components/Sidebar.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import {
   Bookmark,
   UserRound,
   Plus,
+  UserPlus,
 } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -59,6 +61,7 @@ export default function Sidebar({ name }: { name?: string }) {
   const [notifCount, setNotifCount] = useState(0);
   const [dmCount, setDmCount] = useState(0);
   const [timelineDot, setTimelineDot] = useState(false);
+  const [followReqCount, setFollowReqCount] = useState(0);
 
   // 初期件数を取得
   useEffect(() => {
@@ -68,6 +71,7 @@ export default function Sidebar({ name }: { name?: string }) {
       } = await supabase.auth.getUser();
       if (!user) return;
 
+      // 未読の通知
       const { count: notif } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
@@ -75,6 +79,7 @@ export default function Sidebar({ name }: { name?: string }) {
         .eq("read", false);
       setNotifCount(notif ?? 0);
 
+      // 未読のDM
       const { count: dms } = await supabase
         .from("messages")
         .select("*", { count: "exact", head: true })
@@ -82,66 +87,171 @@ export default function Sidebar({ name }: { name?: string }) {
         .eq("read", false);
       setDmCount(dms ?? 0);
 
+      // 未読のフォローリクエスト（pending & request_read = false）
+      const { count: followReq } = await supabase
+        .from("follows")
+        .select("*", { count: "exact", head: true })
+        .eq("followee_id", user.id)
+        .eq("status", "pending")
+        .eq("request_read", false);
+      setFollowReqCount(followReq ?? 0);
+
       setTimelineDot(false);
     };
 
     fetchCounts();
   }, [supabase]);
 
-  // Realtime 購読
+  // Realtime 購読（通知 / DM / 投稿 / フォローリクエスト）
   useEffect(() => {
-    const channel = supabase
-      .channel("sidebar-realtime")
-      // 🔔 notifications
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications" },
-        () => setNotifCount((prev) => prev + 1)
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "notifications" },
-        (payload) => {
-          if (payload.new.read) {
-            setNotifCount((prev) => Math.max(prev - 1, 0));
+    let channel: any | null = null;
+    let subscribed = true;
+
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || !subscribed) return;
+      const myId = user.id;
+
+      channel = supabase
+        .channel("sidebar-realtime")
+        // 🔔 notifications
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "notifications" },
+          (payload: any) => {
+            // 自分宛ての通知だけカウントを増やす
+            if (payload.new.user_id === myId && !payload.new.read) {
+              setNotifCount((prev) => prev + 1);
+            }
           }
-        }
-      )
-      // 💬 messages
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        () => setDmCount((prev) => prev + 1)
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "messages" },
-        (payload) => {
-          if (payload.new.read) {
-            setDmCount((prev) => Math.max(prev - 1, 0));
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "notifications" },
+          (payload: any) => {
+            if (
+              payload.new.user_id === myId &&
+              payload.old.read === false &&
+              payload.new.read === true
+            ) {
+              setNotifCount((prev) => Math.max(prev - 1, 0));
+            }
           }
-        }
-      )
-      // 📰 posts
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "posts" },
-        () => setTimelineDot(true)
-      )
-      .subscribe();
+        )
+
+        // 💬 messages
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages" },
+          (payload: any) => {
+            if (payload.new.receiver_id === myId && !payload.new.read) {
+              setDmCount((prev) => prev + 1);
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "messages" },
+          (payload: any) => {
+            if (
+              payload.new.receiver_id === myId &&
+              payload.old.read === false &&
+              payload.new.read === true
+            ) {
+              setDmCount((prev) => Math.max(prev - 1, 0));
+            }
+          }
+        )
+
+        // 📰 posts（誰かが投稿したらホームにドット）
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "posts" },
+          () => setTimelineDot(true)
+        )
+
+        // 👥 follows（フォローリクエスト）
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "follows" },
+          (payload: any) => {
+            const row = payload.new;
+            if (
+              row.followee_id === myId &&
+              row.status === "pending" &&
+              row.request_read === false
+            ) {
+              setFollowReqCount((prev) => prev + 1);
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "follows" },
+          (payload: any) => {
+            const oldRow = payload.old;
+            const newRow = payload.new;
+            if (newRow.followee_id !== myId) return;
+
+            // 未読 → 既読
+            if (
+              oldRow.status === "pending" &&
+              oldRow.request_read === false &&
+              newRow.request_read === true
+            ) {
+              setFollowReqCount((prev) => Math.max(prev - 1, 0));
+            }
+
+            // pending → accepted になった未読リクエスト
+            if (
+              oldRow.status === "pending" &&
+              oldRow.request_read === false &&
+              newRow.status === "accepted"
+            ) {
+              setFollowReqCount((prev) => Math.max(prev - 1, 0));
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "follows" },
+          (payload: any) => {
+            const oldRow = payload.old;
+            if (
+              oldRow.followee_id === myId &&
+              oldRow.status === "pending" &&
+              oldRow.request_read === false
+            ) {
+              setFollowReqCount((prev) => Math.max(prev - 1, 0));
+            }
+          }
+        )
+        .subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      subscribed = false;
+      if (channel) supabase.removeChannel(channel);
     };
   }, [supabase]);
 
-  // /notifications ページを開いたら既読処理
+  // /notifications や /follow-requests を開いたら既読処理
   useEffect(() => {
     if (pathname === "/notifications") {
       fetch("/api/notifications/read", { method: "POST" })
         .then(() => setNotifCount(0))
         .catch((err) =>
           console.error("Failed to mark notifications read:", err)
+        );
+    }
+
+    if (pathname === "/follow-requests") {
+      fetch("/api/follow-requests/read", { method: "POST" })
+        .then(() => setFollowReqCount(0))
+        .catch((err) =>
+          console.error("Failed to mark follow-requests read:", err)
         );
     }
   }, [pathname]);
@@ -158,6 +268,12 @@ export default function Sidebar({ name }: { name?: string }) {
           label="通知"
           icon={Bell}
           count={notifCount}
+        />
+        <NavItem
+          href="/follow-requests"
+          label="フォローリクエスト"
+          icon={UserPlus}
+          count={followReqCount}
         />
         <NavItem
           href="/messages"

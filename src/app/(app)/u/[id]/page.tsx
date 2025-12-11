@@ -118,7 +118,7 @@ export default async function UserPublicPage({
         <section className="overflow-hidden rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur">
           <div className="relative">
             {/* カバー画像 */}
-            <div className="relative z-0 h-24 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
+            <div className="relative z-0 h-28 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
               {headerImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -138,11 +138,13 @@ export default async function UserPublicPage({
             </div>
 
             {/* 本文 */}
-            <div className="px-4 pb-5 md:px-6">
-              <div className="-mt-10 flex items-end justify-between gap-4 md:-mt-12">
-                <div className="flex items-end gap-4">
-                  {/* アイコン */}
-                  <div className="relative z-10">
+            <div className="px-4 pb-5 md:px-6 md:pb-6">
+              {/* アイコン＋名前行：カバーに少し被せる */}
+              <div className="-mt-12 flex justify-between gap-4 md:-mt-14">
+                {/* 左：アイコン & テキスト */}
+                <div className="flex items-center gap-4 md:gap-5">
+                  {/* アイコン（左上） */}
+                  <div className="relative z-10 shrink-0">
                     {avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -157,20 +159,20 @@ export default async function UserPublicPage({
                     )}
                   </div>
 
-                  {/* 名前 / username / 公開状態 */}
-                  <div className="space-y-1">
-                    {/* 表示名を一番大きく太字で */}
-                    <h1 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl">
+                  {/* 名前ブロック：アイコンの右側に配置 */}
+                  <div className="pt-4 md:pt-5">
+                    {/* 表示名：アイコンの円の下半分くらいの高さ */}
+                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
                       {displayName}
                     </h1>
 
                     {username && (
-                      <p className="text-sm font-medium text-slate-600">
+                      <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">
                         @{username}
                       </p>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 md:text-[13px]">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
                       <span className="inline-flex items-center gap-1">
                         {isPublic ? (
                           <>
@@ -190,16 +192,18 @@ export default async function UserPublicPage({
 
                 {/* 右側：自分ならバッジ、他人ならフォローボタン */}
                 {me.id === userId ? (
-                  <span className="rounded-full bg-orange-50 px-3 py-1 text-xs text-slate-600">
+                  <span className="mt-2 rounded-full bg-orange-50 px-3 py-1 text-xs text-slate-600">
                     あなたのプロフィール
                   </span>
                 ) : (
-                  <FollowButton
-                    targetUserId={profile.id}
-                    targetUsername={profile.username}
-                    initiallyFollowing={initiallyFollowing}
-                    initiallyRequested={initiallyRequested}
-                  />
+                  <div className="mt-2">
+                    <FollowButton
+                      targetUserId={profile.id}
+                      targetUsername={profile.username}
+                      initiallyFollowing={initiallyFollowing}
+                      initiallyRequested={initiallyRequested}
+                    />
+                  </div>
                 )}
               </div>
 
@@ -274,7 +278,7 @@ export default async function UserPublicPage({
                         className="h-full w-full object-cover transition group-hover:opacity-95"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justifycenter p-2 text-center text-[10px] text-slate-500" />
+                      <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-slate-500" />
                     )}
                     {p.image_urls?.length > 1 && (
                       <Images
@@ -316,7 +320,7 @@ export default async function UserPublicPage({
                         className="h-full w-full object-cover transition group-hover:opacity-95"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justifycenter p-2 text-center text-[10px] text-orange-900/80">
+                      <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-orange-900/80">
                         {p.title}
                       </div>
                     )}

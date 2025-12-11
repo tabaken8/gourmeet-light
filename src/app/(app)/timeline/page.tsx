@@ -5,6 +5,7 @@ import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
+import FollowButton from "@/components/FollowButton";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,11 @@ export default async function TimelinePage({
   // ---- 投稿 & プロフィール取得 --------------------------------------
   let posts: PostRow[] = [];
   let profiles: Record<string, ProfileLite> = {};
+  // discover 用：投稿者ごとのフォロー状況（フォロー済み / リクエスト中）
+  let followStatus: Record<
+    string,
+    { following: boolean; requested: boolean }
+  > = {};
 
   if (activeTab === "friends") {
     // 1. 自分が「承認済みで」フォローしているユーザーを取得
@@ -135,6 +141,29 @@ export default async function TimelinePage({
           avatar_url: prof.avatar_url,
           is_public: prof.is_public,
         };
+      }
+    }
+
+    // 自分とのフォロー関係を取得（discover タブ用）
+    if (user && posts.length > 0) {
+      // 投稿者IDの一覧（自分自身は除外）
+      const userIds = Array.from(
+        new Set(posts.map((p) => p.user_id))
+      ).filter((id) => id !== user.id);
+
+      if (userIds.length) {
+        const { data: followRows } = await supabase
+          .from("follows")
+          .select("followee_id, status")
+          .eq("follower_id", user.id)
+          .in("followee_id", userIds);
+
+        for (const f of followRows ?? []) {
+          followStatus[f.followee_id] = {
+            following: f.status === "accepted",
+            requested: f.status === "pending",
+          };
+        }
       }
     }
   }
@@ -245,6 +274,8 @@ export default async function TimelinePage({
                     )}`
                   : null;
 
+                const fs = followStatus[p.user_id];
+
                 return (
                   <article
                     key={p.id}
@@ -289,10 +320,35 @@ export default async function TimelinePage({
                           </div>
                         </div>
                       </div>
-                      <PostMoreMenu
-                        postId={p.id}
-                        isMine={user?.id === p.user_id}
-                      />
+
+                      {/* 右上エリア：フォロー状態 + メニュー */}
+                      <div className="flex items-center gap-2">
+                        {activeTab === "discover" &&
+                          user &&
+                          user.id !== p.user_id && (
+                            <>
+                              {fs?.following ? (
+                                // フォロー済みラベル（薄め表示・押せない）
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-400">
+                                  フォロー済み
+                                </span>
+                              ) : (
+                                <FollowButton
+                                  targetUserId={p.user_id}
+                                  targetUsername={display}
+                                  initiallyFollowing={!!fs?.following}
+                                  initiallyRequested={!!fs?.requested}
+                                  className="px-3 py-1 text-xs"
+                                />
+                              )}
+                            </>
+                          )}
+
+                        <PostMoreMenu
+                          postId={p.id}
+                          isMine={user?.id === p.user_id}
+                        />
+                      </div>
                     </div>
 
                     {/* 画像カルーセル */}
