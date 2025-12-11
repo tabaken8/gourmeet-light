@@ -196,7 +196,7 @@ export default async function UserPublicPage({
                     あなたのプロフィール
                   </span>
                 ) : (
-                  <div className="mt-2">
+                  <div className="mt-18">
                     <FollowButton
                       targetUserId={profile.id}
                       targetUsername={profile.username}
