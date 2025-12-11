@@ -69,46 +69,52 @@ export default async function UserPublicPage({
 
   // 自分→相手のフォロー状態（accepted / pending）
   let initiallyFollowing = false;
-  let initiallyRequested = false;
 
   if (me && me.id !== userId) {
-    const { data: rel, error: relErr } = await supabase
+    const { data: rel } = await supabase
       .from("follows")
       .select("status")
       .eq("follower_id", me.id)
       .eq("followee_id", userId)
       .maybeSingle();
 
-    if (!relErr && rel) {
-      if (rel.status === "accepted") initiallyFollowing = true;
-      if (rel.status === "pending") initiallyRequested = true;
-    }
+    if (rel?.status === "accepted") initiallyFollowing = true;
   }
 
-  // 投稿
-  const { data: posts } = await supabase
-    .from("posts")
-    .select("id, image_urls, created_at, title")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(24);
+  // 非公開 & 未承認フォロワー → 投稿閲覧不可
+  const canViewPosts =
+    isPublic || me.id === userId || initiallyFollowing;
 
-  // 行きたい！リスト
-  const { data: wantRows } = await supabase
-    .from("post_wants")
-    .select("post_id")
-    .eq("user_id", userId);
-
-  let wantPosts: any[] = [];
-  if (wantRows && wantRows.length) {
-    const ids = wantRows.map((r) => r.post_id);
+  // 投稿（表示権限がある場合のみ取得）
+  let posts: any[] = [];
+  if (canViewPosts) {
     const { data } = await supabase
       .from("posts")
-      .select("id, image_urls, created_at, title")
-      .in("id", ids)
+      .select("id, image_urls, created_at")
+      .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(24);
-    wantPosts = data ?? [];
+    posts = data ?? [];
+  }
+
+  // 行きたい！リスト
+  let wantPosts: any[] = [];
+  if (canViewPosts) {
+    const { data: wantRows } = await supabase
+      .from("post_wants")
+      .select("post_id")
+      .eq("user_id", userId);
+
+    if (wantRows?.length) {
+      const ids = wantRows.map((r) => r.post_id);
+      const { data } = await supabase
+        .from("posts")
+        .select("id, image_urls, created_at")
+        .in("id", ids)
+        .order("created_at", { ascending: false })
+        .limit(24);
+      wantPosts = data ?? [];
+    }
   }
 
   return (
@@ -120,7 +126,6 @@ export default async function UserPublicPage({
             {/* カバー画像 */}
             <div className="relative z-0 h-28 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
               {headerImageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={headerImageUrl}
                   alt="header"
@@ -139,14 +144,11 @@ export default async function UserPublicPage({
 
             {/* 本文 */}
             <div className="px-4 pb-5 md:px-6 md:pb-6">
-              {/* アイコン＋名前行：カバーに少し被せる */}
               <div className="-mt-12 flex justify-between gap-4 md:-mt-14">
-                {/* 左：アイコン & テキスト */}
+                {/* 左側：アイコン & 名前 */}
                 <div className="flex items-center gap-4 md:gap-5">
-                  {/* アイコン（左上） */}
                   <div className="relative z-10 shrink-0">
                     {avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={avatarUrl}
                         alt="avatar"
@@ -159,9 +161,7 @@ export default async function UserPublicPage({
                     )}
                   </div>
 
-                  {/* 名前ブロック：アイコンの右側に配置 */}
-                  <div className="pt-4 md:pt-18">
-                    {/* 表示名：アイコンの円の下半分くらいの高さ */}
+                  <div className="pt-4">
                     <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
                       {displayName}
                     </h1>
@@ -172,25 +172,23 @@ export default async function UserPublicPage({
                       </p>
                     )}
 
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
-                      <span className="inline-flex items-center gap-1">
-                        {isPublic ? (
-                          <>
-                            <Globe2 size={14} />
-                            <span>公開プロフィール</span>
-                          </>
-                        ) : (
-                          <>
-                            <Lock size={14} />
-                            <span>非公開プロフィール</span>
-                          </>
-                        )}
-                      </span>
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 md:text-xs">
+                      {isPublic ? (
+                        <>
+                          <Globe2 size={14} />
+                          <span>公開プロフィール</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock size={14} />
+                          <span>非公開プロフィール</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* 右側：自分ならバッジ、他人ならフォローボタン */}
+                {/* 右側：フォローボタン or 自分 */}
                 {me.id === userId ? (
                   <span className="mt-2 rounded-full bg-orange-50 px-3 py-1 text-xs text-slate-600">
                     あなたのプロフィール
@@ -201,7 +199,7 @@ export default async function UserPublicPage({
                       targetUserId={profile.id}
                       targetUsername={profile.username}
                       initiallyFollowing={initiallyFollowing}
-                      initiallyRequested={initiallyRequested}
+                      initiallyRequested={false}
                     />
                   </div>
                 )}
@@ -255,12 +253,17 @@ export default async function UserPublicPage({
           </div>
         </section>
 
-        {/* 投稿グリッド */}
+        {/* 投稿グリッド - 非公開時の制御を追加 */}
         <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
           <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">
             投稿
           </h2>
-          {posts && posts.length ? (
+
+          {!canViewPosts ? (
+            <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+              このアカウントの投稿はフォロワーのみが閲覧できます。
+            </div>
+          ) : posts.length ? (
             <div className="grid grid-cols-3 gap-[2px] sm:grid-cols-4 sm:gap-[3px] md:grid-cols-5">
               {posts.map((p) => {
                 const thumb = p.image_urls?.[0] ?? null;
@@ -271,14 +274,13 @@ export default async function UserPublicPage({
                     className="group relative block aspect-square overflow-hidden bg-slate-100"
                   >
                     {thumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={thumb}
-                        alt={p.title ?? ""}
                         className="h-full w-full object-cover transition group-hover:opacity-95"
+                        alt=""
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-slate-500" />
+                      <div className="flex h-full w-full items-center justify-center"></div>
                     )}
                     {p.image_urls?.length > 1 && (
                       <Images
@@ -297,12 +299,17 @@ export default async function UserPublicPage({
           )}
         </section>
 
-        {/* 行きたい！リスト */}
+        {/* 行きたいリスト */}
         <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
           <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">
-            行きたい店リスト
+            行きたい店リスト (随時実装予定)
           </h2>
-          {wantPosts.length ? (
+
+          {!canViewPosts ? (
+            <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+              このアカウントの行きたい店リストはフォロワーのみが閲覧できます。
+            </div>
+          ) : wantPosts.length ? (
             <div className="grid grid-cols-3 gap-[2px] sm:grid-cols-4 sm:gap-[3px] md:grid-cols-5">
               {wantPosts.map((p) => {
                 const thumb = p.image_urls?.[0] ?? null;
@@ -313,17 +320,17 @@ export default async function UserPublicPage({
                     className="group relative block aspect-square overflow-hidden bg-orange-50"
                   >
                     {thumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={thumb}
-                        alt={p.title ?? ""}
                         className="h-full w-full object-cover transition group-hover:opacity-95"
+                        alt=""
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-orange-900/80">
-                        {p.title}
+                        …
                       </div>
                     )}
+
                     {p.image_urls?.length > 1 && (
                       <Images
                         size={16}
