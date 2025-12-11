@@ -22,6 +22,11 @@ export default async function UserPublicPage({
 
   const userId = params.id;
 
+  // 自分のページなら /account に飛ばす
+  if (userId === me.id) {
+    redirect("/account");
+  }
+
   // プロフィール取得
   const { data: profile } = await supabase
     .from("profiles")
@@ -40,7 +45,35 @@ export default async function UserPublicPage({
   const isPublic = profile.is_public ?? true;
   const headerImageUrl = profile.header_image_url || null;
 
-  // 統計（accepted のみカウント）
+  // 自分 → 相手（フォロー状態）
+  let initiallyFollowing = false;
+  let initiallyRequested = false;
+
+  if (me && me.id !== userId) {
+    const { data: rel } = await supabase
+      .from("follows")
+      .select("status")
+      .eq("follower_id", me.id)
+      .eq("followee_id", userId)
+      .maybeSingle();
+
+    if (rel?.status === "accepted") initiallyFollowing = true;
+    if (rel?.status === "pending") initiallyRequested = true;
+  }
+
+  // 🔥 相手 → 自分（フォローされているか）
+  let isFollowing = false;
+  const { data: reverseRel } = await supabase
+    .from("follows")
+    .select("status")
+    .eq("follower_id", userId) // 相手
+    .eq("followee_id", me.id) // 自分
+    .eq("status", "accepted")
+    .maybeSingle();
+
+  if (reverseRel) isFollowing = true;
+
+  // 統計（accepted のみ）
   const [
     { count: postsCount = 0 },
     { count: followersCount = 0 },
@@ -67,27 +100,10 @@ export default async function UserPublicPage({
       .eq("user_id", userId),
   ]);
 
-  // 自分→相手のフォロー状態（accepted / pending）
-  let initiallyFollowing = false;
-  let initiallyRequested = false;
+  // 投稿閲覧権限
+  const canViewPosts = isPublic || me.id === userId || initiallyFollowing;
 
-  if (me && me.id !== userId) {
-    const { data: rel } = await supabase
-      .from("follows")
-      .select("status")
-      .eq("follower_id", me.id)
-      .eq("followee_id", userId)
-      .maybeSingle();
-
-    if (rel?.status === "accepted") initiallyFollowing = true;
-    if (rel?.status === "pending") initiallyRequested = true;
-  }
-
-  // 非公開 & 未承認フォロワー → 投稿閲覧不可
-  const canViewPosts =
-    isPublic || me.id === userId || initiallyFollowing;
-
-  // 投稿（表示権限がある場合のみ取得）
+  // 投稿取得
   let posts: any[] = [];
   if (canViewPosts) {
     const { data } = await supabase
@@ -99,7 +115,7 @@ export default async function UserPublicPage({
     posts = data ?? [];
   }
 
-  // 行きたい！リスト
+  // 行きたいリスト
   let wantPosts: any[] = [];
   if (canViewPosts) {
     const { data: wantRows } = await supabase
@@ -168,11 +184,21 @@ export default async function UserPublicPage({
                       {displayName}
                     </h1>
 
-                    {username && (
-                      <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">
-                        @{username}
-                      </p>
-                    )}
+                    {/* @username */}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {username && (
+                        <p className="text-xs font-medium text-slate-500 md:text-sm">
+                          @{username}
+                        </p>
+                      )}
+
+                      {/* 相手 → 自分 */}
+                      {isFollowing && (
+                        <p className="text-[10px] md:text-xs text-slate-500 font-medium bg-orange-50 px-2 py-0.5 rounded-full">
+                          フォローされています
+                        </p>
+                      )}
+                    </div>
 
                     <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 md:text-xs">
                       {isPublic ? (
@@ -190,7 +216,7 @@ export default async function UserPublicPage({
                   </div>
                 </div>
 
-                {/* 右側：フォローボタン or 自分 */}
+                {/* 右側：フォローボタン */}
                 {me.id === userId ? (
                   <span className="mt-2 rounded-full bg-orange-50 px-3 py-1 text-xs text-slate-600">
                     あなたのプロフィール
@@ -255,7 +281,7 @@ export default async function UserPublicPage({
           </div>
         </section>
 
-        {/* 投稿グリッド - 非公開時の制御を追加 */}
+        {/* 投稿 */}
         <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
           <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">
             投稿
