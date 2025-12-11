@@ -63,7 +63,7 @@ export default async function AccountEditPage() {
           </div>
 
           {/* アイコン + テキスト */}
-          <div className="relative z-10 -mt-8 flex items-center gap-4 px-4 pb-4 md:-mt-10">
+          <div className="relative z-10 -mt-8 flex items-center gap-4 px-4 pb-10 md:-mt-20">
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img

@@ -111,7 +111,7 @@ export default async function AccountPage() {
         <section className="overflow-hidden rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur">
           <div className="relative">
             {/* カバー画像 */}
-            <div className="relative z-0 h-24 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
+            <div className="relative z-0 h-28 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
               {headerImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -132,11 +132,13 @@ export default async function AccountPage() {
             </div>
 
             {/* 本文 */}
-            <div className="px-4 pb-5 md:px-6">
-              <div className="-mt-10 flex items-end justify-between gap-4 md:-mt-12">
-                <div className="flex items-end gap-4">
-                  {/* アイコン：カバーより前面に出す */}
-                  <div className="relative z-10">
+            <div className="px-4 pb-5 md:px-6 md:pb-6">
+              {/* アイコン＋名前行：カバーに少し被せる */}
+              <div className="-mt-12 flex justify-between gap-4 md:-mt-14">
+                {/* 左：アイコン & テキスト */}
+                <div className="flex items-center gap-4 md:gap-5">
+                  {/* アイコン：左上にどん */}
+                  <div className="relative z-10 shrink-0">
                     {avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -151,21 +153,23 @@ export default async function AccountPage() {
                     )}
                   </div>
 
-                  {/* 名前 / username / 公開状態 */}
-                  <div className="space-y-1">
+                  {/* 名前 / username / 公開状態・Joined */}
+                  {/* ← 公開プロフィールの方と同じく pt-4 / md:pt-18 で
+                      「アイコンの円の下半分あたり」に表示名が来るように */}
+                  <div className="pt-4 md:pt-18">
                     {/* 表示名＝ハンドルネームを一番大きく太字で */}
-                    <h1 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl">
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl leading-tight">
                       {displayName}
                     </h1>
 
-                    {/* username はその下で小さめ */}
+                    {/* username はその下で小さめ & 薄い */}
                     {username && (
-                      <p className="text-sm font-medium text-slate-600">
+                      <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">
                         @{username}
                       </p>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 md:text-[13px]">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
                       <span className="inline-flex items-center gap-1">
                         {isPublic ? (
                           <>
@@ -189,9 +193,10 @@ export default async function AccountPage() {
                   </div>
                 </div>
 
+                {/* 右：編集ボタン */}
                 <Link
                   href="/account/edit"
-                  className="inline-flex items-center rounded-full border border-orange-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-orange-400 hover:bg-orange-50"
+                  className="mt-2 inline-flex items-center rounded-full border border-orange-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-orange-400 hover:bg-orange-50"
                 >
                   プロフィールを編集
                 </Link>

@@ -160,7 +160,7 @@ export default async function UserPublicPage({
                   </div>
 
                   {/* 名前ブロック：アイコンの右側に配置 */}
-                  <div className="pt-4 md:pt-5">
+                  <div className="pt-4 md:pt-18">
                     {/* 表示名：アイコンの円の下半分くらいの高さ */}
                     <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
                       {displayName}
