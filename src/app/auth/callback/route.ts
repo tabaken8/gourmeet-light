@@ -8,33 +8,27 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const requestUrl = new URL(req.url);
   const code = requestUrl.searchParams.get("code");
-  const errorFromProvider = requestUrl.searchParams.get("error");
 
-  // まずはクエリパラメータを確認
-  console.log("[callback] code =", code);
-  console.log("[callback] provider error =", errorFromProvider);
-
+  // 1. code が来てるか確認
   if (!code) {
-    // そもそも code が来てないパターン
     return NextResponse.redirect(
-      `${requestUrl.origin}/auth/login?error=no_code`
+      `${requestUrl.origin}/auth/login?debug=no_code`
     );
   }
 
+  // 2. セッション交換を試す
   const supabase = createRouteHandlerClient({ cookies });
-
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-  console.log("[callback] exchange data =", data);
-  console.log("[callback] exchange error =", error);
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    // ここに来たら exchange が失敗してる
+    // 交換失敗したとき
     return NextResponse.redirect(
-      `${requestUrl.origin}/auth/login?error=exchange_failed`
+      `${requestUrl.origin}/auth/login?debug=exchange_failed`
     );
   }
 
-  // ここまで来ればセッション確立成功のはず
-  return NextResponse.redirect(`${requestUrl.origin}/`);
+  // 3. 成功したとき
+  return NextResponse.redirect(
+    `${requestUrl.origin}/?debug=callback_ok`
+  );
 }
