@@ -213,9 +213,9 @@ export default function NotificationsPage() {
 
                           {/* ✅ コメントプレビュー（小さめ・薄め） */}
                           {commentPreview && (
-                            <div className="mt-1 line-clamp-2 text-[13px] leading-snug text-neutral-900/90">
-                              "{commentPreview}"
-                            </div>
+                          <div className="...">
+                            &ldquo;{commentPreview}&rdquo;
+                          </div>
                           )}
 
                           {/* ✅ 店舗名（ある場合） */}
