@@ -269,14 +269,22 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
               </div>
             )}
 
-            <textarea
-              ref={inputRef}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={placeholder}
-              rows={2}
-              className="w-full resize-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
-            />
+                <textarea
+                ref={inputRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={placeholder}
+                rows={2}
+                onKeyDown={(e) => {
+                    // Cmd+Enter (Mac) / Ctrl+Enter (Win) で送信
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    if (!submitting && text.trim().length > 0) submit();
+                    }
+                }}
+                className="w-full resize-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                />
+
 
             <div className="flex items-center justify-between">
               <div className="text-[11px] text-slate-400">

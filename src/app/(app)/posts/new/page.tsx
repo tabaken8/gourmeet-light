@@ -138,12 +138,20 @@ export default function NewPostPage() {
           <form onSubmit={submit} className="space-y-5">
             {/* 本文 */}
             <div>
-              <textarea
-                className="h-32 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-0"
-                placeholder="いま何食べてる？（ここに Command+V でも画像を貼り付けできます）"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-              />
+            <textarea
+              className="h-32 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-0"
+              placeholder="いま何食べてる？（ここに Command+V でも画像を貼り付けできます）"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  // form submit を発火（onSubmit={submit} が呼ばれる）
+                  (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+                }
+              }}
+            />
+
             </div>
 
             {/* 店舗選択 */}
