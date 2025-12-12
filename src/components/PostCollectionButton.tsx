@@ -271,7 +271,7 @@ export default function PostCollectionButton({
         type="button"
         onClick={() => setOpen(true)}
         className={[
-          "flex h-15 w-15 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600 transition-colors",
+          "flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600 transition-colors",
           className ?? "",
         ].join(" ")}
         aria-label="コレクションに追加"

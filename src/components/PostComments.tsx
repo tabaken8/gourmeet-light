@@ -5,13 +5,12 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type ProfileLite = {
+  id: string;
   display_name: string | null;
   avatar_url: string | null;
 };
 
-// ✅ Supabase join は環境/リレーション次第で
-// profiles: {..} | {..}[] | null のどれでも来うるので raw は広く受ける
-type CommentRowRaw = {
+type CommentRow = {
   id: string;
   post_id: string;
   user_id: string;
@@ -19,12 +18,7 @@ type CommentRowRaw = {
   created_at: string;
   reply_to_comment_id: string | null;
   reply_to_user_id: string | null;
-  profiles?: ProfileLite | ProfileLite[] | null;
-};
-
-// ✅ UIでは常に「単体 or null」に揃える（ここが頑健）
-type CommentRow = Omit<CommentRowRaw, "profiles"> & {
-  profiles?: ProfileLite | null;
+  profile: ProfileLite | null; // ✅ JOINせず後で合成
 };
 
 type Props = {
@@ -43,31 +37,12 @@ function formatJST(iso: string) {
   }).format(new Date(iso));
 }
 
-function normalizeProfile(p: CommentRowRaw["profiles"]): ProfileLite | null {
-  if (!p) return null;
-  if (Array.isArray(p)) return p[0] ?? null;
-  // object
-  return p;
-}
-
-function normalizeComments(rows: CommentRowRaw[]): CommentRow[] {
-  return (rows ?? []).map((r) => ({
-    id: String(r.id),
-    post_id: String(r.post_id),
-    user_id: String(r.user_id),
-    body: String(r.body ?? ""),
-    created_at: String(r.created_at),
-    reply_to_comment_id: (r.reply_to_comment_id ?? null) as string | null,
-    reply_to_user_id: (r.reply_to_user_id ?? null) as string | null,
-    profiles: normalizeProfile(r.profiles),
-  }));
-}
-
 export default function PostComments({ postId, postUserId, meId }: Props) {
   const supabase = createClientComponentClient();
 
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -90,33 +65,55 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
 
   async function fetchComments() {
     setLoading(true);
+    setErrMsg(null);
 
-    const { data, error } = await supabase
+    // 1) ✅ commentsだけ取る（JOINなし）
+    const { data: cData, error: cErr } = await supabase
       .from("comments")
       .select(
-        `
-        id,
-        post_id,
-        user_id,
-        body,
-        created_at,
-        reply_to_comment_id,
-        reply_to_user_id,
-        profiles ( display_name, avatar_url )
-      `
+        "id, post_id, user_id, body, created_at, reply_to_comment_id, reply_to_user_id"
       )
       .eq("post_id", postId)
       .order("created_at", { ascending: true });
 
-    if (error) {
-      console.error("[fetchComments]", error);
+    if (cErr) {
+      console.error("[comments select error]", cErr);
       setComments([]);
+      setErrMsg(`comments select error: ${cErr.message}`);
       setLoading(false);
       return;
     }
 
-    // ✅ ここで必ず「単体 profiles」に正規化してから state に入れる
-    setComments(normalizeComments((data ?? []) as unknown as CommentRowRaw[]));
+    const raw = (cData ?? []) as Omit<CommentRow, "profile">[];
+
+    // 2) ✅ その user_id 一覧で profiles を別クエリ（これも頑健）
+    const userIds = Array.from(new Set(raw.map((r) => r.user_id)));
+    let profileMap: Record<string, ProfileLite> = {};
+
+    if (userIds.length) {
+      const { data: pData, error: pErr } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", userIds);
+
+      if (pErr) {
+        // profiles 取れなくてもコメント本文は表示できるので「致命傷にしない」
+        console.error("[profiles select error]", pErr);
+        setErrMsg(`profiles select error: ${pErr.message}`);
+      } else {
+        for (const p of pData ?? []) {
+          profileMap[p.id] = p as ProfileLite;
+        }
+      }
+    }
+
+    // 3) 合成
+    const merged: CommentRow[] = raw.map((r) => ({
+      ...r,
+      profile: profileMap[r.user_id] ?? null,
+    }));
+
+    setComments(merged);
     setLoading(false);
   }
 
@@ -132,6 +129,7 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
     if (!body) return;
 
     setSubmitting(true);
+    setErrMsg(null);
 
     const payload = {
       post_id: postId,
@@ -146,17 +144,27 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
     setSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      console.error("[comments insert error]", error);
+      setErrMsg(`comments insert error: ${error.message}`);
       return;
     }
 
     setText("");
     setReplyTo(null);
+
+    // ✅ 再取得（ここで確実に反映）
     await fetchComments();
   }
 
   return (
     <div className="space-y-3">
+      {/* エラー表示（今後のデバッグが一瞬で終わる） */}
+      {errMsg && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {errMsg}
+        </div>
+      )}
+
       {/* コメント一覧 */}
       <div className="space-y-2">
         {loading ? (
@@ -165,9 +173,8 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
           <div className="text-xs text-slate-400">まだコメントはありません。</div>
         ) : (
           comments.map((c) => {
-            const prof = c.profiles ?? null;
-            const name = prof?.display_name ?? "ユーザー";
-            const avatar = prof?.avatar_url ?? null;
+            const name = c.profile?.display_name ?? "ユーザー";
+            const avatar = c.profile?.avatar_url ?? null;
             const initial = (name || "U").slice(0, 1).toUpperCase();
 
             return (
@@ -205,7 +212,6 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
                     {c.body}
                   </div>
 
-                  {/* 返信ボタン：誰でも返信できる */}
                   {meId && (
                     <div className="mt-1">
                       <button
@@ -267,16 +273,14 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
               ref={inputRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={placeholder} // ✅ 1文字入力で自然に消える
+              placeholder={placeholder}
               rows={2}
               className="w-full resize-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
             />
 
             <div className="flex items-center justify-between">
               <div className="text-[11px] text-slate-400">
-                {replyTo
-                  ? "相手に通知されます"
-                  : ""}
+                {replyTo ? "" : ""}
               </div>
               <button
                 type="button"
@@ -294,10 +298,6 @@ export default function PostComments({ postId, postUserId, meId }: Props) {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="text-[10px] text-slate-400">
-
       </div>
     </div>
   );
