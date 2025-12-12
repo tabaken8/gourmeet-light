@@ -290,11 +290,11 @@ export default async function TimelinePage({
                         >
                           {avatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={avatar}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
+                              <img
+                                src={avatar}
+                                alt=""
+                                className="h-9 w-9 rounded-full object-cover"
+                              />
                           ) : (
                             initial
                           )}
