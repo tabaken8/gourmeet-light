@@ -80,10 +80,26 @@ export default function SignUpPage() {
     }
   };
 
+const handleGoogleContinue = async () => {
+  const redirectTo = `${window.location.origin}/auth/callback`;
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo },
+  });
+
+  if (error) {
+    console.error(error);
+    alert("Googleログインに失敗しました: " + error.message);
+  }
+};
+
+
   return (
     <main className="grid gap-8 md:grid-cols-2">
       <section className="rounded-2xl bg-white p-8 shadow-sm">
         <h1 className="mb-6 text-2xl font-bold tracking-tight">会員登録</h1>
+
         <form onSubmit={submit} className="space-y-4">
           {/* メールアドレス */}
           <label className="block">
@@ -183,15 +199,47 @@ export default function SignUpPage() {
               "inline-flex h-11 items-center rounded-full px-6 text-white transition-colors " +
               (canSubmit
                 ? "bg-orange-700 hover:bg-orange-800"
-                : "bg-orange-700/60 cursor-not-allowed")
+                : "cursor-not-allowed bg-orange-700/60")
             }
           >
             {loading ? "作成中..." : "登録する"}
           </button>
         </form>
+
+        {/* Googleで続ける */}
+        <button
+          type="button"
+          onClick={handleGoogleContinue}
+          className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-black/20 bg-white py-3 text-sm font-medium hover:bg-black/5"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 48 48"
+          >
+            <path
+              fill="#EA4335"
+              d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"
+            />
+            <path
+              fill="#4285F4"
+              d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z"
+            />
+            <path
+              fill="#FBBC04"
+              d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z"
+            />
+            <path
+              fill="#34A853"
+              d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
+            />
+          </svg>
+          <span>Googleで続ける</span>
+        </button>
       </section>
 
-      <aside className="rounded-2xl border border-orange-100 bg-[#edf7f1] p-8">
+      <aside className="rounded-2xl border border-orange-100 bg-[#fff7ed] p-8">
         <h2 className="mb-2 text-lg font-bold">会員特典</h2>
         <ul className="list-disc pl-5 text-sm leading-6 text-black/75">
           <li>投稿の作成・保存ができます</li>
