@@ -1,3 +1,4 @@
+// src/app/(app)/timeline/page.tsx
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { MapPin, Lock } from "lucide-react";
@@ -6,12 +7,11 @@ import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import FollowButton from "@/components/FollowButton";
+import PostComments from "@/components/PostComments";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = {
-  tab?: string;
-};
+type SearchParams = { tab?: string };
 
 type PostRow = {
   id: string;
@@ -30,28 +30,40 @@ type ProfileLite = {
   is_public: boolean | null;
 };
 
+function formatJST(iso: string) {
+  // サーバー上でも必ず JST で出す
+  const dt = new Date(iso);
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(dt);
+}
+
 export default async function TimelinePage({
   searchParams,
 }: {
   searchParams?: SearchParams;
 }) {
   const supabase = createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   // ---- タブ状態 ----------------------------------------------------
-  const activeTab =
-    searchParams?.tab === "discover" ? "discover" : "friends";
+  const activeTab = searchParams?.tab === "discover" ? "discover" : "friends";
 
   // ---- 投稿 & プロフィール取得 --------------------------------------
   let posts: PostRow[] = [];
   let profiles: Record<string, ProfileLite> = {};
+
   // discover 用：投稿者ごとのフォロー状況（フォロー済み / リクエスト中）
-  let followStatus: Record<
-    string,
-    { following: boolean; requested: boolean }
-  > = {};
+  let followStatus: Record<string, { following: boolean; requested: boolean }> =
+    {};
 
   if (activeTab === "friends") {
     // 1. 自分が「承認済みで」フォローしているユーザーを取得
@@ -71,7 +83,6 @@ export default async function TimelinePage({
       ? Array.from(new Set<string>([user.id, ...followeeIds]))
       : followeeIds;
 
-    // フォローしている人も自分もいなければ TL は空
     if (visibleUserIds.length) {
       const { data: postRows } = await supabase
         .from("posts")
@@ -100,25 +111,12 @@ export default async function TimelinePage({
       }
     }
   } else {
-    // discover: 公開プロフィールの投稿だけ
+    // discover: 公開プロフィールの投稿だけ（profiles inner join）
     const { data: rows } = await supabase
       .from("posts")
-      .select(`
-        id,
-        content,
-        user_id,
-        created_at,
-        image_urls,
-        place_name,
-        place_address,
-        place_id,
-        profiles!inner (
-          id,
-          display_name,
-          avatar_url,
-          is_public
-        )
-      `)
+      .select(
+        "id, content, user_id, created_at, image_urls, place_name, place_address, place_id, profiles!inner ( id, display_name, avatar_url, is_public )"
+      )
       .eq("profiles.is_public", true)
       .order("created_at", { ascending: false });
 
@@ -146,10 +144,9 @@ export default async function TimelinePage({
 
     // 自分とのフォロー関係を取得（discover タブ用）
     if (user && posts.length > 0) {
-      // 投稿者IDの一覧（自分自身は除外）
-      const userIds = Array.from(
-        new Set(posts.map((p) => p.user_id))
-      ).filter((id) => id !== user.id);
+      const userIds = Array.from(new Set(posts.map((p) => p.user_id))).filter(
+        (id) => id !== user.id
+      );
 
       if (userIds.length) {
         const { data: followRows } = await supabase
@@ -174,11 +171,7 @@ export default async function TimelinePage({
   let myLikes: any[] = [];
 
   if (ids.length) {
-    const l = await supabase
-      .from("post_likes")
-      .select("post_id")
-      .in("post_id", ids);
-
+    const l = await supabase.from("post_likes").select("post_id").in("post_id", ids);
     likes = l.data ?? [];
 
     if (user) {
@@ -187,7 +180,6 @@ export default async function TimelinePage({
         .select("post_id")
         .eq("user_id", user.id)
         .in("post_id", ids);
-
       myLikes = ml.data ?? [];
     }
   }
@@ -231,6 +223,7 @@ export default async function TimelinePage({
               >
                 友達
               </Link>
+
               <Link
                 href="?tab=discover"
                 className={[
@@ -243,6 +236,7 @@ export default async function TimelinePage({
                 もっと見つけたい
               </Link>
             </div>
+
             <p className="mt-2 pb-3 text-[11px] text-slate-500">
               {activeTab === "friends"
                 ? "フォローしている人と自分の投稿が時系列で流れます。"
@@ -290,15 +284,16 @@ export default async function TimelinePage({
                         >
                           {avatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={avatar}
-                                alt=""
-                                className="h-9 w-9 rounded-full object-cover"
-                              />
+                            <img
+                              src={avatar}
+                              alt=""
+                              className="h-9 w-9 rounded-full object-cover"
+                            />
                           ) : (
                             initial
                           )}
                         </Link>
+
                         <div className="min-w-0">
                           <div className="flex items-center gap-1">
                             <Link
@@ -307,47 +302,40 @@ export default async function TimelinePage({
                             >
                               {display}
                             </Link>
-                            {/* 鍵垢なら小さめの鍵アイコン */}
+
                             {!isPublic && (
-                              <Lock
-                                size={12}
-                                className="shrink-0 text-slate-500"
-                              />
+                              <Lock size={12} className="shrink-0 text-slate-500" />
                             )}
                           </div>
+
+                          {/* ✅ JST */}
                           <div className="text-[11px] text-slate-500">
-                            {new Date(p.created_at!).toLocaleString()}
+                            {formatJST(p.created_at)}
                           </div>
                         </div>
                       </div>
 
                       {/* 右上エリア：フォロー状態 + メニュー */}
                       <div className="flex items-center gap-2">
-                        {activeTab === "discover" &&
-                          user &&
-                          user.id !== p.user_id && (
-                            <>
-                              {fs?.following ? (
-                                // フォロー済みラベル（薄め表示・押せない）
-                                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-400">
-                                  フォロー済み
-                                </span>
-                              ) : (
-                                <FollowButton
-                                  targetUserId={p.user_id}
-                                  targetUsername={display}
-                                  initiallyFollowing={!!fs?.following}
-                                  initiallyRequested={!!fs?.requested}
-                                  className="px-3 py-1 text-xs"
-                                />
-                              )}
-                            </>
-                          )}
+                        {activeTab === "discover" && user && user.id !== p.user_id && (
+                          <>
+                            {fs?.following ? (
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-400">
+                                フォロー済み
+                              </span>
+                            ) : (
+                              <FollowButton
+                                targetUserId={p.user_id}
+                                targetUsername={display}
+                                initiallyFollowing={!!fs?.following}
+                                initiallyRequested={!!fs?.requested}
+                                className="px-3 py-1 text-xs"
+                              />
+                            )}
+                          </>
+                        )}
 
-                        <PostMoreMenu
-                          postId={p.id}
-                          isMine={user?.id === p.user_id}
-                        />
+                        <PostMoreMenu postId={p.id} isMine={user?.id === p.user_id} />
                       </div>
                     </div>
 
@@ -367,6 +355,7 @@ export default async function TimelinePage({
                           {p.content}
                         </p>
                       )}
+
                       {p.place_name && (
                         <div className="flex items-center gap-1 text-xs text-orange-700">
                           <MapPin size={14} />
@@ -399,6 +388,15 @@ export default async function TimelinePage({
                         initialBookmarkCount={0}
                       />
                       <PostCollectionButton postId={p.id} />
+                    </div>
+
+                    {/* ✅ コメント（Client Component） */}
+                    <div className="border-t border-orange-50 px-4 py-3">
+                      <PostComments
+                        postId={p.id}
+                        postUserId={p.user_id}
+                        meId={user?.id ?? null}
+                      />
                     </div>
                   </article>
                 );
