@@ -21,6 +21,7 @@ export default async function FollowingPage({ params }: { params: { id: string }
     .from("follows")
     .select("followee_id")
     .eq("follower_id", userId)
+    .eq("status", "accepted") 
     .order("created_at", { ascending: false })
     .limit(500);
 
