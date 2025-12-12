@@ -277,7 +277,7 @@ export default function Sidebar({ name }: { name?: string }) {
         />
         <NavItem
           href="/messages"
-          label="メッセージ"
+          label="メッセージ(随時実装予定)"
           icon={MessageCircle}
           count={dmCount}
         />

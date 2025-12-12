@@ -110,6 +110,7 @@ export default async function UserPublicPage({
       .from("posts")
       .select("id, image_urls, created_at")
       .eq("user_id", userId)
+      .eq("status", "accepted")
       .order("created_at", { ascending: false })
       .limit(24);
     posts = data ?? [];
