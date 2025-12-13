@@ -48,7 +48,7 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
       <div className="space-y-2">
         {placeName ? (
           <div className="text-xs font-medium text-slate-700 truncate">
-            {placeName} の写真
+            Googleマップからの写真
           </div>
         ) : null}
 
@@ -65,7 +65,7 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
             />
           ))}
         </div>
-
+{/* © 2025 Google */}
         {/* attribution（Googleの要件で必要なことがあるので表示枠を用意） */}
         {/* {attributionsHtml ? (
           <div

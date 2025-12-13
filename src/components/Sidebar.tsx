@@ -1,7 +1,7 @@
 // src/components/Sidebar.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,10 +10,10 @@ import {
   Bell,
   MessageCircle,
   Bookmark,
-  UserRound,
   Plus,
   UserPlus,
   LogOut,
+  UserRound,
 } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -23,23 +23,41 @@ function NavItem({
   icon: Icon,
   count,
   dot,
+  avatarUrl,
+  avatarAlt,
 }: {
   href: string;
   label: string;
-  icon: any;
+  icon?: any;
   count?: number;
   dot?: boolean;
+  avatarUrl?: string | null;
+  avatarAlt?: string;
 }) {
   return (
     <Link
       href={href}
       className="
         flex items-center gap-3 rounded-lg px-3 py-2 text-base
-        hover:bg-gray-100
+        hover:bg-gray-100/80
       "
     >
       <div className="relative w-6 h-6 flex items-center justify-center shrink-0">
-        <Icon size={22} />
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt={avatarAlt ?? "profile"}
+            className="h-6 w-6 rounded-full object-cover bg-slate-200"
+            referrerPolicy="no-referrer"
+          />
+        ) : Icon ? (
+          <Icon size={22} />
+        ) : (
+          <UserRound size={22} />
+        )}
+
+        {/* count badge */}
         <span
           className={`
             absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center
@@ -49,6 +67,8 @@ function NavItem({
         >
           {count}
         </span>
+
+        {/* dot badge */}
         {dot && (
           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
         )}
@@ -78,13 +98,28 @@ export default function Sidebar({ name }: { name?: string }) {
   const [timelineDot, setTimelineDot] = useState(false);
   const [followReqCount, setFollowReqCount] = useState(0);
 
-  // 初期件数を取得
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string>(name ?? "");
+
+  // 初期件数 + 自分のプロフィール（avatar等）を取得
   useEffect(() => {
     const fetchCounts = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
+
+      // 自分のプロフィール（アバター）
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const dn =
+        profile?.display_name ?? user.email?.split("@")[0] ?? "User";
+      setDisplayName(dn);
+      setAvatarUrl(profile?.avatar_url ?? null);
 
       // 未読の通知
       const { count: notif } = await supabase
@@ -131,6 +166,7 @@ export default function Sidebar({ name }: { name?: string }) {
 
       channel = supabase
         .channel("sidebar-realtime")
+
         // 🔔 notifications
         .on(
           "postgres_changes",
@@ -270,20 +306,29 @@ export default function Sidebar({ name }: { name?: string }) {
     }
   }, [pathname]);
 
+  const displayNameSafe = useMemo(() => displayName ?? "", [displayName]);
+
   return (
     <aside
       className="
         hidden md:flex flex-col justify-between
-        h-screen border-r border-gray-200 bg-white
+        h-screen
         fixed left-0 top-0
         px-3 py-6
         w-[72px] hover:w-[240px]
         transition-[width] duration-200
         group
+
+        /* 境界線を消して“溶ける”感じ */
+        bg-white/80 backdrop-blur
+        shadow-[0_0_40px_rgba(0,0,0,0.06)]
       "
     >
+      {/* 右端をフェードさせて境界感をさらに消す */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-r from-transparent to-white/80" />
+
       {/* ロゴ：ホバー時だけ表示 */}
-      <div className="mb-6 px-1">
+      <div className="mb-6 px-1 relative">
         <div
           className="
             text-xl font-bold tracking-tight
@@ -297,15 +342,10 @@ export default function Sidebar({ name }: { name?: string }) {
         </div>
       </div>
 
-      <nav className="flex flex-col gap-2">
+      <nav className="flex flex-col gap-2 relative">
         <NavItem href="/timeline" label="ホーム" icon={Home} dot={timelineDot} />
         <NavItem href="/search" label="検索" icon={Search} />
-        <NavItem
-          href="/notifications"
-          label="通知"
-          icon={Bell}
-          count={notifCount}
-        />
+        <NavItem href="/notifications" label="通知" icon={Bell} count={notifCount} />
         <NavItem
           href="/follow-requests"
           label="フォローリクエスト"
@@ -319,7 +359,14 @@ export default function Sidebar({ name }: { name?: string }) {
           count={dmCount}
         />
         <NavItem href="/collection" label="コレクション" icon={Bookmark} />
-        <NavItem href="/account" label="プロフィール" icon={UserRound} />
+
+        {/* プロフィール：ピクトグラム撤去 → 自分のアバター */}
+        <NavItem
+          href="/account"
+          label="プロフィール"
+          avatarUrl={avatarUrl}
+          avatarAlt={displayNameSafe}
+        />
 
         {/* Postボタン：畳んでるときはアイコンだけ */}
         <Link
@@ -345,7 +392,7 @@ export default function Sidebar({ name }: { name?: string }) {
       </nav>
 
       {/* フッター：ホバーで詳細表示 */}
-      <div className="mt-6 text-sm text-gray-600 px-1">
+      <div className="mt-6 text-sm text-gray-600 px-1 relative">
         <div
           className="
             truncate font-semibold
@@ -355,13 +402,13 @@ export default function Sidebar({ name }: { name?: string }) {
             group-hover:max-w-[200px] group-hover:opacity-100
           "
         >
-          {name}
+          {displayNameSafe}
         </div>
 
         <form action="/auth/logout" method="post">
           <button
             className="
-              mt-2 flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-gray-100
+              mt-2 flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-gray-100/80
               w-full
             "
           >
