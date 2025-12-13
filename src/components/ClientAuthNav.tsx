@@ -1,41 +1,33 @@
-// components/ClientAuthNav.tsx
+// src/components/ClientAuthNav.tsx
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function ClientAuthNav() {
-  const supabase = createServerComponentClient({ cookies });
+  const supabase = await createClient();; // ← ここ！
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return (
-      <>
-        <Link className="hover:underline" href="/auth/login">
+  return (
+    <div className="flex items-center gap-3">
+      {user ? (
+        <>
+          <Link href="/timeline" className="text-sm text-black/70 hover:text-black">
+            Timeline
+          </Link>
+          <Link href="/account" className="text-sm text-black/70 hover:text-black">
+            Account
+          </Link>
+        </>
+      ) : (
+        <Link
+          href="/auth/login"
+          className="rounded-full bg-black px-3 py-1 text-xs font-medium text-white"
+        >
           ログイン
         </Link>
-        <Link
-          className="inline-flex h-9 items-center rounded-full border border-orange-800 px-4 font-medium text-orange-900 hover:bg-orange-800 hover:text-white"
-          href="/auth/signup"
-        >
-          会員登録する
-        </Link>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <Link className="hover:underline" href="/account">
-        アカウント
-      </Link>
-      <form action="/auth/logout" method="post">
-        <button className="inline-flex h-9 items-center rounded-full border border-black/15 px-4 hover:bg-black/[.04]">
-          ログアウト
-        </button>
-      </form>
-    </>
+      )}
+    </div>
   );
 }

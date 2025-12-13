@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 const USERNAME_RE = /^[a-z0-9._]{3,30}$/;
 
 export async function POST(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   // 認証
   const {

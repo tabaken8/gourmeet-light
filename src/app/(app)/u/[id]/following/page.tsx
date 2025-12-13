@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export default async function FollowingPage({ params }: { params: { id: string } }) {
-  const supabase = createClient();
+  const supabase = await createClient();;
   const userId = params.id;
 
   const { data: prof } = await supabase
@@ -21,7 +21,7 @@ export default async function FollowingPage({ params }: { params: { id: string }
     .from("follows")
     .select("followee_id")
     .eq("follower_id", userId)
-    .eq("status", "accepted") 
+    .eq("status", "accepted")
     .order("created_at", { ascending: false })
     .limit(500);
 

@@ -1,7 +1,9 @@
-"use client";
-import { createClient } from "@supabase/supabase-js";
+// src/lib/supabase/client.ts
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+export function createClient() {
+  return createClientComponentClient();
+}
+
+// 互換（既存コードを壊さない）
+export const supabase = createClient();

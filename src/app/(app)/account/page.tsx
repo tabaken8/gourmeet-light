@@ -7,7 +7,7 @@ import { Images, Globe2, Lock } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   // 認証
   const {

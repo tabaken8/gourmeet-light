@@ -14,13 +14,7 @@ export const metadata: Metadata = {
     description: "友達のおすすめだけで選べる、新しいレストランアプリ。",
     url: "https://gourmeet.jp",
     siteName: "Gourmeet",
-    images: [
-      {
-        url: "/ogp.png", // public/ogp.png
-        width: 1200,
-        height: 630,
-      },
-    ],
+    images: [{ url: "/ogp.png", width: 1200, height: 630 }],
     locale: "ja_JP",
     type: "website",
   },
@@ -44,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body className="min-h-screen bg-[#fffaf5] text-black/90">
-        {/* 共通ヘッダー */}
+        {/* 共通ヘッダー（ここだけ max幅でOK） */}
         <header className="border-b border-black/[.06] bg-white/90 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
             <Link href="/" className="font-semibold tracking-wide">
@@ -54,9 +48,8 @@ export default function RootLayout({
           </div>
         </header>
 
-        <main className="py-10">
-          <div className="mx-auto max-w-5xl px-4">{children}</div>
-        </main>
+        {/* ✅ 本文は幅制限しない（各ページのlayoutに任せる） */}
+        <main className="w-full">{children}</main>
 
         <footer className="border-t border-black/[.06] py-6 text-center text-xs text-black/60">
           © 2025 Gourmeet co.ltd. All rights reserved.

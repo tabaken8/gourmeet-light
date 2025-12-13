@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export default async function FollowersPage({ params }: { params: { id: string } }) {
-  const supabase = createClient();
+  const supabase = await createClient();;
   const userId = params.id;
 
   // 対象ユーザー存在確認（名前表示用）

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 const USERNAME_RE = /^[a-z0-9._]{3,30}$/;
 
 export default async function AccountEditPage() {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   // 認証
   const {

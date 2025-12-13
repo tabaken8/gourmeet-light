@@ -27,7 +27,7 @@ export default async function TimelinePage({
 }: {
   searchParams?: SearchParams;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();;
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -225,10 +225,10 @@ export default async function TimelinePage({
               const mapUrl = p.place_id
                 ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
                 : p.place_address
-                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                     p.place_address
                   )}`
-                : null;
+                  : null;
 
               return (
                 <article

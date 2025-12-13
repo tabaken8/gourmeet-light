@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 // POST: フォロー or フォローリクエスト
 export async function POST(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   const {
     data: { user },
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
 
 // DELETE: フォロー解除 or リクエスト取消
 export async function DELETE(req: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   const {
     data: { user },

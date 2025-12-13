@@ -44,7 +44,7 @@ export default async function PostPage({
   params: { id: string };
   searchParams?: { img_index?: string };
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   // ログインユーザー
   const {
@@ -117,10 +117,10 @@ export default async function PostPage({
   const mapUrl = post.place_id
     ? `https://www.google.com/maps/place/?q=place_id:${post.place_id}`
     : post.place_address
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
         post.place_address
       )}`
-    : null;
+      : null;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">

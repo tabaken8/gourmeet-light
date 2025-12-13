@@ -7,7 +7,7 @@ export async function POST(
 ) {
   const { id } = await context.params; // ← ★ Next.js 15 仕様
 
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   const {
     data: { user },

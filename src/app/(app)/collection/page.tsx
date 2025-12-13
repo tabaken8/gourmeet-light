@@ -18,7 +18,7 @@ export default async function CollectionPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   const {
     data: { user },
@@ -284,10 +284,10 @@ export default async function CollectionPage({
                 const mapUrl = p.place_id
                   ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
                   : p.place_address
-                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                       p.place_address
                     )}`
-                  : null;
+                    : null;
 
                 return (
                   <article

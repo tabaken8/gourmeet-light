@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;  // ← await が必要（Next.js 15 仕様）
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   const {
     data: { user },

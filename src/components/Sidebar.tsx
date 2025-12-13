@@ -13,6 +13,7 @@ import {
   UserRound,
   Plus,
   UserPlus,
+  LogOut,
 } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -32,9 +33,12 @@ function NavItem({
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 rounded-lg px-3 py-2 text-base hover:bg-gray-100"
+      className="
+        flex items-center gap-3 rounded-lg px-3 py-2 text-base
+        hover:bg-gray-100
+      "
     >
-      <div className="relative w-6 h-6 flex items-center justify-center">
+      <div className="relative w-6 h-6 flex items-center justify-center shrink-0">
         <Icon size={22} />
         <span
           className={`
@@ -46,10 +50,21 @@ function NavItem({
           {count}
         </span>
         {dot && (
-          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500"></span>
+          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
         )}
       </div>
-      <span>{label}</span>
+
+      {/* ラベル：サイドバー hover で表示 */}
+      <span
+        className="
+          overflow-hidden whitespace-nowrap
+          max-w-0 opacity-0 translate-x-[-4px]
+          transition-all duration-200
+          group-hover:max-w-[180px] group-hover:opacity-100 group-hover:translate-x-0
+        "
+      >
+        {label}
+      </span>
     </Link>
   );
 }
@@ -87,7 +102,7 @@ export default function Sidebar({ name }: { name?: string }) {
         .eq("read", false);
       setDmCount(dms ?? 0);
 
-      // 未読のフォローリクエスト（pending & request_read = false）
+      // 未読のフォローリクエスト
       const { count: followReq } = await supabase
         .from("follows")
         .select("*", { count: "exact", head: true })
@@ -121,7 +136,6 @@ export default function Sidebar({ name }: { name?: string }) {
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "notifications" },
           (payload: any) => {
-            // 自分宛ての通知だけカウントを増やす
             if (payload.new.user_id === myId && !payload.new.read) {
               setNotifCount((prev) => prev + 1);
             }
@@ -204,7 +218,7 @@ export default function Sidebar({ name }: { name?: string }) {
               setFollowReqCount((prev) => Math.max(prev - 1, 0));
             }
 
-            // pending → accepted になった未読リクエスト
+            // pending 未読のまま accepted
             if (
               oldRow.status === "pending" &&
               oldRow.request_read === false &&
@@ -257,8 +271,31 @@ export default function Sidebar({ name }: { name?: string }) {
   }, [pathname]);
 
   return (
-    <aside className="hidden md:flex flex-col justify-between w-[240px] h-screen border-r border-gray-200 bg-white px-4 py-6 fixed left-0 top-0">
-      <div className="mb-6 text-xl font-bold tracking-tight">Gourmeet</div>
+    <aside
+      className="
+        hidden md:flex flex-col justify-between
+        h-screen border-r border-gray-200 bg-white
+        fixed left-0 top-0
+        px-3 py-6
+        w-[72px] hover:w-[240px]
+        transition-[width] duration-200
+        group
+      "
+    >
+      {/* ロゴ：ホバー時だけ表示 */}
+      <div className="mb-6 px-1">
+        <div
+          className="
+            text-xl font-bold tracking-tight
+            overflow-hidden whitespace-nowrap
+            max-w-0 opacity-0
+            transition-all duration-200
+            group-hover:max-w-[200px] group-hover:opacity-100
+          "
+        >
+          Gourmeet
+        </div>
+      </div>
 
       <nav className="flex flex-col gap-2">
         <NavItem href="/timeline" label="ホーム" icon={Home} dot={timelineDot} />
@@ -284,20 +321,61 @@ export default function Sidebar({ name }: { name?: string }) {
         <NavItem href="/collection" label="コレクション" icon={Bookmark} />
         <NavItem href="/account" label="プロフィール" icon={UserRound} />
 
+        {/* Postボタン：畳んでるときはアイコンだけ */}
         <Link
           href="/posts/new"
-          className="mt-4 flex items-center justify-center gap-2 rounded-full bg-orange-700 py-3 text-white font-semibold hover:bg-orange-800"
+          className="
+            mt-4 flex items-center justify-center gap-2
+            rounded-full bg-orange-700 py-3 text-white font-semibold
+            hover:bg-orange-800
+          "
         >
-          <Plus size={18} />
-          Post
+          <Plus size={18} className="shrink-0" />
+          <span
+            className="
+              overflow-hidden whitespace-nowrap
+              max-w-0 opacity-0 translate-x-[-4px]
+              transition-all duration-200
+              group-hover:max-w-[140px] group-hover:opacity-100 group-hover:translate-x-0
+            "
+          >
+            Post
+          </span>
         </Link>
       </nav>
 
-      <div className="mt-6 text-sm text-gray-600">
-        <div className="truncate font-semibold">{name}</div>
+      {/* フッター：ホバーで詳細表示 */}
+      <div className="mt-6 text-sm text-gray-600 px-1">
+        <div
+          className="
+            truncate font-semibold
+            overflow-hidden whitespace-nowrap
+            max-w-0 opacity-0
+            transition-all duration-200
+            group-hover:max-w-[200px] group-hover:opacity-100
+          "
+        >
+          {name}
+        </div>
+
         <form action="/auth/logout" method="post">
-          <button className="mt-2 flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-gray-100">
-            ログアウト
+          <button
+            className="
+              mt-2 flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-gray-100
+              w-full
+            "
+          >
+            <LogOut size={18} className="shrink-0" />
+            <span
+              className="
+                overflow-hidden whitespace-nowrap
+                max-w-0 opacity-0 translate-x-[-4px]
+                transition-all duration-200
+                group-hover:max-w-[140px] group-hover:opacity-100 group-hover:translate-x-0
+              "
+            >
+              ログアウト
+            </span>
           </button>
         </form>
       </div>

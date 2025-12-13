@@ -4,12 +4,9 @@ import Sidebar from "@/components/Sidebar";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex w-full bg-[#ffffff]">
-      {/* サイドバー（クライアントコンポーネント） */}
+    <div className="min-h-screen bg-white">
       <Sidebar />
-
-      {/* メインコンテンツ */}
-      <main className="flex-1 ml-[240px] min-h-screen px-6 py-6">
+      <main className="min-h-screen w-full md:pl-[240px] px-4 md:px-6 py-6">
         {children}
       </main>
     </div>

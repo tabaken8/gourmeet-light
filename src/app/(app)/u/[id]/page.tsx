@@ -12,7 +12,7 @@ export default async function UserPublicPage({
 }: {
   params: { id: string };
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();;
 
   // ログイン必須
   const {
@@ -130,7 +130,7 @@ export default async function UserPublicPage({
         .from("posts")
         .select("id, image_urls, created_at")
         .in("id", ids)
-        .eq("status", "accepted") 
+        .eq("status", "accepted")
         .order("created_at", { ascending: false })
         .limit(24);
       wantPosts = data ?? [];

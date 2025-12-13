@@ -7,7 +7,7 @@ export async function POST(
 ) {
   const { id: post_id } = await context.params;
 
-  const supabase = createClient();
+  const supabase = await createClient();;
   const {
     data: { user },
   } = await supabase.auth.getUser();
