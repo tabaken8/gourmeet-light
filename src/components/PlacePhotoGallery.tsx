@@ -53,7 +53,7 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
         ) : null}
 
         <div className="grid grid-cols-2 gap-2">
-          {urls.slice(0, 4).map((src, i) => (
+          {urls.slice(0, 8).map((src, i) => (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={src}
@@ -67,12 +67,12 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
         </div>
 
         {/* attribution（Googleの要件で必要なことがあるので表示枠を用意） */}
-        {attributionsHtml ? (
+        {/* {attributionsHtml ? (
           <div
             className="text-[10px] leading-snug text-slate-500 [&_a]:underline [&_a]:text-slate-600"
             dangerouslySetInnerHTML={{ __html: attributionsHtml }}
           />
-        ) : null}
+        ) : null} */}
       </div>
 
       {/* モーダル */}
@@ -136,12 +136,12 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
               ) : null}
 
               {/* attribution */}
-              {attributionsHtml ? (
+              {/* {attributionsHtml ? (
                 <div
                   className="p-3 text-[10px] leading-snug text-white/70 [&_a]:underline [&_a]:text-white"
                   dangerouslySetInnerHTML={{ __html: attributionsHtml }}
                 />
-              ) : null}
+              ) : null} */}
             </div>
           </div>
         </div>

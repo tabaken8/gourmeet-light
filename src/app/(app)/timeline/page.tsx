@@ -211,7 +211,7 @@ export default async function TimelinePage({
 await Promise.all(
   placeIds.map(async (pid) => {
     try {
-      placePhotoMap[pid] = await getPlacePhotoRefs(pid, 4);
+      placePhotoMap[pid] = await getPlacePhotoRefs(pid, 8);
     } catch (e) {
       console.error("[getPlacePhotoRefs failed]", pid, e);
       placePhotoMap[pid] = { refs: [], attributionsHtml: "" };
