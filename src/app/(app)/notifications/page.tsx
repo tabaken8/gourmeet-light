@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, MessageCircle, Heart, Sparkles } from "lucide-react";
+import {
+  MapPin,
+  MessageCircle,
+  Heart,
+  Sparkles,
+  UserPlus,
+} from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Actor = {
@@ -27,7 +33,7 @@ type Comment = {
   created_at: string;
 };
 
-type NotificationType = "like" | "want" | "comment" | "reply";
+type NotificationType = "like" | "want" | "comment" | "reply" | "follow";
 
 type Notification = {
   id: string;
@@ -36,7 +42,7 @@ type Notification = {
   read: boolean;
   actor: Actor | null;
   post: Post | null;
-  comment: Comment | null; // ✅ comment_id join
+  comment: Comment | null;
 };
 
 function formatJST(iso: string) {
@@ -59,6 +65,8 @@ function labelForType(t: NotificationType) {
       return "があなたの投稿にコメントしました";
     case "reply":
       return "があなたのコメントに返信しました";
+    case "follow":
+      return "があなたをフォローしました";
   }
 }
 
@@ -71,6 +79,8 @@ function iconForType(t: NotificationType) {
     case "comment":
     case "reply":
       return <MessageCircle size={14} className="text-slate-500" />;
+    case "follow":
+      return <UserPlus size={14} className="text-sky-500" />;
   }
 }
 
@@ -89,7 +99,7 @@ export default function NotificationsPage() {
     const load = async () => {
       setLoading(true);
 
-      // ✅ comment も join する（comment_id が null の通知は comment=null になる）
+      // comment も join（comment_id が null の通知は comment=null）
       const { data, error } = await supabase
         .from("notifications")
         .select(
@@ -110,13 +120,18 @@ export default function NotificationsPage() {
         return;
       }
 
-      const unreadIds = data?.filter((n: any) => !n.read).map((n: any) => n.id) ?? [];
+      const unreadIds =
+        data?.filter((n: any) => !n.read).map((n: any) => n.id) ?? [];
       setJustReadIds(unreadIds);
 
       setNotifs((data as unknown as Notification[]) ?? []);
 
       // DB を既読化（サーバーAPI経由）
-      await fetch("/api/notifications/read", { method: "POST" });
+      try {
+        await fetch("/api/notifications/read", { method: "POST" });
+      } catch (e) {
+        console.warn("failed to mark notifications as read", e);
+      }
 
       setLoading(false);
     };
@@ -158,8 +173,13 @@ export default function NotificationsPage() {
                     )}`
                   : null;
 
-                // ✅ 行き先：投稿へ（カード全体をボタン化）
-                const href = post?.id ? `/posts/${post.id}` : "/timeline";
+                // ✅ 行き先：follow は相手プロフィールへ / 投稿系は投稿へ
+                const href =
+                  n.type === "follow" && actor?.id
+                    ? `/u/${actor.id}`
+                    : post?.id
+                    ? `/posts/${post.id}`
+                    : "/timeline";
 
                 const actorName = actor?.display_name ?? "ユーザー";
                 const actorAvatar = actor?.avatar_url ?? null;
@@ -213,9 +233,9 @@ export default function NotificationsPage() {
 
                           {/* ✅ コメントプレビュー（小さめ・薄め） */}
                           {commentPreview && (
-                          <div className="...">
-                            &ldquo;{commentPreview}&rdquo;
-                          </div>
+                            <div className="mt-1 line-clamp-2 text-xs text-slate-500">
+                              &ldquo;{commentPreview}&rdquo;
+                            </div>
                           )}
 
                           {/* ✅ 店舗名（ある場合） */}
@@ -223,21 +243,24 @@ export default function NotificationsPage() {
                             <div className="mt-1 flex items-center gap-1 text-xs text-orange-700">
                               <MapPin size={12} />
                               {mapUrl ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault(); // Link の遷移を止める
-                              e.stopPropagation(); // カードクリックも止める
-                              window.open(mapUrl, "_blank", "noopener,noreferrer");
-                            }}
-                            className="truncate text-left hover:underline"
-                          >
-                            {post.place_name}
-                          </button>
-                        ) : (
-                          <span className="truncate">{post.place_name}</span>
-                        )}
-
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault(); // Link の遷移を止める
+                                    e.stopPropagation(); // カードクリックも止める
+                                    window.open(
+                                      mapUrl,
+                                      "_blank",
+                                      "noopener,noreferrer"
+                                    );
+                                  }}
+                                  className="truncate text-left hover:underline"
+                                >
+                                  {post.place_name}
+                                </button>
+                              ) : (
+                                <span className="truncate">{post.place_name}</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -248,7 +271,7 @@ export default function NotificationsPage() {
                         </div>
                       </div>
 
-                      {/* 投稿サムネ */}
+                      {/* 投稿サムネ（follow通知はpostが無いので出ない） */}
                       {post?.image_urls?.[0] && (
                         <div className="mt-2">
                           <div className="h-14 w-14 overflow-hidden rounded-xl border border-orange-100 bg-orange-50">
