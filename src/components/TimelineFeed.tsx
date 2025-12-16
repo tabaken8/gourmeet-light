@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Lock } from "lucide-react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
@@ -60,11 +61,6 @@ function formatJST(iso: string) {
   }).format(dt);
 }
 
-/**
- * タイムライン表示用の画像URL配列を作る。
- * - 新: image_variants があれば thumb を優先（＝軽い）
- * - 旧: image_urls を使う
- */
 function getTimelineImageUrls(p: PostRow): string[] {
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
   const fromVariants = variants
@@ -75,6 +71,89 @@ function getTimelineImageUrls(p: PostRow): string[] {
 
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy.filter((x): x is string => !!x);
+}
+
+/** ミニマルなログイン誘導（インスタっぽく“静か”） */
+function LoginGate({
+  onGoogle,
+}: {
+  onGoogle: () => Promise<void>;
+}) {
+  return (
+    <div className="flex min-h-[44vh] items-center justify-center px-2">
+      <div className="w-full max-w-md rounded-2xl border border-black/[.06] bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-900">ログインが必要です</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              友達の投稿を見る・投稿する・フォロー・コレクションなどが使えるようになります。
+            </p>
+          </div>
+
+          {/* 右上に小さくロゴっぽい丸 */}
+          <div className="ml-3 flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
+            G
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          {/* Google（主CTAだけど静かに） */}
+          <button
+            type="button"
+            onClick={onGoogle}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-black/10 bg-white text-sm font-medium text-slate-900 hover:bg-black/[.03]"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 48 48"
+              className="shrink-0"
+            >
+              <path
+                fill="#EA4335"
+                d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"
+              />
+              <path
+                fill="#4285F4"
+                d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z"
+              />
+              <path
+                fill="#FBBC04"
+                d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z"
+              />
+              <path
+                fill="#34A853"
+                d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
+              />
+            </svg>
+            Googleで続ける
+          </button>
+
+          {/* メールログイン */}
+          <Link
+            href="/auth/login"
+            className="inline-flex h-11 w-full items-center justify-center rounded-full bg-orange-700 px-5 text-sm font-medium text-white hover:bg-orange-800"
+          >
+            メールでログイン
+          </Link>
+
+          {/* サインアップは軽く */}
+          <div className="mt-1 flex items-center justify-between text-xs">
+            <Link href="/auth/signup" className="text-orange-700 hover:underline">
+              アカウント作成
+            </Link>
+            <Link
+              href="/timeline?tab=discover"
+              className="text-slate-500 hover:underline"
+            >
+              まずは公開投稿を見る
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function TimelineFeed({
@@ -91,6 +170,24 @@ export default function TimelineFeed({
   const [error, setError] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const supabase = createClientComponentClient();
+
+  const handleGoogleLogin = async () => {
+    const redirectTo = `${
+      process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    }/auth/callback`;
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+
+    if (error) {
+      console.error(error);
+      alert("Googleログインに失敗しました: " + error.message);
+    }
+  };
 
   async function loadMore(reset = false) {
     if (loading) return;
@@ -121,17 +218,12 @@ export default function TimelineFeed({
     } catch (e: any) {
       const msg = e?.message ?? "読み込みに失敗しました";
       setError(msg);
-
-      // friends で未ログインならここに来る
-      if (String(msg).includes("Unauthorized")) {
-        setDone(true);
-      }
+      if (String(msg).includes("Unauthorized")) setDone(true);
     } finally {
       setLoading(false);
     }
   }
 
-  // タブ切り替えでリセット
   useEffect(() => {
     setPosts([]);
     setCursor(null);
@@ -141,7 +233,6 @@ export default function TimelineFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  // 無限スクロール
   useEffect(() => {
     if (!sentinelRef.current) return;
     const el = sentinelRef.current;
@@ -158,26 +249,8 @@ export default function TimelineFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, done, loading, activeTab]);
 
-  // friends タブで Unauthorized のときだけログイン案内
   if (error?.includes("Unauthorized") && activeTab === "friends") {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center px-2 text-xs text-slate-600">
-        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-          <p className="mb-3">友達タブを見るにはログインが必要です。</p>
-          <Link
-            className="inline-flex rounded-full bg-orange-600 px-4 py-2 text-xs font-medium text-white"
-            href="/auth/login"
-          >
-            ログインする
-          </Link>
-          <div className="mt-3">
-            <Link className="text-[11px] text-orange-600 underline" href="/timeline?tab=discover">
-              公開投稿を見る
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+    return <LoginGate onGoogle={handleGoogleLogin} />;
   }
 
   if (posts.length === 0 && loading) {
@@ -208,7 +281,9 @@ export default function TimelineFeed({
         const mapUrl = p.place_id
           ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
           : p.place_address
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+              p.place_address
+            )}`
           : null;
 
         const timelineImageUrls = getTimelineImageUrls(p);
@@ -218,11 +293,12 @@ export default function TimelineFeed({
         const initialLiked = p.likedByMe ?? false;
 
         return (
-          <article key={p.id} className="rounded-2xl bg-white shadow-sm hover:shadow-md transition">
+          <article
+            key={p.id}
+            className="rounded-2xl bg-white shadow-sm hover:shadow-md transition"
+          >
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
-              {/* 左：投稿本体 */}
               <div className="md:border-r md:border-black/[.05]">
-                {/* 投稿者ヘッダー + More */}
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3">
                     <Link
@@ -231,7 +307,11 @@ export default function TimelineFeed({
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
+                        <img
+                          src={avatar}
+                          alt=""
+                          className="h-9 w-9 rounded-full object-cover"
+                        />
                       ) : (
                         initial
                       )}
@@ -245,13 +325,17 @@ export default function TimelineFeed({
                         >
                           {display}
                         </Link>
-                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
+                        {!isPublic && (
+                          <Lock size={12} className="shrink-0 text-slate-500" />
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-slate-500">
                         <span>{formatJST(p.created_at)}</span>
-                        {/* 投稿詳細へ */}
-                        <Link href={`/posts/${p.id}`} className="text-orange-600 hover:underline">
+                        <Link
+                          href={`/posts/${p.id}`}
+                          className="text-orange-600 hover:underline"
+                        >
                           詳細
                         </Link>
                       </div>
@@ -261,7 +345,6 @@ export default function TimelineFeed({
                   <PostMoreMenu postId={p.id} isMine={meId === p.user_id} />
                 </div>
 
-                {/* 画像（thumb優先） */}
                 {timelineImageUrls.length > 0 && (
                   <Link href={`/posts/${p.id}`} className="block">
                     <PostImageCarousel
@@ -272,7 +355,6 @@ export default function TimelineFeed({
                   </Link>
                 )}
 
-                {/* 本文 + 店舗 */}
                 <div className="space-y-2 px-4 py-3">
                   {p.content && (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
@@ -299,7 +381,6 @@ export default function TimelineFeed({
                   )}
                 </div>
 
-                {/* いいね等 + Collection */}
                 <div className="flex items-center justify-between px-4 pb-3 pt-1">
                   <PostActions
                     postId={p.id}
@@ -314,18 +395,16 @@ export default function TimelineFeed({
                   <PostCollectionButton postId={p.id} />
                 </div>
 
-                {/* コメント */}
                 <div className="px-4 pb-4">
                   <PostComments
                     postId={p.id}
                     postUserId={p.user_id}
-                    meId={meId} // ✅ ここでログイン状態が伝わる → 余計なログインボタンが出なくなる
+                    meId={meId}
                     previewCount={2}
                   />
                 </div>
               </div>
 
-              {/* 右：Google Place写真 */}
               <aside className="hidden md:block p-4">
                 {p.place_id && placePhotos?.refs?.length ? (
                   <PlacePhotoGallery
@@ -334,12 +413,13 @@ export default function TimelineFeed({
                     attributionsHtml={placePhotos.attributionsHtml}
                   />
                 ) : (
-                  <div className="text-xs text-slate-400">写真を取得できませんでした</div>
+                  <div className="text-xs text-slate-400">
+                    写真を取得できませんでした
+                  </div>
                 )}
               </aside>
             </div>
 
-            {/* モバイル：Place写真 */}
             {p.place_id && placePhotos?.refs?.length ? (
               <div className="md:hidden px-4 pb-4">
                 <PlacePhotoGallery
@@ -353,11 +433,12 @@ export default function TimelineFeed({
         );
       })}
 
-      {/* 無限スクロールのトリガー */}
       <div ref={sentinelRef} className="h-10" />
 
       {loading && (
-        <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>
+        <div className="pb-8 text-center text-xs text-slate-500">
+          読み込み中...
+        </div>
       )}
 
       {error && !error.includes("Unauthorized") && (
@@ -365,7 +446,9 @@ export default function TimelineFeed({
       )}
 
       {done && posts.length > 0 && (
-        <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>
+        <div className="pb-8 text-center text-[11px] text-slate-400">
+          これ以上ありません
+        </div>
       )}
     </div>
   );
