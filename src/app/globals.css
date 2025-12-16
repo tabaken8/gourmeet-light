@@ -1,11 +1,19 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
 /* =========================
    Theme variables
    ========================= */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* App背景（カードが白で映える） */
+  --background: #f7f7f8;
+  --foreground: #0f172a;
+
+  /* “面”の色（必要なら今後使う） */
+  --surface: #ffffff;
+
+  /* 境界線の基準色 */
+  --border: rgba(15, 23, 42, 0.08);
 
   /* Safari に OS ダークモードを勝手に解釈させない */
   color-scheme: light;
@@ -18,14 +26,70 @@ html,
 body {
   width: 100%;
   height: 100%;
+}
+
+body {
+  min-height: 100dvh;
 
   background-color: var(--background);
   color: var(--foreground);
 
-  font-family: Arial, Helvetica, sans-serif;
+  /* “それっぽい”基礎フォント。Geistがあればそれが優先される想定 */
+  font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
+      "Segoe UI Emoji", "Segoe UI Symbol");
 
+  /* iOSの勝手な文字拡大を抑える */
   -webkit-text-size-adjust: 100%;
+
+  /* 余計な余白を作らない（フルブリードを殺さない） */
   margin: 0;
+
+  /* 角丸カード + -mx のときの横スクロール事故を抑止 */
+  overflow-x: hidden;
+
+  /* 文字の見え方を少し上品に */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  text-rendering: optimizeLegibility;
+}
+
+/* 全要素で box-sizing を安定させる */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* iOSの青いタップハイライトを消してアプリ感を上げる */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 画像がインライン扱いで隙間が出るのを防ぐ（UIのガタつき軽減） */
+img,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* リンクは基本は継承。色はTailwind側で付ける */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* フォーカスリングはTailwind側に任せつつ、ブラウザ既定の汚さを抑える */
+:focus {
+  outline: none;
+}
+
+/* 選択色（地味に“プロダクト感”が出る） */
+::selection {
+  background: rgba(249, 115, 22, 0.25); /* orange-500系の薄い選択色 */
 }
 
 /* =========================
@@ -34,6 +98,7 @@ body {
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-border: var(--border);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -43,8 +108,10 @@ body {
    Dark mode (class-based only)
    ========================= */
 html.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #0b0c0f;
+  --foreground: #e5e7eb;
+  --surface: #0f1117;
+  --border: rgba(229, 231, 235, 0.12);
 
   color-scheme: dark;
 }

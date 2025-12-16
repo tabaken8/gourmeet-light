@@ -1,7 +1,7 @@
 // src/components/Sidebar.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -15,7 +15,8 @@ import {
   LogOut,
   UserRound,
 } from "lucide-react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
+import { useNavBadges } from "@/hooks/useNavBadges";
 
 function NavItem({
   href,
@@ -57,7 +58,6 @@ function NavItem({
           <UserRound size={22} />
         )}
 
-        {/* count badge */}
         <span
           className={`
             absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center
@@ -68,13 +68,11 @@ function NavItem({
           {count}
         </span>
 
-        {/* dot badge */}
         {dot && (
           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
         )}
       </div>
 
-      {/* ラベル：サイドバー hover で表示 */}
       <span
         className="
           overflow-hidden whitespace-nowrap
@@ -90,223 +88,18 @@ function NavItem({
 }
 
 export default function Sidebar({ name }: { name?: string }) {
-  const supabase = createClientComponentClient();
   const pathname = usePathname();
 
-  const [notifCount, setNotifCount] = useState(0);
-  const [dmCount, setDmCount] = useState(0);
-  const [timelineDot, setTimelineDot] = useState(false);
-  const [followReqCount, setFollowReqCount] = useState(0);
+  const {
+    avatarUrl,
+    displayNameSafe,
+    notifCount,
+    dmCount,
+    followReqCount,
+    timelineDot,
+  } = useNavBadges(name);
 
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState<string>(name ?? "");
-
-  // 初期件数 + 自分のプロフィール（avatar等）を取得
-  useEffect(() => {
-    const fetchCounts = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // 自分のプロフィール（アバター）
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("display_name, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const dn =
-        profile?.display_name ?? user.email?.split("@")[0] ?? "User";
-      setDisplayName(dn);
-      setAvatarUrl(profile?.avatar_url ?? null);
-
-      // 未読の通知
-      const { count: notif } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("read", false);
-      setNotifCount(notif ?? 0);
-
-      // 未読のDM
-      const { count: dms } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("receiver_id", user.id)
-        .eq("read", false);
-      setDmCount(dms ?? 0);
-
-      // 未読のフォローリクエスト
-      const { count: followReq } = await supabase
-        .from("follows")
-        .select("*", { count: "exact", head: true })
-        .eq("followee_id", user.id)
-        .eq("status", "pending")
-        .eq("request_read", false);
-      setFollowReqCount(followReq ?? 0);
-
-      setTimelineDot(false);
-    };
-
-    fetchCounts();
-  }, [supabase]);
-
-  // Realtime 購読（通知 / DM / 投稿 / フォローリクエスト）
-  useEffect(() => {
-    let channel: any | null = null;
-    let subscribed = true;
-
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user || !subscribed) return;
-      const myId = user.id;
-
-      channel = supabase
-        .channel("sidebar-realtime")
-
-        // 🔔 notifications
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "notifications" },
-          (payload: any) => {
-            if (payload.new.user_id === myId && !payload.new.read) {
-              setNotifCount((prev) => prev + 1);
-            }
-          }
-        )
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "notifications" },
-          (payload: any) => {
-            if (
-              payload.new.user_id === myId &&
-              payload.old.read === false &&
-              payload.new.read === true
-            ) {
-              setNotifCount((prev) => Math.max(prev - 1, 0));
-            }
-          }
-        )
-
-        // 💬 messages
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "messages" },
-          (payload: any) => {
-            if (payload.new.receiver_id === myId && !payload.new.read) {
-              setDmCount((prev) => prev + 1);
-            }
-          }
-        )
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "messages" },
-          (payload: any) => {
-            if (
-              payload.new.receiver_id === myId &&
-              payload.old.read === false &&
-              payload.new.read === true
-            ) {
-              setDmCount((prev) => Math.max(prev - 1, 0));
-            }
-          }
-        )
-
-        // 📰 posts（誰かが投稿したらホームにドット）
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "posts" },
-          () => setTimelineDot(true)
-        )
-
-        // 👥 follows（フォローリクエスト）
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "follows" },
-          (payload: any) => {
-            const row = payload.new;
-            if (
-              row.followee_id === myId &&
-              row.status === "pending" &&
-              row.request_read === false
-            ) {
-              setFollowReqCount((prev) => prev + 1);
-            }
-          }
-        )
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "follows" },
-          (payload: any) => {
-            const oldRow = payload.old;
-            const newRow = payload.new;
-            if (newRow.followee_id !== myId) return;
-
-            // 未読 → 既読
-            if (
-              oldRow.status === "pending" &&
-              oldRow.request_read === false &&
-              newRow.request_read === true
-            ) {
-              setFollowReqCount((prev) => Math.max(prev - 1, 0));
-            }
-
-            // pending 未読のまま accepted
-            if (
-              oldRow.status === "pending" &&
-              oldRow.request_read === false &&
-              newRow.status === "accepted"
-            ) {
-              setFollowReqCount((prev) => Math.max(prev - 1, 0));
-            }
-          }
-        )
-        .on(
-          "postgres_changes",
-          { event: "DELETE", schema: "public", table: "follows" },
-          (payload: any) => {
-            const oldRow = payload.old;
-            if (
-              oldRow.followee_id === myId &&
-              oldRow.status === "pending" &&
-              oldRow.request_read === false
-            ) {
-              setFollowReqCount((prev) => Math.max(prev - 1, 0));
-            }
-          }
-        )
-        .subscribe();
-    })();
-
-    return () => {
-      subscribed = false;
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [supabase]);
-
-  // /notifications や /follow-requests を開いたら既読処理
-  useEffect(() => {
-    if (pathname === "/notifications") {
-      fetch("/api/notifications/read", { method: "POST" })
-        .then(() => setNotifCount(0))
-        .catch((err) =>
-          console.error("Failed to mark notifications read:", err)
-        );
-    }
-
-    if (pathname === "/follow-requests") {
-      fetch("/api/follow-requests/read", { method: "POST" })
-        .then(() => setFollowReqCount(0))
-        .catch((err) =>
-          console.error("Failed to mark follow-requests read:", err)
-        );
-    }
-  }, [pathname]);
-
-  const displayNameSafe = useMemo(() => displayName ?? "", [displayName]);
+  const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
 
   return (
     <aside
@@ -318,16 +111,12 @@ export default function Sidebar({ name }: { name?: string }) {
         w-[72px] hover:w-[240px]
         transition-[width] duration-200
         group
-
-        /* 境界線を消して“溶ける”感じ */
         bg-white/80 backdrop-blur
         shadow-[0_0_40px_rgba(0,0,0,0.06)]
       "
     >
-      {/* 右端をフェードさせて境界感をさらに消す */}
       <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-r from-transparent to-white/80" />
 
-      {/* ロゴ：ホバー時だけ表示 */}
       <div className="mb-6 px-1 relative">
         <div
           className="
@@ -360,15 +149,13 @@ export default function Sidebar({ name }: { name?: string }) {
         />
         <NavItem href="/collection" label="コレクション" icon={Bookmark} />
 
-        {/* プロフィール：ピクトグラム撤去 → 自分のアバター */}
         <NavItem
           href="/account"
           label="プロフィール"
           avatarUrl={avatarUrl}
-          avatarAlt={displayNameSafe}
+          avatarAlt={displayNameMemo}
         />
 
-        {/* Postボタン：畳んでるときはアイコンだけ */}
         <Link
           href="/posts/new"
           className="
@@ -391,7 +178,6 @@ export default function Sidebar({ name }: { name?: string }) {
         </Link>
       </nav>
 
-      {/* フッター：ホバーで詳細表示 */}
       <div className="mt-6 text-sm text-gray-600 px-1 relative">
         <div
           className="
@@ -402,7 +188,7 @@ export default function Sidebar({ name }: { name?: string }) {
             group-hover:max-w-[200px] group-hover:opacity-100
           "
         >
-          {displayNameSafe}
+          {displayNameMemo}
         </div>
 
         <form action="/auth/logout" method="post">

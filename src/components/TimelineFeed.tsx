@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MapPin, Lock } from "lucide-react";
+import { MapPin, Lock, ChevronDown, ChevronUp } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
@@ -74,11 +74,7 @@ function getTimelineImageUrls(p: PostRow): string[] {
 }
 
 /** ミニマルなログイン誘導（インスタっぽく“静か”） */
-function LoginGate({
-  onGoogle,
-}: {
-  onGoogle: () => Promise<void>;
-}) {
+function LoginGate({ onGoogle }: { onGoogle: () => Promise<void> }) {
   return (
     <div className="flex min-h-[44vh] items-center justify-center px-2">
       <div className="w-full max-w-md rounded-2xl border border-black/[.06] bg-white p-5 shadow-sm">
@@ -90,26 +86,18 @@ function LoginGate({
             </p>
           </div>
 
-          {/* 右上に小さくロゴっぽい丸 */}
           <div className="ml-3 flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
             G
           </div>
         </div>
 
         <div className="mt-4 grid gap-2">
-          {/* Google（主CTAだけど静かに） */}
           <button
             type="button"
             onClick={onGoogle}
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-black/10 bg-white text-sm font-medium text-slate-900 hover:bg-black/[.03]"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 48 48"
-              className="shrink-0"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48" className="shrink-0">
               <path
                 fill="#EA4335"
                 d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"
@@ -130,7 +118,6 @@ function LoginGate({
             Googleで続ける
           </button>
 
-          {/* メールログイン */}
           <Link
             href="/auth/login"
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-orange-700 px-5 text-sm font-medium text-white hover:bg-orange-800"
@@ -138,21 +125,41 @@ function LoginGate({
             メールでログイン
           </Link>
 
-          {/* サインアップは軽く */}
           <div className="mt-1 flex items-center justify-between text-xs">
             <Link href="/auth/signup" className="text-orange-700 hover:underline">
               アカウント作成
             </Link>
-            <Link
-              href="/timeline?tab=discover"
-              className="text-slate-500 hover:underline"
-            >
+            <Link href="/timeline?tab=discover" className="text-slate-500 hover:underline">
               まずは公開投稿を見る
             </Link>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function GoogleMark({ className = "" }: { className?: string }) {
+  // “Gマークっぽい”最小SVG（テキストは使わない）
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true" className={className}>
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z"
+      />
+      <path
+        fill="#FBBC04"
+        d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
+      />
+    </svg>
   );
 }
 
@@ -168,6 +175,9 @@ export default function TimelineFeed({
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // モバイルで「Google写真」を開いた投稿だけ展開
+  const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -229,6 +239,7 @@ export default function TimelineFeed({
     setCursor(null);
     setDone(false);
     setError(null);
+    setOpenPhotos({});
     loadMore(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -269,8 +280,11 @@ export default function TimelineFeed({
     );
   }
 
+  const MOBILE_PLACE_PHOTOS_MAX = 3;
+
   return (
-    <div className="flex flex-col items-stretch gap-6">
+    // モバイルの左右余白を消す（親が px-4 想定）
+    <div className="flex flex-col items-stretch gap-6 -mx-4 md:mx-0">
       {posts.map((p) => {
         const prof = p.profile;
         const display = prof?.display_name ?? "ユーザー";
@@ -292,10 +306,24 @@ export default function TimelineFeed({
         const initialLikeCount = p.likeCount ?? 0;
         const initialLiked = p.likedByMe ?? false;
 
+        const hasPlacePhotos = !!(p.place_id && placePhotos?.refs?.length);
+        const isPhotosOpen = !!openPhotos[p.id];
+
+        const togglePhotos = () => {
+          if (!hasPlacePhotos) return;
+          setOpenPhotos((prev) => ({ ...prev, [p.id]: !prev[p.id] }));
+        };
+
         return (
           <article
             key={p.id}
-            className="rounded-2xl bg-white shadow-sm hover:shadow-md transition"
+            className="
+              bg-white
+              rounded-none md:rounded-2xl
+              shadow-none md:shadow-sm
+              border-y border-black/[.06] md:border md:border-black/[.06]
+              transition
+            "
           >
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
               <div className="md:border-r md:border-black/[.05]">
@@ -307,11 +335,7 @@ export default function TimelineFeed({
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={avatar}
-                          alt=""
-                          className="h-9 w-9 rounded-full object-cover"
-                        />
+                        <img src={avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
                       ) : (
                         initial
                       )}
@@ -325,17 +349,12 @@ export default function TimelineFeed({
                         >
                           {display}
                         </Link>
-                        {!isPublic && (
-                          <Lock size={12} className="shrink-0 text-slate-500" />
-                        )}
+                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-slate-500">
                         <span>{formatJST(p.created_at)}</span>
-                        <Link
-                          href={`/posts/${p.id}`}
-                          className="text-orange-600 hover:underline"
-                        >
+                        <Link href={`/posts/${p.id}`} className="text-orange-600 hover:underline">
                           詳細
                         </Link>
                       </div>
@@ -347,11 +366,7 @@ export default function TimelineFeed({
 
                 {timelineImageUrls.length > 0 && (
                   <Link href={`/posts/${p.id}`} className="block">
-                    <PostImageCarousel
-                      postId={p.id}
-                      imageUrls={timelineImageUrls}
-                      syncUrl={false}
-                    />
+                    <PostImageCarousel postId={p.id} imageUrls={timelineImageUrls} syncUrl={false} />
                   </Link>
                 )}
 
@@ -362,20 +377,49 @@ export default function TimelineFeed({
                     </p>
                   )}
 
-                  {p.place_name && (
-                    <div className="flex items-center gap-1 text-xs text-orange-700">
-                      <MapPin size={14} />
-                      {mapUrl ? (
-                        <a
-                          href={mapUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="truncate hover:underline"
-                        >
-                          {p.place_name}
-                        </a>
+                  {/* 店名行：モバイルではここに “Google + ↓/↑” を同じ行で置いて冗長化を防ぐ */}
+                  {(p.place_name || hasPlacePhotos) && (
+                    <div className="flex items-center gap-2">
+                      {p.place_name ? (
+                        <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-orange-700">
+                          <MapPin size={14} className="shrink-0" />
+                          {mapUrl ? (
+                            <a
+                              href={mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate hover:underline"
+                            >
+                              {p.place_name}
+                            </a>
+                          ) : (
+                            <span className="truncate">{p.place_name}</span>
+                          )}
+                        </div>
                       ) : (
-                        <span className="truncate">{p.place_name}</span>
+                        <div className="flex-1" />
+                      )}
+
+                      {/* モバイルのみ：アイコンだけでトグル */}
+                      {hasPlacePhotos && (
+                        <button
+                          type="button"
+                          onClick={togglePhotos}
+                          aria-label={isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"}
+                          className="
+                            md:hidden
+                            inline-flex h-8 w-8 items-center justify-center
+                            rounded-full border border-black/10 bg-white
+                            active:scale-[0.99]
+                          "
+                        >
+                          <GoogleMark className="h-4 w-4" />
+                          {isPhotosOpen ? (
+                            <ChevronUp size={14} className="-ml-0.5 text-slate-700" />
+                          ) : (
+                            <ChevronDown size={14} className="-ml-0.5 text-slate-700" />
+                          )}
+                        </button>
                       )}
                     </div>
                   )}
@@ -405,27 +449,27 @@ export default function TimelineFeed({
                 </div>
               </div>
 
+              {/* PCだけ右カラムで表示（従来通り） */}
               <aside className="hidden md:block p-4">
-                {p.place_id && placePhotos?.refs?.length ? (
+                {hasPlacePhotos ? (
                   <PlacePhotoGallery
-                    refs={placePhotos.refs}
+                    refs={placePhotos!.refs}
                     placeName={p.place_name}
-                    attributionsHtml={placePhotos.attributionsHtml}
+                    attributionsHtml={placePhotos!.attributionsHtml}
                   />
                 ) : (
-                  <div className="text-xs text-slate-400">
-                    写真を取得できませんでした
-                  </div>
+                  <div className="text-xs text-slate-400">写真を取得できませんでした</div>
                 )}
               </aside>
             </div>
 
-            {p.place_id && placePhotos?.refs?.length ? (
-              <div className="md:hidden px-4 pb-4">
+            {/* モバイル：デフォ非表示 → アイコンで開いた時だけ出す（枚数も抑える） */}
+            {hasPlacePhotos && isPhotosOpen ? (
+              <div className="md:hidden pb-4">
                 <PlacePhotoGallery
-                  refs={placePhotos.refs}
+                  refs={placePhotos!.refs.slice(0, MOBILE_PLACE_PHOTOS_MAX)}
                   placeName={p.place_name}
-                  attributionsHtml={placePhotos.attributionsHtml}
+                  attributionsHtml={placePhotos!.attributionsHtml}
                 />
               </div>
             ) : null}
@@ -435,20 +479,14 @@ export default function TimelineFeed({
 
       <div ref={sentinelRef} className="h-10" />
 
-      {loading && (
-        <div className="pb-8 text-center text-xs text-slate-500">
-          読み込み中...
-        </div>
-      )}
+      {loading && <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>}
 
       {error && !error.includes("Unauthorized") && (
         <div className="pb-8 text-center text-xs text-red-600">{error}</div>
       )}
 
       {done && posts.length > 0 && (
-        <div className="pb-8 text-center text-[11px] text-slate-400">
-          これ以上ありません
-        </div>
+        <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>
       )}
     </div>
   );
