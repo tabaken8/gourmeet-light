@@ -37,7 +37,7 @@ export default function PrivacyPage() {
       <h2 className="mt-6 mb-2 font-semibold">5. お問い合わせ</h2>
       <p>
         個人情報の取り扱いに関するお問い合わせは、以下までご連絡ください。<br />
-        Email: contact@gourmeet.jp
+        Email: ken314ta@gmail.com
       </p>
     </main>
   );
