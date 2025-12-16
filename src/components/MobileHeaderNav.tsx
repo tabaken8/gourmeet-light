@@ -107,13 +107,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
         {/* 2段目：ナビ行 */}
         <div className="px-2 pb-2">
-          <div
-            className="
-              flex items-center justify-between gap-1
-              rounded-2xl bg-black/[.03] px-2 py-1
-            "
-          >
-            {/* 左2つ */}
+          <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
             <IconButton href="/timeline" active={isActive("/timeline")} ariaLabel="ホーム">
               <Home size={20} />
               <Dot on={timelineDot} />
@@ -123,7 +117,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Search size={20} />
             </IconButton>
 
-            {/* ✅ 真ん中：投稿 */}
             <Link
               href="/posts/new"
               className="
@@ -136,7 +129,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Plus size={20} />
             </Link>
 
-            {/* 右2つ */}
             <IconButton href="/map" active={isActive("/map")} ariaLabel="マップ">
               <Map size={20} />
             </IconButton>
