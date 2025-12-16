@@ -163,7 +163,7 @@ export default function TimelineFeed({
     return (
       <div className="flex min-h-[40vh] items-center justify-center px-2 text-xs text-slate-600">
         <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-          <p className="mb-3">友達タブはログインが必要です。</p>
+          <p className="mb-3">友達タブを見るにはログインが必要です。</p>
           <Link
             className="inline-flex rounded-full bg-orange-600 px-4 py-2 text-xs font-medium text-white"
             href="/auth/login"
@@ -172,7 +172,7 @@ export default function TimelineFeed({
           </Link>
           <div className="mt-3">
             <Link className="text-[11px] text-orange-600 underline" href="/timeline?tab=discover">
-              公開投稿（discover）を見る
+              公開投稿を見る
             </Link>
           </div>
         </div>

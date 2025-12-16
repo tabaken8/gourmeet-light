@@ -45,7 +45,7 @@ export default async function TimelinePage({
                     : "text-slate-500 hover:text-orange-500",
                 ].join(" ")}
               >
-                友達
+                フォロー中
               </Link>
 
               <Link
@@ -57,13 +57,13 @@ export default async function TimelinePage({
                     : "text-slate-500 hover:text-orange-500",
                 ].join(" ")}
               >
-                もっと見つけたい
+                探す
               </Link>
             </div>
 
             <p className="mt-2 text-[11px] text-slate-500">
               {activeTab === "friends"
-                ? "フォローしている人と自分の投稿が時系列で流れます。"
+                ? "フォローしている人の投稿が流れます。"
                 : "公開プロフィールのユーザーから、気になる人を見つけられます。"}
             </p>
           </div>
