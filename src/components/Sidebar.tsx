@@ -7,13 +7,12 @@ import {
   Home,
   Search,
   Bell,
-  MessageCircle,
   Bookmark,
   Plus,
   UserPlus,
   LogOut,
   UserRound,
-  Map, // ✅ 追加
+  Map,
 } from "lucide-react";
 
 import { useNavBadges } from "@/hooks/useNavBadges";
@@ -91,15 +90,8 @@ function NavItem({
 }
 
 export default function Sidebar({ name }: { name?: string }) {
-  const {
-    isAuthed,
-    avatarUrl,
-    displayNameSafe,
-    notifCount,
-    dmCount,
-    followReqCount,
-    timelineDot,
-  } = useNavBadges(name);
+  const { isAuthed, avatarUrl, displayNameSafe, notifCount, followReqCount, timelineDot } =
+    useNavBadges(name);
 
   const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
 
@@ -148,7 +140,6 @@ export default function Sidebar({ name }: { name?: string }) {
 
         <NavItem href={gate("/search", true)} label="検索" icon={Search} />
 
-        {/* ✅ Map 追加 */}
         <NavItem href={gate("/map")} label="マップ" icon={Map} />
 
         <NavItem
@@ -165,12 +156,7 @@ export default function Sidebar({ name }: { name?: string }) {
           count={followReqCount}
         />
 
-        <NavItem
-          href={gate("/messages")}
-          label="メッセージ"
-          icon={MessageCircle}
-          count={dmCount}
-        />
+        {/* ✅ DM（メッセージ）を削除 */}
 
         <NavItem href={gate("/collection")} label="コレクション" icon={Bookmark} />
 

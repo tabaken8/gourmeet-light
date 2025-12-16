@@ -68,15 +68,19 @@ function formatJST(iso: string) {
 
 function getTimelineImageUrls(p: PostRow): string[] {
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
+
+  // ✅ ここが変更点：full を最優先で返す（高画質）
   const fromVariants = variants
-    .map((v) => (v?.thumb ?? v?.full ?? null))
+    .map((v) => (v?.full ?? v?.thumb ?? null))
     .filter((x): x is string => !!x);
 
   if (fromVariants.length > 0) return fromVariants;
 
+  // 旧仕様: image_urls（基本 full のはず）
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy.filter((x): x is string => !!x);
 }
+
 
 function GoogleMark({ className = "" }: { className?: string }) {
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Image as ImageIcon, MapPin, X } from "lucide-react";
@@ -42,6 +42,15 @@ async function convertHeicToJpeg(file: File): Promise<File> {
   return new File([blob], newName, { type: "image/jpeg" });
 }
 
+function canUseAvif(): boolean {
+  try {
+    const c = document.createElement("canvas");
+    return c.toDataURL("image/avif").startsWith("data:image/avif");
+  } catch {
+    return false;
+  }
+}
+
 function canUseWebp(): boolean {
   try {
     const c = document.createElement("canvas");
@@ -51,11 +60,20 @@ function canUseWebp(): boolean {
   }
 }
 
+/**
+ * 高品質縮小：
+ * - EXIF orientation を反映（可能なら）
+ * - 段階縮小（半分ずつ）でボケ/ジャギを抑える
+ */
 async function resizeToFile(
   input: File,
   opts: { maxLongEdge: number; mime: string; quality: number; outExt: string }
 ): Promise<File> {
-  const bitmap = await createImageBitmap(input);
+  // EXIF orientation を反映（環境により未対応なので any で保険）
+  const bitmap = await createImageBitmap(input, {
+    imageOrientation: "from-image",
+  } as any);
+
   const w = bitmap.width;
   const h = bitmap.height;
 
@@ -65,17 +83,53 @@ async function resizeToFile(
   const tw = Math.max(1, Math.round(w * scale));
   const th = Math.max(1, Math.round(h * scale));
 
-  const canvas = document.createElement("canvas");
-  canvas.width = tw;
-  canvas.height = th;
+  // まず bitmap をキャンバスへ
+  let curCanvas = document.createElement("canvas");
+  let curW = w;
+  let curH = h;
+  curCanvas.width = curW;
+  curCanvas.height = curH;
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas context を取得できませんでした。");
+  {
+    const ctx = curCanvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas context を取得できませんでした。");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, curW, curH);
+  }
 
-  ctx.drawImage(bitmap, 0, 0, tw, th);
+  // 半分ずつ縮めて最終サイズへ（急激縮小の劣化を抑える）
+  while (curW / 2 > tw && curH / 2 > th) {
+    const nextCanvas = document.createElement("canvas");
+    const nextW = Math.max(tw, Math.floor(curW / 2));
+    const nextH = Math.max(th, Math.floor(curH / 2));
+    nextCanvas.width = nextW;
+    nextCanvas.height = nextH;
+
+    const nctx = nextCanvas.getContext("2d");
+    if (!nctx) throw new Error("Canvas context を取得できませんでした。");
+    nctx.imageSmoothingEnabled = true;
+    nctx.imageSmoothingQuality = "high";
+    nctx.drawImage(curCanvas, 0, 0, curW, curH, 0, 0, nextW, nextH);
+
+    curCanvas = nextCanvas;
+    curW = nextW;
+    curH = nextH;
+  }
+
+  // 最終サイズに仕上げ
+  const outCanvas = document.createElement("canvas");
+  outCanvas.width = tw;
+  outCanvas.height = th;
+
+  const outCtx = outCanvas.getContext("2d");
+  if (!outCtx) throw new Error("Canvas context を取得できませんでした。");
+  outCtx.imageSmoothingEnabled = true;
+  outCtx.imageSmoothingQuality = "high";
+  outCtx.drawImage(curCanvas, 0, 0, curW, curH, 0, 0, tw, th);
 
   const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
+    outCanvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("画像変換に失敗しました。"))),
       opts.mime,
       opts.quality
@@ -87,24 +141,32 @@ async function resizeToFile(
   return new File([blob], outName, { type: opts.mime });
 }
 
+/**
+ * 「タイムライン=thumb」でも不快にならない画質寄り
+ * - thumb: 長辺1440px（Retinaでも粗が出にくい）
+ * - full : 長辺3072px（拡大用に十分）
+ * - 形式: AVIF > WebP > JPEG
+ */
 async function prepareImage(file: File): Promise<PreparedImage> {
   const normalized = isHeicLike(file) ? await convertHeicToJpeg(file) : file;
 
-  const useWebp = typeof window !== "undefined" && canUseWebp();
-  const mime = useWebp ? "image/webp" : "image/jpeg";
-  const outExt = useWebp ? "webp" : "jpg";
+  const avif = typeof window !== "undefined" && canUseAvif();
+  const webp = typeof window !== "undefined" && canUseWebp();
+
+  const mime = avif ? "image/avif" : webp ? "image/webp" : "image/jpeg";
+  const outExt = avif ? "avif" : webp ? "webp" : "jpg";
 
   const thumb = await resizeToFile(normalized, {
-    maxLongEdge: 480,
+    maxLongEdge: 1440,
     mime,
-    quality: useWebp ? 0.78 : 0.82,
+    quality: avif ? 0.68 : webp ? 0.9 : 0.92,
     outExt,
   });
 
   const full = await resizeToFile(normalized, {
-    maxLongEdge: 1600,
+    maxLongEdge: 3072,
     mime,
-    quality: useWebp ? 0.82 : 0.86,
+    quality: avif ? 0.72 : webp ? 0.92 : 0.94,
     outExt,
   });
 
@@ -223,12 +285,16 @@ export default function NewPostPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // objectURL解放（メモリリーク対策）
+  // ✅ objectURL解放（アンマウント時のみ）
+  const imgsRef = useRef<PreparedImage[]>([]);
+  useEffect(() => {
+    imgsRef.current = imgs;
+  }, [imgs]);
   useEffect(() => {
     return () => {
-      imgs.forEach((x) => URL.revokeObjectURL(x.previewUrl));
+      imgsRef.current.forEach((x) => URL.revokeObjectURL(x.previewUrl));
     };
-  }, [imgs]);
+  }, []);
 
   const addImages = async (files: File[]) => {
     const MAX = 9;
@@ -268,14 +334,10 @@ export default function NewPostPage() {
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
 
     // 価格の整合（DB制約に合わせる）
-    const price_yen =
-      priceMode === "exact" ? priceYenValue : null;
-
-    const price_range =
-      priceMode === "range" ? priceRange : null;
+    const price_yen = priceMode === "exact" ? priceYenValue : null;
+    const price_range = priceMode === "range" ? priceRange : null;
 
     if (priceMode === "exact" && (price_yen === null || price_yen === 0)) {
-      // 0円は入力ミスが多いので弾く（好みで外してOK）
       return setMsg("価格（実額）を入力してください（例: 3500）。不要なら「なし」にできます。");
     }
 
@@ -283,7 +345,7 @@ export default function NewPostPage() {
     setMsg(null);
 
     try {
-      const CACHE = "31536000"; // 1年
+      const CACHE = "31536000"; // 1年（調整中は短くするのもおすすめ）
       const variants: Array<{ full: string; thumb: string }> = [];
       const compatFullUrls: string[] = [];
 
@@ -369,7 +431,6 @@ export default function NewPostPage() {
                 <span className="text-[11px] text-slate-400">ポイント（あとで変えられる）</span>
               </div>
 
-              {/* スライダー（指で気持ちいい） */}
               <input
                 type="range"
                 min={1}
@@ -381,7 +442,6 @@ export default function NewPostPage() {
                 aria-label="おすすめ度"
               />
 
-              {/* 10段階のピル（タップでも選べる） */}
               <div className="flex flex-wrap gap-2">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
                   const active = n === recommendScore;
@@ -411,7 +471,6 @@ export default function NewPostPage() {
                 <span className="text-[11px] text-slate-400">あとで検索/絞り込みに使える</span>
               </div>
 
-              {/* モード切替 */}
               <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
                 {[
                   { v: "none", label: "なし" },
@@ -426,7 +485,9 @@ export default function NewPostPage() {
                       onClick={() => setPriceMode(x.v as PriceMode)}
                       className={[
                         "h-8 rounded-full px-4 text-xs font-medium transition",
-                        active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
+                        active
+                          ? "bg-white shadow-sm text-slate-900"
+                          : "text-slate-600 hover:text-slate-800",
                       ].join(" ")}
                     >
                       {x.label}
@@ -492,7 +553,7 @@ export default function NewPostPage() {
               />
             </div>
 
-            {/* 店舗選択（元のまま） */}
+            {/* 店舗選択 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="flex items-center gap-1">

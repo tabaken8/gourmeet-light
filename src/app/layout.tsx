@@ -30,16 +30,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
-      <body className="min-h-screen bg-[#fffaf5] text-black/90">
-        {/* 共通ヘッダー（ここだけ max幅でOK） */}
-        <header className="border-b border-black/[.06] bg-white/90 backdrop-blur">
+      {/* min-h は globals.css の body { min-height: 100dvh } に任せる */}
+      <body className="bg-[#fffaf5] text-black/90">
+        {/* PC用ヘッダー（モバイルでは非表示） */}
+        <header className="hidden md:block border-b border-black/[.06] bg-white/90 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
             <Link href="/" className="font-semibold tracking-wide">
               Gourmeet
@@ -48,10 +45,8 @@ export default function RootLayout({
           </div>
         </header>
 
-        {/* ✅ 本文は幅制限しない（各ページのlayoutに任せる） */}
         <main className="w-full">{children}</main>
 
-        {/* ✅ フッター：プライバシーポリシー / 利用規約リンクを常時表示 */}
         <footer className="border-t border-black/[.06] bg-white/70 py-6 text-center text-xs text-black/60">
           <div className="mb-2 flex items-center justify-center gap-4">
             <Link href="/privacy" className="underline underline-offset-2">

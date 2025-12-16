@@ -2,15 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Home,
-  Search,
-  Bell,
-  MessageCircle,
-  UserPlus,
-  Plus,
-  Map,
-} from "lucide-react";
+import { Home, Search, Bell, UserPlus, Plus, Map } from "lucide-react";
 import { useNavBadges } from "@/hooks/useNavBadges";
 
 function Badge({ count }: { count?: number }) {
@@ -50,6 +42,7 @@ function IconButton({
       aria-label={ariaLabel}
       className={`
         relative inline-flex h-11 w-11 items-center justify-center rounded-full
+        transition-colors
         ${active ? "bg-black/[.06]" : "hover:bg-black/[.04]"}
       `}
     >
@@ -60,14 +53,7 @@ function IconButton({
 
 export default function MobileHeaderNav({ name }: { name?: string }) {
   const pathname = usePathname();
-  const {
-    avatarUrl,
-    notifCount,
-    dmCount,
-    followReqCount,
-    timelineDot,
-    displayNameSafe,
-  } = useNavBadges(name);
+  const { avatarUrl, notifCount, followReqCount, timelineDot, displayNameSafe } = useNavBadges(name);
 
   const isActive = (p: string) => pathname === p || pathname.startsWith(p + "/");
 
@@ -75,24 +61,20 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
     <div className="md:hidden">
       <header
         className="
-          fixed left-0 right-0 top-0 z-50
-          bg-white/90 backdrop-blur
+          sticky top-0 z-50
           border-b border-black/[.06]
+          bg-white/90 backdrop-blur
+          pt-[env(safe-area-inset-top)]
         "
       >
         {/* 1段目：ブランド行 */}
-        <div className="h-12 px-3 flex items-center justify-between">
+        <div className="flex h-12 items-center justify-between px-3">
           <Link href="/timeline" className="text-[15px] font-bold tracking-tight">
             Gourmeet
           </Link>
 
-          {/* 右側は“少数だけ”にするのがミソ（例：通知） */}
           <div className="flex items-center gap-1">
-            <IconButton
-              href="/notifications"
-              active={isActive("/notifications")}
-              ariaLabel="通知"
-            >
+            <IconButton href="/notifications" active={isActive("/notifications")} ariaLabel="通知">
               <Bell size={20} />
               <Badge count={notifCount} />
             </IconButton>
@@ -101,6 +83,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               href="/account"
               className={`
                 relative inline-flex h-10 w-10 items-center justify-center rounded-full
+                transition-colors
                 ${isActive("/account") ? "bg-black/[.06]" : "hover:bg-black/[.04]"}
               `}
               aria-label={displayNameSafe || "プロフィール"}
@@ -122,7 +105,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </div>
         </div>
 
-        {/* 2段目：ナビ行（タップしやすく等間隔） */}
+        {/* 2段目：ナビ行 */}
         <div className="px-2 pb-2">
           <div
             className="
@@ -130,6 +113,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               rounded-2xl bg-black/[.03] px-2 py-1
             "
           >
+            {/* 左2つ */}
             <IconButton href="/timeline" active={isActive("/timeline")} ariaLabel="ホーム">
               <Home size={20} />
               <Dot on={timelineDot} />
@@ -139,11 +123,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Search size={20} />
             </IconButton>
 
-            <IconButton href="/map" active={isActive("/map")} ariaLabel="マップ">
-              <Map size={20} />
-            </IconButton>
-
-            {/* Post：中央で強調 */}
+            {/* ✅ 真ん中：投稿 */}
             <Link
               href="/posts/new"
               className="
@@ -156,6 +136,11 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Plus size={20} />
             </Link>
 
+            {/* 右2つ */}
+            <IconButton href="/map" active={isActive("/map")} ariaLabel="マップ">
+              <Map size={20} />
+            </IconButton>
+
             <IconButton
               href="/follow-requests"
               active={isActive("/follow-requests")}
@@ -164,21 +149,9 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <UserPlus size={20} />
               <Badge count={followReqCount} />
             </IconButton>
-
-            <IconButton
-              href="/messages"
-              active={isActive("/messages")}
-              ariaLabel="メッセージ"
-            >
-              <MessageCircle size={20} />
-              <Badge count={dmCount} />
-            </IconButton>
           </div>
         </div>
       </header>
-
-      {/* 固定ヘッダーぶんの押し下げ：12 + (nav行の高さ≈56) くらい */}
-      <div className="h-[104px]" />
     </div>
   );
 }

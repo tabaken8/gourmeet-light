@@ -401,8 +401,7 @@ export default function SavedPlacesMap() {
 
     setError(null);
 
-    const target_collection_id =
-      mode === "this" ? activeCollectionId : null;
+    const target_collection_id = mode === "this" ? activeCollectionId : null;
 
     const { error: rpcErr } = await supabase.rpc("remove_place_from_my_collections", {
       target_place_id: confirm.placeId,
@@ -416,13 +415,6 @@ export default function SavedPlacesMap() {
 
     setConfirm({ open: false, placeId: null, placeName: null });
 
-    // フィルタが「このコレクション」だった場合、消えたらAllに戻す方が体験が良い
-    //（0件になって“壊れた感”を出しづらい）
-    if (mode === "this") {
-      // placeがそのコレクションから消えて0になる可能性
-      // → そのままでもOKだが、気持ち良さ優先で一旦そのままにする
-    }
-
     await fetchSaved();
   };
 
@@ -434,8 +426,18 @@ export default function SavedPlacesMap() {
   return (
     <>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
-        {/* 左：リスト */}
-        <div className="rounded-2xl border border-black/10 bg-white p-3 shadow-sm">
+        {/* ✅ Map：モバイルでは上、PCでは右 */}
+        <div className="order-1 lg:order-2 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
+            <div className="text-sm font-semibold">Map</div>
+            <div className="text-xs text-black/50">{mappable.length} pins</div>
+          </div>
+
+          <div className="h-[65vh] w-full" ref={mapDivRef} />
+        </div>
+
+        {/* ✅ リスト：モバイルでは下、PCでは左 */}
+        <div className="order-2 lg:order-1 rounded-2xl border border-black/10 bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <div className="text-sm font-semibold">
               保存した場所 <span className="text-black/40">・{activeName}</span>
@@ -559,16 +561,6 @@ export default function SavedPlacesMap() {
             </div>
           )}
         </div>
-
-        {/* 右：Map */}
-        <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
-            <div className="text-sm font-semibold">Map</div>
-            <div className="text-xs text-black/50">{mappable.length} pins</div>
-          </div>
-
-          <div className="h-[65vh] w-full" ref={mapDivRef} />
-        </div>
       </div>
 
       {/* 削除モーダル */}
@@ -587,12 +579,8 @@ export default function SavedPlacesMap() {
             </div>
 
             <div className="text-sm text-black/70">
-              <div className="font-medium text-black">
-                {confirm.placeName ?? "この場所"}
-              </div>
-              <div className="mt-1 text-xs text-black/50">
-                どう削除しますか？
-              </div>
+              <div className="font-medium text-black">{confirm.placeName ?? "この場所"}</div>
+              <div className="mt-1 text-xs text-black/50">どう削除しますか？</div>
             </div>
 
             <div className="mt-4 space-y-2">
