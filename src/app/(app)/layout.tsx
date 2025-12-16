@@ -1,3 +1,4 @@
+// app/(app)/layout.tsx
 export const dynamic = "force-dynamic";
 
 import Sidebar from "@/components/Sidebar";
@@ -9,7 +10,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* PC: 左サイドバー */}
       <Sidebar />
 
-      {/* Mobile: 上ヘッダー（fixed） */}
+      {/* Mobile: 上ヘッダー（fixed / 2段） */}
       <MobileHeaderNav />
 
       <main
@@ -17,7 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           min-h-screen w-full
           px-0 md:px-6
           py-6
-          pt-14 md:pt-6
+          pt-[104px] md:pt-6
           md:pl-[240px]
         "
       >
