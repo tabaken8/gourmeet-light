@@ -51,8 +51,19 @@ export default function RootLayout({
         {/* ✅ 本文は幅制限しない（各ページのlayoutに任せる） */}
         <main className="w-full">{children}</main>
 
-        <footer className="border-t border-black/[.06] py-6 text-center text-xs text-black/60">
-          © 2025 Gourmeet co.ltd. All rights reserved.
+        {/* ✅ フッター：プライバシーポリシー / 利用規約リンクを常時表示 */}
+        <footer className="border-t border-black/[.06] bg-white/70 py-6 text-center text-xs text-black/60">
+          <div className="mb-2 flex items-center justify-center gap-4">
+            <Link href="/privacy" className="underline underline-offset-2">
+              プライバシーポリシー
+            </Link>
+            <span className="opacity-40">|</span>
+            <Link href="/terms" className="underline underline-offset-2">
+              利用規約
+            </Link>
+          </div>
+
+          <div>© 2025 Gourmeet co.ltd. All rights reserved.</div>
         </footer>
       </body>
     </html>
