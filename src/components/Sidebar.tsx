@@ -13,6 +13,7 @@ import {
   UserPlus,
   LogOut,
   UserRound,
+  Map, // ✅ 追加
 } from "lucide-react";
 
 import { useNavBadges } from "@/hooks/useNavBadges";
@@ -75,7 +76,6 @@ function NavItem({
         )}
       </div>
 
-      {/* ラベル：サイドバー hover で表示 */}
       <span
         className="
           overflow-hidden whitespace-nowrap
@@ -103,7 +103,6 @@ export default function Sidebar({ name }: { name?: string }) {
 
   const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
 
-  // 未ログイン時に「その画面文脈のログイン」に誘導
   const gate = (href: string, allowGuest = false) => {
     if (allowGuest) return href;
     return isAuthed ? href : `/auth/required?next=${encodeURIComponent(href)}`;
@@ -140,7 +139,6 @@ export default function Sidebar({ name }: { name?: string }) {
       </div>
 
       <nav className="flex flex-col gap-2 relative">
-        {/* ホームは “friends” を主導線にしてログイン誘導を強める */}
         <NavItem
           href={gate("/timeline?tab=friends")}
           label="ホーム"
@@ -148,8 +146,10 @@ export default function Sidebar({ name }: { name?: string }) {
           dot={timelineDot}
         />
 
-        {/* 公開でもOKなら true にしておく（あなたの運用に合わせて） */}
         <NavItem href={gate("/search", true)} label="検索" icon={Search} />
+
+        {/* ✅ Map 追加 */}
+        <NavItem href={gate("/map")} label="マップ" icon={Map} />
 
         <NavItem
           href={gate("/notifications")}
@@ -216,7 +216,6 @@ export default function Sidebar({ name }: { name?: string }) {
           {displayNameMemo}
         </div>
 
-        {/* 未ログインならログアウトは出しても意味ないので required へ */}
         <form action="/auth/logout" method="post">
           <button
             className="

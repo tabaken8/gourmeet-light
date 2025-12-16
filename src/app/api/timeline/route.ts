@@ -49,8 +49,9 @@ export async function GET(req: Request) {
     return json({ error: "Unauthorized" }, 401);
   }
 
+  // ✅ 追加: recommend_score / price_yen / price_range を返す
   const postSelect =
-    "id, content, user_id, created_at, image_urls, image_variants, place_name, place_address, place_id";
+    "id, content, user_id, created_at, image_urls, image_variants, place_name, place_address, place_id, recommend_score, price_yen, price_range";
 
   // ---------------- discover（未ログインOK） ----------------
   if (tab === "discover") {
@@ -107,6 +108,12 @@ export async function GET(req: Request) {
       place_name: r.place_name,
       place_address: r.place_address,
       place_id: r.place_id,
+
+      // ✅ 追加: TimelineFeedが読む
+      recommend_score: r.recommend_score ?? null,
+      price_yen: r.price_yen ?? null,
+      price_range: r.price_range ?? null,
+
       profile: r.profiles
         ? {
             id: r.profiles.id,
@@ -144,7 +151,7 @@ export async function GET(req: Request) {
 
   let pq = supabase
     .from("posts")
-    .select(postSelect)
+    .select(postSelect) // ✅ ここも postSelect を使ってるので追加分が返る
     .in("user_id", visibleUserIds)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -194,7 +201,7 @@ export async function GET(req: Request) {
   }
 
   const posts = base.map((p) => ({
-    ...p,
+    ...p, // ✅ postSelectで取ってる recommend_score / price_* も自然に入る
     profile: profMap[p.user_id] ?? null,
     placePhotos: p.place_id ? placePhotoMap[p.place_id] ?? null : null,
     likeCount: likeCountMap[p.id] ?? 0,

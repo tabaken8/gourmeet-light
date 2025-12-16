@@ -42,6 +42,11 @@ type PostRow = {
   place_address: string | null;
   place_id: string | null;
 
+  // ✅ 追加（APIが返す想定）
+  recommend_score?: number | null; // 1-10
+  price_yen?: number | null; // integer
+  price_range?: string | null; // "~999" etc
+
   profile: ProfileLite | null;
   placePhotos?: PlacePhotos | null;
 
@@ -93,6 +98,68 @@ function GoogleMark({ className = "" }: { className?: string }) {
         d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
       />
     </svg>
+  );
+}
+
+function formatYen(n: number) {
+  try {
+    return new Intl.NumberFormat("ja-JP").format(n);
+  } catch {
+    return String(n);
+  }
+}
+
+function formatPrice(p: PostRow): string | null {
+  if (typeof p.price_yen === "number" && Number.isFinite(p.price_yen)) {
+    return `¥${formatYen(Math.max(0, Math.floor(p.price_yen)))}`;
+  }
+  if (p.price_range) {
+    // DBの enum を人間向けに
+    switch (p.price_range) {
+      case "~999":
+        return "〜¥999";
+      case "1000-1999":
+        return "¥1,000〜¥1,999";
+      case "2000-2999":
+        return "¥2,000〜¥2,999";
+      case "3000-3999":
+        return "¥3,000〜¥3,999";
+      case "4000-4999":
+        return "¥4,000〜¥4,999";
+      case "5000-6999":
+        return "¥5,000〜¥6,999";
+      case "7000-9999":
+        return "¥7,000〜¥9,999";
+      case "10000+":
+        return "¥10,000〜";
+      default:
+        return p.price_range;
+    }
+  }
+  return null;
+}
+
+function Badge({
+  children,
+  tone = "slate",
+}: {
+  children: React.ReactNode;
+  tone?: "slate" | "orange";
+}) {
+  const cls =
+    tone === "orange"
+      ? "border-orange-200 bg-orange-50 text-orange-800"
+      : "border-black/10 bg-white text-slate-700";
+
+  return (
+    <span
+      className={[
+        "inline-flex h-6 items-center rounded-full border px-2 text-[11px] font-medium",
+        cls,
+      ].join(" ")}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -235,6 +302,14 @@ export default function TimelineFeed({
           setOpenPhotos((prev) => ({ ...prev, [p.id]: !prev[p.id] }));
         };
 
+        // ✅ 表示用（おすすめ度 / 価格）
+        const score =
+          typeof p.recommend_score === "number" && p.recommend_score >= 1 && p.recommend_score <= 10
+            ? p.recommend_score
+            : null;
+
+        const priceLabel = formatPrice(p);
+
         return (
           <article
             key={p.id}
@@ -256,11 +331,7 @@ export default function TimelineFeed({
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={avatar}
-                          alt=""
-                          className="h-9 w-9 rounded-full object-cover"
-                        />
+                        <img src={avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
                       ) : (
                         initial
                       )}
@@ -274,17 +345,12 @@ export default function TimelineFeed({
                         >
                           {display}
                         </Link>
-                        {!isPublic && (
-                          <Lock size={12} className="shrink-0 text-slate-500" />
-                        )}
+                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-slate-500">
                         <span>{formatJST(p.created_at)}</span>
-                        <Link
-                          href={`/posts/${p.id}`}
-                          className="text-orange-600 hover:underline"
-                        >
+                        <Link href={`/posts/${p.id}`} className="text-orange-600 hover:underline">
                           詳細
                         </Link>
                       </div>
@@ -296,11 +362,7 @@ export default function TimelineFeed({
 
                 {timelineImageUrls.length > 0 && (
                   <Link href={`/posts/${p.id}`} className="block">
-                    <PostImageCarousel
-                      postId={p.id}
-                      imageUrls={timelineImageUrls}
-                      syncUrl={false}
-                    />
+                    <PostImageCarousel postId={p.id} imageUrls={timelineImageUrls} syncUrl={false} />
                   </Link>
                 )}
 
@@ -311,8 +373,8 @@ export default function TimelineFeed({
                     </p>
                   )}
 
-                  {/* 店名 +（モバイルだけ）Google写真トグル */}
-                  {(p.place_name || hasPlacePhotos) && (
+                  {/* ✅ 店名行：左=店名、右=おすすめ/価格バッジ +（モバイルのみ）Google写真トグル */}
+                  {(p.place_name || hasPlacePhotos || score || priceLabel) && (
                     <div className="flex items-center gap-2">
                       {p.place_name ? (
                         <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-orange-700">
@@ -334,13 +396,20 @@ export default function TimelineFeed({
                         <div className="flex-1" />
                       )}
 
+                      {/* 右側：バッジ群（おすすめ / 価格） */}
+                      {(score || priceLabel) && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          {score ? <Badge tone="orange">おすすめ {score}/10</Badge> : null}
+                          {priceLabel ? <Badge>{priceLabel}</Badge> : null}
+                        </div>
+                      )}
+
+                      {/* モバイルだけ：Google写真トグル */}
                       {hasPlacePhotos && (
                         <button
                           type="button"
                           onClick={togglePhotos}
-                          aria-label={
-                            isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"
-                          }
+                          aria-label={isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"}
                           className="
                             md:hidden
                             inline-flex h-8 w-8 items-center justify-center
@@ -375,12 +444,7 @@ export default function TimelineFeed({
                 </div>
 
                 <div className="px-4 pb-4">
-                  <PostComments
-                    postId={p.id}
-                    postUserId={p.user_id}
-                    meId={meId}
-                    previewCount={2}
-                  />
+                  <PostComments postId={p.id} postUserId={p.user_id} meId={meId} previewCount={2} />
                 </div>
               </div>
 
@@ -414,9 +478,7 @@ export default function TimelineFeed({
 
       <div ref={sentinelRef} className="h-10" />
 
-      {loading && (
-        <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>
-      )}
+      {loading && <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>}
 
       {error && !error.includes("Unauthorized") && (
         <div className="pb-8 text-center text-xs text-red-600">{error}</div>

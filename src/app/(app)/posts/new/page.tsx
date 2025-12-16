@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Image as ImageIcon, MapPin, X } from "lucide-react";
@@ -94,7 +94,6 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   const mime = useWebp ? "image/webp" : "image/jpeg";
   const outExt = useWebp ? "webp" : "jpg";
 
-  // 一覧/タイムライン向け
   const thumb = await resizeToFile(normalized, {
     maxLongEdge: 480,
     mime,
@@ -102,7 +101,6 @@ async function prepareImage(file: File): Promise<PreparedImage> {
     outExt,
   });
 
-  // 詳細向け（原寸は重いので抑える）
   const full = await resizeToFile(normalized, {
     maxLongEdge: 1600,
     mime,
@@ -119,6 +117,32 @@ async function prepareImage(file: File): Promise<PreparedImage> {
     previewUrl,
     label: file.name,
   };
+}
+
+// 価格レンジ候補（DBのチェック制約と一致させる）
+const PRICE_RANGES = [
+  { value: "~999", label: "〜¥999" },
+  { value: "1000-1999", label: "¥1,000〜¥1,999" },
+  { value: "2000-2999", label: "¥2,000〜¥2,999" },
+  { value: "3000-3999", label: "¥3,000〜¥3,999" },
+  { value: "4000-4999", label: "¥4,000〜¥4,999" },
+  { value: "5000-6999", label: "¥5,000〜¥6,999" },
+  { value: "7000-9999", label: "¥7,000〜¥9,999" },
+  { value: "10000+", label: "¥10,000〜" },
+] as const;
+
+type PriceMode = "none" | "exact" | "range";
+
+function onlyDigits(s: string) {
+  return s.replace(/[^\d]/g, "");
+}
+
+function formatYen(n: number) {
+  try {
+    return new Intl.NumberFormat("ja-JP").format(n);
+  } catch {
+    return String(n);
+  }
 }
 
 export default function NewPostPage() {
@@ -138,6 +162,24 @@ export default function NewPostPage() {
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
   const [isSearchingPlace, setIsSearchingPlace] = useState(false);
 
+  // ✅ おすすめ度（1〜10）
+  const [recommendScore, setRecommendScore] = useState<number>(7);
+
+  // ✅ 価格（実額 or レンジ）
+  const [priceMode, setPriceMode] = useState<PriceMode>("none");
+  const [priceYenText, setPriceYenText] = useState<string>("");
+  const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>(
+    "3000-3999"
+  );
+
+  const priceYenValue = useMemo(() => {
+    const digits = onlyDigits(priceYenText);
+    if (!digits) return null;
+    const n = Number(digits);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.floor(n));
+  }, [priceYenText]);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, [supabase]);
@@ -152,9 +194,7 @@ export default function NewPostPage() {
     const timer = setTimeout(async () => {
       try {
         setIsSearchingPlace(true);
-        const res = await fetch(
-          `/api/places?q=${encodeURIComponent(placeQuery.trim())}`
-        );
+        const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
         const data = await res.json();
         setPlaceResults((data.results ?? []).slice(0, 6));
       } catch (e) {
@@ -199,13 +239,8 @@ export default function NewPostPage() {
 
     try {
       const limited = files.slice(0, Math.max(0, MAX - imgs.length));
-
-      // 逐次（安全・安定）
       const prepared: PreparedImage[] = [];
-      for (const f of limited) {
-        prepared.push(await prepareImage(f));
-      }
-
+      for (const f of limited) prepared.push(await prepareImage(f));
       setImgs((prev) => [...prev, ...prepared]);
     } catch (e: any) {
       setMsg(e?.message ?? "画像の前処理に失敗しました");
@@ -232,13 +267,25 @@ export default function NewPostPage() {
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
 
+    // 価格の整合（DB制約に合わせる）
+    const price_yen =
+      priceMode === "exact" ? priceYenValue : null;
+
+    const price_range =
+      priceMode === "range" ? priceRange : null;
+
+    if (priceMode === "exact" && (price_yen === null || price_yen === 0)) {
+      // 0円は入力ミスが多いので弾く（好みで外してOK）
+      return setMsg("価格（実額）を入力してください（例: 3500）。不要なら「なし」にできます。");
+    }
+
     setBusy(true);
     setMsg(null);
 
     try {
       const CACHE = "31536000"; // 1年
       const variants: Array<{ full: string; thumb: string }> = [];
-      const compatFullUrls: string[] = []; // image_urls互換用（残すなら）
+      const compatFullUrls: string[] = [];
 
       for (const img of imgs) {
         const base = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -249,7 +296,6 @@ export default function NewPostPage() {
         const fullPath = `${uid}/${base}_full.${fullExt}`;
         const thumbPath = `${uid}/${base}_thumb.${thumbExt}`;
 
-        // 先にthumb（軽い）→ full
         const upThumb = await supabase.storage
           .from("post-images")
           .upload(thumbPath, img.thumb, {
@@ -268,13 +314,8 @@ export default function NewPostPage() {
           });
         if (upFull.error) throw upFull.error;
 
-        const { data: pubThumb } = supabase.storage
-          .from("post-images")
-          .getPublicUrl(thumbPath);
-
-        const { data: pubFull } = supabase.storage
-          .from("post-images")
-          .getPublicUrl(fullPath);
+        const { data: pubThumb } = supabase.storage.from("post-images").getPublicUrl(thumbPath);
+        const { data: pubFull } = supabase.storage.from("post-images").getPublicUrl(fullPath);
 
         variants.push({ thumb: pubThumb.publicUrl, full: pubFull.publicUrl });
         compatFullUrls.push(pubFull.publicUrl);
@@ -283,11 +324,16 @@ export default function NewPostPage() {
       const { error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
         content,
-        image_variants: variants, // ★新カラムへ保存
-        image_urls: compatFullUrls, // ★互換で残す（不要なら消してOK）
+        image_variants: variants,
+        image_urls: compatFullUrls,
         place_id: selectedPlace?.place_id ?? null,
         place_name: selectedPlace?.name ?? null,
         place_address: selectedPlace?.formatted_address ?? null,
+
+        // ✅ 追加
+        recommend_score: recommendScore,
+        price_yen,
+        price_range,
       });
       if (insErr) throw insErr;
 
@@ -314,6 +360,123 @@ export default function NewPostPage() {
 
         <div className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-6">
           <form onSubmit={submit} className="space-y-5">
+            {/* ✅ おすすめ度 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-medium text-slate-700">
+                  おすすめ度 <span className="text-orange-600">{recommendScore}</span>/10
+                </span>
+                <span className="text-[11px] text-slate-400">ポイント（あとで変えられる）</span>
+              </div>
+
+              {/* スライダー（指で気持ちいい） */}
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={recommendScore}
+                onChange={(e) => setRecommendScore(Number(e.target.value))}
+                className="w-full accent-orange-600"
+                aria-label="おすすめ度"
+              />
+
+              {/* 10段階のピル（タップでも選べる） */}
+              <div className="flex flex-wrap gap-2">
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+                  const active = n === recommendScore;
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setRecommendScore(n)}
+                      className={[
+                        "h-8 min-w-[32px] rounded-full px-3 text-xs font-medium transition",
+                        active
+                          ? "bg-orange-600 text-white shadow-sm"
+                          : "bg-orange-50 text-slate-700 hover:bg-orange-100 border border-orange-100",
+                      ].join(" ")}
+                    >
+                      {n}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ✅ 価格（実額/レンジ/なし） */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-medium text-slate-700">価格（任意）</span>
+                <span className="text-[11px] text-slate-400">あとで検索/絞り込みに使える</span>
+              </div>
+
+              {/* モード切替 */}
+              <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
+                {[
+                  { v: "none", label: "なし" },
+                  { v: "exact", label: "実額" },
+                  { v: "range", label: "レンジ" },
+                ].map((x) => {
+                  const active = priceMode === (x.v as PriceMode);
+                  return (
+                    <button
+                      key={x.v}
+                      type="button"
+                      onClick={() => setPriceMode(x.v as PriceMode)}
+                      className={[
+                        "h-8 rounded-full px-4 text-xs font-medium transition",
+                        active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
+                      ].join(" ")}
+                    >
+                      {x.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {priceMode === "exact" && (
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-2 rounded-full border border-orange-100 bg-white px-3 py-2">
+                    <span className="text-xs text-slate-400">¥</span>
+                    <input
+                      inputMode="numeric"
+                      value={priceYenText}
+                      onChange={(e) => setPriceYenText(onlyDigits(e.target.value))}
+                      placeholder="例: 3500"
+                      className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
+                    />
+                  </div>
+                  <div className="text-[11px] text-slate-500 min-w-[88px] text-right">
+                    {priceYenValue ? `≈ ¥${formatYen(priceYenValue)}` : ""}
+                  </div>
+                </div>
+              )}
+
+              {priceMode === "range" && (
+                <div className="rounded-2xl border border-orange-100 bg-white px-3 py-2">
+                  <select
+                    value={priceRange}
+                    onChange={(e) => setPriceRange(e.target.value as any)}
+                    className="w-full bg-transparent text-xs outline-none"
+                  >
+                    {PRICE_RANGES.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {priceMode === "none" && (
+                <div className="text-[11px] text-slate-400">
+                  価格は未入力でもOK（あとから足せる運用でも良い）
+                </div>
+              )}
+            </div>
+
+            {/* 本文 */}
             <div>
               <textarea
                 className="h-32 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-0"
@@ -421,9 +584,7 @@ export default function NewPostPage() {
               <div className="space-y-2">
                 <p className="text-xs text-slate-500">
                   画像プレビュー{" "}
-                  {processing && (
-                    <span className="text-orange-500">（HEIC変換/圧縮中…）</span>
-                  )}
+                  {processing && <span className="text-orange-500">（HEIC変換/圧縮中…）</span>}
                 </p>
                 <ul className="grid grid-cols-3 gap-2">
                   {imgs.map((img) => (

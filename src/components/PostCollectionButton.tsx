@@ -20,10 +20,7 @@ type PendingUndo = {
   postId: string;
 };
 
-export default function PostCollectionButton({
-  postId,
-  className,
-}: PostCollectionButtonProps) {
+export default function PostCollectionButton({ postId, className }: PostCollectionButtonProps) {
   const supabase = createClientComponentClient();
 
   const [open, setOpen] = useState(false);
@@ -40,7 +37,6 @@ export default function PostCollectionButton({
   const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const removeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Portal のためにマウント後に body を使えるようにする
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -50,7 +46,6 @@ export default function PostCollectionButton({
     };
   }, []);
 
-  // モーダル開いた時にコレクション取得
   useEffect(() => {
     if (!open) return;
 
@@ -101,9 +96,7 @@ export default function PostCollectionButton({
 
       if (!postCollectionsRes.error && postCollectionsRes.data) {
         setIncludedIds(
-          (postCollectionsRes.data as { collection_id: string }[]).map(
-            (r) => r.collection_id
-          )
+          (postCollectionsRes.data as { collection_id: string }[]).map((r) => r.collection_id)
         );
       }
 
@@ -117,7 +110,6 @@ export default function PostCollectionButton({
 
   const includedSet = new Set(includedIds);
 
-  // トースト表示機能
   const startToast = (collectionId: string) => {
     if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
     if (removeTimerRef.current) clearTimeout(removeTimerRef.current);
@@ -158,7 +150,33 @@ export default function PostCollectionButton({
     }, 300);
   };
 
-  // 既存コレクションに追加
+  // ✅ places に place_id が無いと FK/trigger で死ぬので「事前に ensure」
+  const ensurePlaceRowExistsForThisPost = async () => {
+    // posts から place_id を取る（あなたが placeId 管理してる前提）
+    const { data: post, error: postErr } = await supabase
+      .from("posts")
+      .select("place_id")
+      .eq("id", postId)
+      .single();
+
+    if (postErr || !post?.place_id) {
+      throw new Error("投稿の place_id を取得できませんでした");
+    }
+
+    const res = await fetch("/api/places/ensure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ placeId: post.place_id }),
+    });
+
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j?.error ?? "places の ensure に失敗しました");
+    }
+
+    return post.place_id as string;
+  };
+
   const handleAddToCollection = async (collectionId: string) => {
     if (includedSet.has(collectionId)) return;
 
@@ -175,9 +193,15 @@ export default function PostCollectionButton({
     }
 
     const user = session?.user;
-
     if (!user) {
       setError("コレクションを使うにはログインが必要です");
+      return;
+    }
+
+    try {
+      await ensurePlaceRowExistsForThisPost();
+    } catch (e: any) {
+      setError(e?.message ?? "場所情報の準備に失敗しました");
       return;
     }
 
@@ -191,15 +215,11 @@ export default function PostCollectionButton({
       return;
     }
 
-    setIncludedIds((prev) =>
-      prev.includes(collectionId) ? prev : [...prev, collectionId]
-    );
-
+    setIncludedIds((prev) => (prev.includes(collectionId) ? prev : [...prev, collectionId]));
     setOpen(false);
     startToast(collectionId);
   };
 
-  // 新規コレクション作成
   const handleCreateAndAdd = async () => {
     if (!newName.trim()) {
       setError("コレクション名を入力してください");
@@ -221,9 +241,20 @@ export default function PostCollectionButton({
     }
 
     const user = session?.user;
-
     if (!user) {
       setError("コレクションを使うにはログインが必要です");
+      setCreating(false);
+      return;
+    }
+
+    let ensuredOk = false;
+    try {
+      await ensurePlaceRowExistsForThisPost();
+      ensuredOk = true;
+    } catch (e: any) {
+      setError(e?.message ?? "場所情報の準備に失敗しました");
+    }
+    if (!ensuredOk) {
       setCreating(false);
       return;
     }
@@ -243,12 +274,10 @@ export default function PostCollectionButton({
       return;
     }
 
-    const { error: linkError } = await supabase
-      .from("post_collections")
-      .insert({
-        collection_id: created.id,
-        post_id: postId,
-      });
+    const { error: linkError } = await supabase.from("post_collections").insert({
+      collection_id: created.id,
+      post_id: postId,
+    });
 
     if (linkError && (linkError as any).code !== "23505") {
       setError("コレクションへの追加に失敗しました");
@@ -257,7 +286,6 @@ export default function PostCollectionButton({
     }
 
     setIncludedIds((prev) => [...prev, created.id]);
-
     setCreating(false);
     setOpen(false);
     setNewName("");
@@ -266,7 +294,6 @@ export default function PostCollectionButton({
 
   return (
     <>
-      {/* プラスボタン */}
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -279,13 +306,11 @@ export default function PostCollectionButton({
         <Plus className="h-5 w-5" />
       </button>
 
-      {/* --- モーダル（Portal） --- */}
       {mounted &&
         open &&
         createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
             <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-lg">
-              {/* ヘッダー */}
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold">コレクションに追加</h2>
                 <button
@@ -297,21 +322,17 @@ export default function PostCollectionButton({
                 </button>
               </div>
 
-              {/* エラー表示 */}
               {error && (
                 <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
                   {error}
                 </div>
               )}
 
-              {/* 既存コレクション一覧 */}
               <div className="mb-4 max-h-64 space-y-2 overflow-y-auto">
                 {loading ? (
                   <p className="text-xs text-black/50">読み込み中...</p>
                 ) : collections.length === 0 ? (
-                  <p className="text-xs text-black/50">
-                    まだコレクションがありません。
-                  </p>
+                  <p className="text-xs text-black/50">まだコレクションがありません。</p>
                 ) : (
                   collections.map((c) => {
                     const included = includedSet.has(c.id);
@@ -319,9 +340,7 @@ export default function PostCollectionButton({
                       <button
                         key={c.id}
                         type="button"
-                        onClick={() =>
-                          included ? undefined : handleAddToCollection(c.id)
-                        }
+                        onClick={() => (included ? undefined : handleAddToCollection(c.id))}
                         disabled={included}
                         className={[
                           "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors",
@@ -346,7 +365,6 @@ export default function PostCollectionButton({
                 )}
               </div>
 
-              {/* 新規作成 */}
               <div className="space-y-2 border-t border-black/10 pt-3">
                 <label className="block text-xs font-medium text-black/60">
                   新しいコレクションを作成
@@ -372,7 +390,6 @@ export default function PostCollectionButton({
           document.body
         )}
 
-      {/* --- トースト（Portal に移行） --- */}
       {mounted &&
         toastVisible &&
         createPortal(
@@ -380,9 +397,7 @@ export default function PostCollectionButton({
             <div
               className={[
                 "inline-flex items-center gap-4 rounded-2xl bg-black/85 px-5 py-3 text-sm text-white shadow-lg transition-all duration-500 transform",
-                toastShown
-                  ? "opacity-100 translate-y-0"
-                  : "opacity-0 -translate-y-5",
+                toastShown ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-5",
               ].join(" ")}
             >
               <span>コレクションに追加しました</span>
