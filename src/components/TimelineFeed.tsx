@@ -101,7 +101,7 @@ export default function TimelineFeed({
 
     const params = new URLSearchParams();
     params.set("tab", activeTab);
-    params.set("limit", "10");
+    params.set("limit", "5");
     if (!reset && cursor) params.set("cursor", cursor);
 
     try {
