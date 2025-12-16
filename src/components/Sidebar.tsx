@@ -3,7 +3,6 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
   Home,
   Search,
@@ -39,6 +38,7 @@ function NavItem({
     <Link
       href={href}
       className="
+        group
         flex items-center gap-3 rounded-lg px-3 py-2 text-base
         hover:bg-gray-100/80
       "
@@ -58,6 +58,7 @@ function NavItem({
           <UserRound size={22} />
         )}
 
+        {/* count badge */}
         <span
           className={`
             absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center
@@ -68,11 +69,13 @@ function NavItem({
           {count}
         </span>
 
+        {/* dot badge */}
         {dot && (
           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
         )}
       </div>
 
+      {/* ラベル：サイドバー hover で表示 */}
       <span
         className="
           overflow-hidden whitespace-nowrap
@@ -88,9 +91,8 @@ function NavItem({
 }
 
 export default function Sidebar({ name }: { name?: string }) {
-  const pathname = usePathname();
-
   const {
+    isAuthed,
     avatarUrl,
     displayNameSafe,
     notifCount,
@@ -100,6 +102,12 @@ export default function Sidebar({ name }: { name?: string }) {
   } = useNavBadges(name);
 
   const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
+
+  // 未ログイン時に「その画面文脈のログイン」に誘導
+  const gate = (href: string, allowGuest = false) => {
+    if (allowGuest) return href;
+    return isAuthed ? href : `/auth/required?next=${encodeURIComponent(href)}`;
+  };
 
   return (
     <aside
@@ -132,32 +140,49 @@ export default function Sidebar({ name }: { name?: string }) {
       </div>
 
       <nav className="flex flex-col gap-2 relative">
-        <NavItem href="/timeline" label="ホーム" icon={Home} dot={timelineDot} />
-        <NavItem href="/search" label="検索" icon={Search} />
-        <NavItem href="/notifications" label="通知" icon={Bell} count={notifCount} />
+        {/* ホームは “friends” を主導線にしてログイン誘導を強める */}
         <NavItem
-          href="/follow-requests"
+          href={gate("/timeline?tab=friends")}
+          label="ホーム"
+          icon={Home}
+          dot={timelineDot}
+        />
+
+        {/* 公開でもOKなら true にしておく（あなたの運用に合わせて） */}
+        <NavItem href={gate("/search", true)} label="検索" icon={Search} />
+
+        <NavItem
+          href={gate("/notifications")}
+          label="通知"
+          icon={Bell}
+          count={notifCount}
+        />
+
+        <NavItem
+          href={gate("/follow-requests")}
           label="フォローリクエスト"
           icon={UserPlus}
           count={followReqCount}
         />
+
         <NavItem
-          href="/messages"
-          label="メッセージ(随時実装予定)"
+          href={gate("/messages")}
+          label="メッセージ"
           icon={MessageCircle}
           count={dmCount}
         />
-        <NavItem href="/collection" label="コレクション" icon={Bookmark} />
+
+        <NavItem href={gate("/collection")} label="コレクション" icon={Bookmark} />
 
         <NavItem
-          href="/account"
+          href={gate("/account")}
           label="プロフィール"
           avatarUrl={avatarUrl}
           avatarAlt={displayNameMemo}
         />
 
         <Link
-          href="/posts/new"
+          href={gate("/posts/new")}
           className="
             mt-4 flex items-center justify-center gap-2
             rounded-full bg-orange-700 py-3 text-white font-semibold
@@ -191,6 +216,7 @@ export default function Sidebar({ name }: { name?: string }) {
           {displayNameMemo}
         </div>
 
+        {/* 未ログインならログアウトは出しても意味ないので required へ */}
         <form action="/auth/logout" method="post">
           <button
             className="

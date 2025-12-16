@@ -4,7 +4,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Lock, ChevronDown, ChevronUp } from "lucide-react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
@@ -12,6 +11,7 @@ import PostActions from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
+import LoginCard from "@/components/LoginCard";
 
 type ImageVariant = {
   thumb?: string | null;
@@ -73,74 +73,7 @@ function getTimelineImageUrls(p: PostRow): string[] {
   return legacy.filter((x): x is string => !!x);
 }
 
-/** ミニマルなログイン誘導（インスタっぽく“静か”） */
-function LoginGate({ onGoogle }: { onGoogle: () => Promise<void> }) {
-  return (
-    <div className="flex min-h-[44vh] items-center justify-center px-2">
-      <div className="w-full max-w-md rounded-2xl border border-black/[.06] bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-slate-900">ログインが必要です</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              友達の投稿を見る・投稿する・フォロー・コレクションなどが使えるようになります。
-            </p>
-          </div>
-
-          <div className="ml-3 flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
-            G
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-2">
-          <button
-            type="button"
-            onClick={onGoogle}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-black/10 bg-white text-sm font-medium text-slate-900 hover:bg-black/[.03]"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48" className="shrink-0">
-              <path
-                fill="#EA4335"
-                d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"
-              />
-              <path
-                fill="#4285F4"
-                d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z"
-              />
-              <path
-                fill="#FBBC04"
-                d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z"
-              />
-              <path
-                fill="#34A853"
-                d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
-              />
-            </svg>
-            Googleで続ける
-          </button>
-
-          <Link
-            href="/auth/login"
-            className="inline-flex h-11 w-full items-center justify-center rounded-full bg-orange-700 px-5 text-sm font-medium text-white hover:bg-orange-800"
-          >
-            メールでログイン
-          </Link>
-
-          <div className="mt-1 flex items-center justify-between text-xs">
-            <Link href="/auth/signup" className="text-orange-700 hover:underline">
-              アカウント作成
-            </Link>
-            <Link href="/timeline?tab=discover" className="text-slate-500 hover:underline">
-              まずは公開投稿を見る
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function GoogleMark({ className = "" }: { className?: string }) {
-  // “Gマークっぽい”最小SVG（テキストは使わない）
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className={className}>
       <path
@@ -180,24 +113,6 @@ export default function TimelineFeed({
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  const supabase = createClientComponentClient();
-
-  const handleGoogleLogin = async () => {
-    const redirectTo = `${
-      process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
-    }/auth/callback`;
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-
-    if (error) {
-      console.error(error);
-      alert("Googleログインに失敗しました: " + error.message);
-    }
-  };
 
   async function loadMore(reset = false) {
     if (loading) return;
@@ -260,8 +175,15 @@ export default function TimelineFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, done, loading, activeTab]);
 
+  // friendsタブで未ログインなら統一LoginCardへ
   if (error?.includes("Unauthorized") && activeTab === "friends") {
-    return <LoginGate onGoogle={handleGoogleLogin} />;
+    return (
+      <LoginCard
+        nextPath="/timeline?tab=friends"
+        title="続けるにはログイン"
+        description="友達の投稿を見る・投稿する・フォロー・コレクションなどが使えるようになります。"
+      />
+    );
   }
 
   if (posts.length === 0 && loading) {
@@ -283,8 +205,7 @@ export default function TimelineFeed({
   const MOBILE_PLACE_PHOTOS_MAX = 3;
 
   return (
-    // モバイルの左右余白を消す（親が px-4 想定）
-    <div className="flex flex-col items-stretch gap-6 -mx-4 md:mx-0">
+    <div className="flex flex-col items-stretch gap-6">
       {posts.map((p) => {
         const prof = p.profile;
         const display = prof?.display_name ?? "ユーザー";
@@ -335,7 +256,11 @@ export default function TimelineFeed({
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
+                        <img
+                          src={avatar}
+                          alt=""
+                          className="h-9 w-9 rounded-full object-cover"
+                        />
                       ) : (
                         initial
                       )}
@@ -349,12 +274,17 @@ export default function TimelineFeed({
                         >
                           {display}
                         </Link>
-                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
+                        {!isPublic && (
+                          <Lock size={12} className="shrink-0 text-slate-500" />
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-slate-500">
                         <span>{formatJST(p.created_at)}</span>
-                        <Link href={`/posts/${p.id}`} className="text-orange-600 hover:underline">
+                        <Link
+                          href={`/posts/${p.id}`}
+                          className="text-orange-600 hover:underline"
+                        >
                           詳細
                         </Link>
                       </div>
@@ -366,7 +296,11 @@ export default function TimelineFeed({
 
                 {timelineImageUrls.length > 0 && (
                   <Link href={`/posts/${p.id}`} className="block">
-                    <PostImageCarousel postId={p.id} imageUrls={timelineImageUrls} syncUrl={false} />
+                    <PostImageCarousel
+                      postId={p.id}
+                      imageUrls={timelineImageUrls}
+                      syncUrl={false}
+                    />
                   </Link>
                 )}
 
@@ -377,7 +311,7 @@ export default function TimelineFeed({
                     </p>
                   )}
 
-                  {/* 店名行：モバイルではここに “Google + ↓/↑” を同じ行で置いて冗長化を防ぐ */}
+                  {/* 店名 +（モバイルだけ）Google写真トグル */}
                   {(p.place_name || hasPlacePhotos) && (
                     <div className="flex items-center gap-2">
                       {p.place_name ? (
@@ -400,12 +334,13 @@ export default function TimelineFeed({
                         <div className="flex-1" />
                       )}
 
-                      {/* モバイルのみ：アイコンだけでトグル */}
                       {hasPlacePhotos && (
                         <button
                           type="button"
                           onClick={togglePhotos}
-                          aria-label={isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"}
+                          aria-label={
+                            isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"
+                          }
                           className="
                             md:hidden
                             inline-flex h-8 w-8 items-center justify-center
@@ -449,7 +384,7 @@ export default function TimelineFeed({
                 </div>
               </div>
 
-              {/* PCだけ右カラムで表示（従来通り） */}
+              {/* PC：右カラム */}
               <aside className="hidden md:block p-4">
                 {hasPlacePhotos ? (
                   <PlacePhotoGallery
@@ -463,7 +398,7 @@ export default function TimelineFeed({
               </aside>
             </div>
 
-            {/* モバイル：デフォ非表示 → アイコンで開いた時だけ出す（枚数も抑える） */}
+            {/* モバイル：開いた時だけ表示、枚数制限 */}
             {hasPlacePhotos && isPhotosOpen ? (
               <div className="md:hidden pb-4">
                 <PlacePhotoGallery
@@ -479,7 +414,9 @@ export default function TimelineFeed({
 
       <div ref={sentinelRef} className="h-10" />
 
-      {loading && <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>}
+      {loading && (
+        <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>
+      )}
 
       {error && !error.includes("Unauthorized") && (
         <div className="pb-8 text-center text-xs text-red-600">{error}</div>

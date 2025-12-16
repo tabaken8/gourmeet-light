@@ -333,7 +333,7 @@ export default function PostComments({
           <div className="text-xs text-slate-400">{placeholder}</div>
           <Link
             href="/auth/login"
-            className="rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+            className="rounded-full !bg-slate-900 px-3 py-1 text-xs font-medium !text-white hover:opacity-90"
           >
             ログイン
           </Link>
