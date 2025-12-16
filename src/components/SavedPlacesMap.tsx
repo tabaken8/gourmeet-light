@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { ExternalLink, MapPin, RefreshCw } from "lucide-react";
+import { ExternalLink, MapPin, RefreshCw, Trash2, X } from "lucide-react";
 
 type PlaceRow = {
   place_id: string;
@@ -21,8 +21,6 @@ type RawUserPlaceRow = {
   last_saved_at: string;
   last_post_id: string | null;
   last_collection_id: string | null;
-
-  // Supabaseの埋め込みは環境によって「配列/単体/別名」になり得るので全部吸収
   places?: PlaceRow[] | PlaceRow | null;
   place?: PlaceRow[] | PlaceRow | null;
 };
@@ -30,6 +28,8 @@ type RawUserPlaceRow = {
 type NormalizedRow = Omit<RawUserPlaceRow, "places" | "place"> & {
   place: PlaceRow | null;
 };
+
+type CollectionRow = { id: string; name: string };
 
 declare global {
   interface Window {
@@ -88,13 +88,50 @@ function normalizePlace(x: PlaceRow[] | PlaceRow | null | undefined): PlaceRow |
   return x;
 }
 
+function Chip({
+  active,
+  children,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition",
+        active
+          ? "bg-orange-600 text-white"
+          : "bg-black/[.04] text-black/70 hover:bg-black/[.06]",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function SavedPlacesMap() {
   const supabase = createClientComponentClient();
 
   const [rawRows, setRawRows] = useState<RawUserPlaceRow[]>([]);
+  const [collections, setCollections] = useState<CollectionRow[]>([]);
+  const [placeToCollectionIds, setPlaceToCollectionIds] = useState<Map<string, Set<string>>>(
+    new Map()
+  );
+
+  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null); // null=All
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    placeId: string | null;
+    placeName: string | null;
+  }>({ open: false, placeId: null, placeName: null });
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
@@ -112,17 +149,80 @@ export default function SavedPlacesMap() {
     });
   }, [rawRows]);
 
+  const filteredRows = useMemo(() => {
+    if (!activeCollectionId) return rows; // All
+    return rows.filter((r) => placeToCollectionIds.get(r.place_id)?.has(activeCollectionId));
+  }, [rows, activeCollectionId, placeToCollectionIds]);
+
   const mappable = useMemo(() => {
-    return rows.filter((r) => r.place?.lat != null && r.place?.lng != null);
-  }, [rows]);
+    return filteredRows.filter((r) => r.place?.lat != null && r.place?.lng != null);
+  }, [filteredRows]);
 
   const sortedList = useMemo(() => {
-    return [...rows].sort((a, b) => {
+    return [...filteredRows].sort((a, b) => {
       const ta = new Date(a.last_saved_at).getTime();
       const tb = new Date(b.last_saved_at).getTime();
       return tb - ta;
     });
-  }, [rows]);
+  }, [filteredRows]);
+
+  const buildMapping = async (userId: string) => {
+    // 1) userのcollections
+    const { data: cols, error: cErr } = await supabase
+      .from("collections")
+      .select("id, name")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+
+    if (cErr) throw new Error(cErr.message);
+    const colList = (cols ?? []) as CollectionRow[];
+    setCollections(colList);
+
+    if (colList.length === 0) {
+      setPlaceToCollectionIds(new Map());
+      return;
+    }
+
+    const colIds = colList.map((c) => c.id);
+
+    // 2) post_collections（このユーザーのコレクションに属するものだけ）
+    const { data: pcs, error: pcErr } = await supabase
+      .from("post_collections")
+      .select("collection_id, post_id")
+      .in("collection_id", colIds);
+
+    if (pcErr) throw new Error(pcErr.message);
+
+    const pcRows = (pcs ?? []) as { collection_id: string; post_id: string }[];
+    const postIds = Array.from(new Set(pcRows.map((x) => x.post_id)));
+    if (postIds.length === 0) {
+      setPlaceToCollectionIds(new Map());
+      return;
+    }
+
+    // 3) posts から place_id を引く
+    const { data: posts, error: pErr } = await supabase
+      .from("posts")
+      .select("id, place_id")
+      .in("id", postIds);
+
+    if (pErr) throw new Error(pErr.message);
+
+    const postIdToPlaceId = new Map<string, string>();
+    (posts ?? []).forEach((p: any) => {
+      if (p?.id && p?.place_id) postIdToPlaceId.set(p.id, p.place_id);
+    });
+
+    // 4) place_id -> Set(collection_id) を作る
+    const map = new Map<string, Set<string>>();
+    for (const x of pcRows) {
+      const placeId = postIdToPlaceId.get(x.post_id);
+      if (!placeId) continue;
+      if (!map.has(placeId)) map.set(placeId, new Set());
+      map.get(placeId)!.add(x.collection_id);
+    }
+    setPlaceToCollectionIds(map);
+  };
 
   const fetchSaved = async () => {
     setError(null);
@@ -144,8 +244,9 @@ export default function SavedPlacesMap() {
       return;
     }
 
-    // ✅ ここが型エラーの原因だったので、返り値が配列でも吸収できるように RawUserPlaceRow にする
-    // もし relationship 名が違ってエラーになる場合は "places(...)" を "place:places(...)" に変えてね（下に補足あり）
+    const userId = session.user.id;
+
+    // user_places × places を取得
     const { data, error: qErr } = await supabase
       .from("user_places")
       .select(
@@ -160,6 +261,14 @@ export default function SavedPlacesMap() {
     }
 
     setRawRows((data ?? []) as RawUserPlaceRow[]);
+
+    // コレクションマッピング（フィルタ用）
+    try {
+      await buildMapping(userId);
+    } catch (e: any) {
+      setError(e?.message ?? "フィルタ情報の取得に失敗しました");
+    }
+
     setLoading(false);
   };
 
@@ -168,6 +277,7 @@ export default function SavedPlacesMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Google Maps load
   useEffect(() => {
     if (!apiKey) {
       setMapReady(false);
@@ -192,14 +302,14 @@ export default function SavedPlacesMap() {
     };
   }, [apiKey]);
 
-  // マーカー描画
+  // markers
   useEffect(() => {
     if (!mapReady) return;
     if (!mapDivRef.current) return;
 
     if (!mapRef.current) {
       mapRef.current = new window.google.maps.Map(mapDivRef.current, {
-        center: { lat: 35.681236, lng: 139.767125 }, // 仮：東京駅
+        center: { lat: 35.681236, lng: 139.767125 },
         zoom: 12,
         mapTypeControl: false,
         fullscreenControl: false,
@@ -256,7 +366,7 @@ export default function SavedPlacesMap() {
 
   const focusPlace = (placeId: string) => {
     const marker = placeIdToMarkerRef.current.get(placeId);
-    const r = rows.find((x) => x.place_id === placeId);
+    const r = filteredRows.find((x) => x.place_id === placeId);
     const p = r?.place;
     if (!marker || !mapRef.current || !infoWindowRef.current || !p) return;
 
@@ -282,109 +392,239 @@ export default function SavedPlacesMap() {
     infoWindowRef.current.open(mapRef.current, marker);
   };
 
+  const openDelete = (placeId: string, placeName: string | null) => {
+    setConfirm({ open: true, placeId, placeName });
+  };
+
+  const doRemove = async (mode: "this" | "all") => {
+    if (!confirm.placeId) return;
+
+    setError(null);
+
+    const target_collection_id =
+      mode === "this" ? activeCollectionId : null;
+
+    const { error: rpcErr } = await supabase.rpc("remove_place_from_my_collections", {
+      target_place_id: confirm.placeId,
+      target_collection_id,
+    });
+
+    if (rpcErr) {
+      setError(rpcErr.message);
+      return;
+    }
+
+    setConfirm({ open: false, placeId: null, placeName: null });
+
+    // フィルタが「このコレクション」だった場合、消えたらAllに戻す方が体験が良い
+    //（0件になって“壊れた感”を出しづらい）
+    if (mode === "this") {
+      // placeがそのコレクションから消えて0になる可能性
+      // → そのままでもOKだが、気持ち良さ優先で一旦そのままにする
+    }
+
+    await fetchSaved();
+  };
+
+  const activeName = useMemo(() => {
+    if (!activeCollectionId) return "すべて";
+    return collections.find((c) => c.id === activeCollectionId)?.name ?? "選択中";
+  }, [activeCollectionId, collections]);
+
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
-      {/* 左：リスト */}
-      <div className="rounded-2xl border border-black/10 bg-white p-3 shadow-sm">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold">保存した場所</div>
-          <button
-            type="button"
-            onClick={fetchSaved}
-            className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
-          >
-            <RefreshCw className="h-4 w-4" />
-            更新
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
-            {error}
+    <>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+        {/* 左：リスト */}
+        <div className="rounded-2xl border border-black/10 bg-white p-3 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-sm font-semibold">
+              保存した場所 <span className="text-black/40">・{activeName}</span>
+            </div>
+            <button
+              type="button"
+              onClick={fetchSaved}
+              className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
+            >
+              <RefreshCw className="h-4 w-4" />
+              更新
+            </button>
           </div>
-        )}
 
-        {!apiKey && (
-          <div className="mb-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
-            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定です（地図が表示できません）
+          {/* フィルタチップ */}
+          <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            <Chip active={!activeCollectionId} onClick={() => setActiveCollectionId(null)}>
+              すべて
+            </Chip>
+            {collections.map((c) => (
+              <Chip
+                key={c.id}
+                active={activeCollectionId === c.id}
+                onClick={() => setActiveCollectionId(c.id)}
+              >
+                {c.name}
+              </Chip>
+            ))}
           </div>
-        )}
 
-        {loading ? (
-          <div className="py-6 text-center text-sm text-black/50">読み込み中...</div>
-        ) : sortedList.length === 0 ? (
-          <div className="py-6 text-center text-sm text-black/50">まだ保存がありません。</div>
-        ) : (
-          <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
-            {sortedList.map((r) => {
-              const p = r.place;
-              const name = p?.name ?? r.place_id;
-              const address = p?.address ?? "";
+          {error && (
+            <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </div>
+          )}
 
-              return (
-                <div
-                  key={r.place_id}
-                  className="rounded-xl border border-black/10 p-3 hover:bg-black/5"
-                >
-                  <button type="button" onClick={() => focusPlace(r.place_id)} className="w-full text-left">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="mt-0.5 h-4 w-4 text-orange-500" />
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{name}</div>
-                        {address && (
-                          <div className="mt-0.5 line-clamp-2 text-xs text-black/60">{address}</div>
-                        )}
-                        <div className="mt-1 text-[11px] text-black/40">
-                          最終保存: {new Date(r.last_saved_at).toLocaleString("ja-JP")}
+          {!apiKey && (
+            <div className="mb-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+              NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定です（地図が表示できません）
+            </div>
+          )}
+
+          {loading ? (
+            <div className="py-6 text-center text-sm text-black/50">読み込み中...</div>
+          ) : sortedList.length === 0 ? (
+            <div className="py-6 text-center text-sm text-black/50">まだ保存がありません。</div>
+          ) : (
+            <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
+              {sortedList.map((r) => {
+                const p = r.place;
+                const name = p?.name ?? r.place_id;
+                const address = p?.address ?? "";
+
+                return (
+                  <div
+                    key={r.place_id}
+                    className="rounded-xl border border-black/10 p-3 hover:bg-black/5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => focusPlace(r.place_id)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-start gap-2">
+                        <MapPin className="mt-0.5 h-4 w-4 text-orange-500" />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">{name}</div>
+                          {address && (
+                            <div className="mt-0.5 line-clamp-2 text-xs text-black/60">
+                              {address}
+                            </div>
+                          )}
+                          <div className="mt-1 text-[11px] text-black/40">
+                            最終保存: {new Date(r.last_saved_at).toLocaleString("ja-JP")}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
 
-                  <div className="mt-2 flex items-center gap-2">
-                    <a
-                      href={buildGoogleMapsUrl(r.place_id, p?.name)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      Googleで開く
-                    </a>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={buildGoogleMapsUrl(r.place_id, p?.name)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Googleで開く
+                        </a>
 
-                    {/* あなたのルーティングに合わせて調整してね */}
-                    {r.last_post_id && (
-                      <Link
-                        href={`/post/${r.last_post_id}`}
-                        className="rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
+                        {r.last_post_id && (
+                          <Link
+                            href={`/post/${r.last_post_id}`}
+                            className="rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
+                          >
+                            投稿へ
+                          </Link>
+                        )}
+                      </div>
+
+                      {/* 削除（=ピン消す） */}
+                      <button
+                        type="button"
+                        onClick={() => openDelete(r.place_id, p?.name ?? null)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs text-red-600 hover:bg-white"
                       >
-                        投稿へ
-                      </Link>
+                        <Trash2 className="h-3.5 w-3.5" />
+                        削除
+                      </button>
+                    </div>
+
+                    {(!p || p.lat == null || p.lng == null) && (
+                      <div className="mt-2 text-[11px] text-black/40">
+                        ※ この場所はまだ座標が未取得なので、地図には表示されません（places を埋めてね）
+                      </div>
                     )}
                   </div>
-
-                  {/* place がまだ埋まってない（lat/lng無し）場合のヒント */}
-                  {(!p || p.lat == null || p.lng == null) && (
-                    <div className="mt-2 text-[11px] text-black/40">
-                      ※ この場所はまだ座標が未取得なので、地図には表示されません（places の upsert を確認）
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 右：Map */}
-      <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
-          <div className="text-sm font-semibold">Map</div>
-          <div className="text-xs text-black/50">{mappable.length} pins</div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="h-[65vh] w-full" ref={mapDivRef} />
+        {/* 右：Map */}
+        <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
+            <div className="text-sm font-semibold">Map</div>
+            <div className="text-xs text-black/50">{mappable.length} pins</div>
+          </div>
+
+          <div className="h-[65vh] w-full" ref={mapDivRef} />
+        </div>
       </div>
-    </div>
+
+      {/* 削除モーダル */}
+      {confirm.open && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-lg">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-sm font-semibold">保存を削除</div>
+              <button
+                type="button"
+                onClick={() => setConfirm({ open: false, placeId: null, placeName: null })}
+                className="rounded-full p-1 text-black/50 hover:bg-black/5"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="text-sm text-black/70">
+              <div className="font-medium text-black">
+                {confirm.placeName ?? "この場所"}
+              </div>
+              <div className="mt-1 text-xs text-black/50">
+                どう削除しますか？
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {activeCollectionId && (
+                <button
+                  type="button"
+                  onClick={() => doRemove("this")}
+                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5"
+                >
+                  このコレクションから外す
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => doRemove("all")}
+                className="w-full rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                すべてのコレクションから削除（ピンも消える）
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConfirm({ open: false, placeId: null, placeName: null })}
+                className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
