@@ -10,6 +10,8 @@ import {
   X,
   SlidersHorizontal,
   Check,
+  Image as ImageIcon,
+  Smile,
 } from "lucide-react";
 
 type PlaceRow = {
@@ -48,11 +50,12 @@ type SuggestTypeResponse = {
   suggestedEmoji?: string | null;
 };
 
-type PostPriceRow = {
+type PostMiniRow = {
   id: string;
   place_id: string | null;
   price_yen: number | null;
   price_range: string | null;
+  image_urls: string[] | null;
 };
 
 type GenreOption = { key: string; emoji: string; label: string };
@@ -156,6 +159,53 @@ function makeEmojiSvgDataUrl(emoji: string) {
   return `data:image/svg+xml;charset=UTF-8,${encoded}`;
 }
 
+/** ---- Budget helpers ---- */
+type BudgetKey = "any" | "0_2000" | "2000_5000" | "5000_10000" | "10000_20000" | "20000_plus";
+const BUDGETS: Array<{ key: BudgetKey; label: string; min: number | null; max: number | null }> = [
+  { key: "any", label: "指定なし", min: null, max: null },
+  { key: "0_2000", label: "〜 ¥2,000", min: 0, max: 2000 },
+  { key: "2000_5000", label: "¥2,000〜¥5,000", min: 2000, max: 5000 },
+  { key: "5000_10000", label: "¥5,000〜¥10,000", min: 5000, max: 10000 },
+  { key: "10000_20000", label: "¥10,000〜¥20,000", min: 10000, max: 20000 },
+  { key: "20000_plus", label: "¥20,000〜", min: 20000, max: null },
+];
+
+function parsePriceRangeToYen(priceRange: string | null): number | null {
+  if (!priceRange) return null;
+  const s = priceRange.replaceAll(",", "");
+  const nums = s.match(/\d+/g)?.map((x) => Number(x)).filter((n) => Number.isFinite(n)) ?? [];
+  if (nums.length === 0) return null;
+  if (nums.length === 1) return nums[0];
+  return Math.round((nums[0] + nums[1]) / 2);
+}
+
+function formatYen(n: number) {
+  return `¥${n.toLocaleString("ja-JP")}`;
+}
+
+/** y から「所属レンジ」を推定 */
+function budgetIndexFromYen(y: number): number {
+  // BUDGETS[0] は any なので除外
+  for (let i = 1; i < BUDGETS.length; i++) {
+    const b = BUDGETS[i];
+    const minOK = b.min == null ? true : y >= b.min;
+    const maxOK = b.max == null ? true : y <= b.max;
+    if (minOK && maxOK) return i;
+  }
+  return BUDGETS.length - 1;
+}
+
+/** ✅ ±1段階広げた「目安レンジ」 */
+function expandedBudgetFromYen(y: number) {
+  const i = budgetIndexFromYen(y);
+  const lo = Math.max(1, i - 1);
+  const hi = Math.min(BUDGETS.length - 1, i + 1);
+  const min = BUDGETS[lo].min ?? 0;
+  const max = BUDGETS[hi].max; // null あり
+  const label = max == null ? `${formatYen(min)}〜` : `${formatYen(min)}〜${formatYen(max)}`;
+  return { min, max, label };
+}
+
 function Chip({
   active,
   children,
@@ -179,33 +229,40 @@ function Chip({
   );
 }
 
-/** ---- Budget helpers ---- */
-type BudgetKey = "any" | "0_2000" | "2000_5000" | "5000_10000" | "10000_20000" | "20000_plus";
+/** 画像カルーセル（軽量） */
+function MiniCarousel({
+  images,
+  postHref,
+}: {
+  images: string[];
+  postHref: string;
+}) {
+  if (!images?.length) return null;
 
-const BUDGETS: Array<{ key: BudgetKey; label: string; min: number | null; max: number | null }> = [
-  { key: "any", label: "指定なし", min: null, max: null },
-  { key: "0_2000", label: "〜 ¥2,000", min: 0, max: 2000 },
-  { key: "2000_5000", label: "¥2,000〜¥5,000", min: 2000, max: 5000 },
-  { key: "5000_10000", label: "¥5,000〜¥10,000", min: 5000, max: 10000 },
-  { key: "10000_20000", label: "¥10,000〜¥20,000", min: 10000, max: 20000 },
-  { key: "20000_plus", label: "¥20,000〜", min: 20000, max: null },
-];
-
-function parsePriceRangeToYen(priceRange: string | null): number | null {
-  if (!priceRange) return null;
-  const s = priceRange.replaceAll(",", "");
-  const nums = s.match(/\d+/g)?.map((x) => Number(x)).filter((n) => Number.isFinite(n)) ?? [];
-  if (nums.length === 0) return null;
-  if (nums.length === 1) return nums[0];
-  return Math.round((nums[0] + nums[1]) / 2);
+  return (
+    <div className="-mx-3 mt-2">
+      <div className="flex gap-2 overflow-x-auto px-3 pb-1 snap-x snap-mandatory">
+        {images.slice(0, 10).map((url, idx) => (
+          <Link
+            key={`${url}-${idx}`}
+            href={postHref}
+            className="snap-start shrink-0"
+            aria-label="投稿を開く"
+          >
+            <img
+              src={url}
+              alt=""
+              className="h-28 w-40 rounded-xl object-cover border border-black/10 bg-black/[.02]"
+              loading="lazy"
+            />
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function formatYenCompact(y: number | null): string {
-  if (y == null) return "—";
-  if (y < 1000) return `¥${y}`;
-  const k = Math.round(y / 1000);
-  return `約¥${k},000`;
-}
+type IconMode = "emoji" | "photo";
 
 export default function SavedPlacesMap() {
   const supabase = createClientComponentClient();
@@ -222,8 +279,13 @@ export default function SavedPlacesMap() {
   const [placeToBudgetYen, setPlaceToBudgetYen] = useState<Map<string, number>>(new Map());
   const [placeToBudgetRange, setPlaceToBudgetRange] = useState<Map<string, string>>(new Map());
 
-  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
+  const [postIdToImages, setPostIdToImages] = useState<Map<string, string[]>>(new Map());
+
+  // 表に出すのはジャンルだけ
   const [activeGenreEmoji, setActiveGenreEmoji] = useState<string | null>(null);
+
+  // 詳細フィルター内
+  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
   const [activeBudgetKey, setActiveBudgetKey] = useState<BudgetKey>("any");
 
   const [loading, setLoading] = useState(true);
@@ -233,7 +295,6 @@ export default function SavedPlacesMap() {
   // ✅ フィルターモーダル
   const [filterOpen, setFilterOpen] = useState(false);
   const [tmpCollectionId, setTmpCollectionId] = useState<string | null>(null);
-  const [tmpGenreEmoji, setTmpGenreEmoji] = useState<string | null>(null);
   const [tmpBudgetKey, setTmpBudgetKey] = useState<BudgetKey>("any");
 
   const [confirm, setConfirm] = useState<{
@@ -252,6 +313,8 @@ export default function SavedPlacesMap() {
   const [customEmoji, setCustomEmoji] = useState<string>("");
   const [savingEmoji, setSavingEmoji] = useState(false);
 
+  const [iconMode, setIconMode] = useState<IconMode>("emoji");
+
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -262,6 +325,19 @@ export default function SavedPlacesMap() {
   const placeIdToMarkerRef = useRef<Map<string, any>>(new Map());
 
   const suggestInFlightRef = useRef<Map<string, Promise<string>>>(new Map());
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("savedPlacesIconMode");
+      if (v === "emoji" || v === "photo") setIconMode(v);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("savedPlacesIconMode", iconMode);
+    } catch {}
+  }, [iconMode]);
 
   const rows: NormalizedRow[] = useMemo(() => {
     return rawRows.map((r) => {
@@ -285,12 +361,55 @@ export default function SavedPlacesMap() {
     return typeof v === "number" && Number.isFinite(v) ? v : null;
   };
 
-  const getBudgetLabel = (placeId: string) => {
+  /** 店の「目安予算（±1段階）」 */
+  const getBudgetLooseLabel = (placeId: string) => {
+    const y = getBudgetYen(placeId);
+    if (y != null) return expandedBudgetFromYen(y).label;
+
+    const range = placeToBudgetRange.get(placeId) ?? null;
+    const mid = range ? parsePriceRangeToYen(range) : null;
+    if (mid != null) return expandedBudgetFromYen(mid).label;
+
+    return "—";
+  };
+
+  /** 予算フィルタは「ゆるめレンジ」と選択レンジが交差するか */
+  const passesBudgetFilterLoose = (placeId: string, budgetKey: BudgetKey) => {
+    if (budgetKey === "any") return true;
+
+    const selected = BUDGETS.find((b) => b.key === budgetKey);
+    if (!selected || selected.min == null) return true;
+
     const y = getBudgetYen(placeId);
     const range = placeToBudgetRange.get(placeId) ?? null;
-    if (y != null) return formatYenCompact(y);
-    if (range) return range;
-    return "—";
+    const mid = y ?? (range ? parsePriceRangeToYen(range) : null);
+    if (mid == null) return false;
+
+    const loose = expandedBudgetFromYen(mid);
+    const selMin = selected.min ?? 0;
+    const selMax = selected.max; // null あり
+
+    const aMin = loose.min;
+    const aMax = loose.max;
+
+    const left = Math.max(aMin, selMin);
+    const right =
+      aMax == null && selMax == null
+        ? Infinity
+        : Math.min(aMax == null ? Infinity : aMax, selMax == null ? Infinity : selMax);
+
+    return left <= right;
+  };
+
+  const getImagesForRow = (r: NormalizedRow) => {
+    const pid = r.last_post_id;
+    if (!pid) return [];
+    return postIdToImages.get(pid) ?? [];
+  };
+
+  const getFirstImageForRow = (r: NormalizedRow) => {
+    const imgs = getImagesForRow(r);
+    return imgs?.[0] ?? null;
   };
 
   const filteredRows = useMemo(() => {
@@ -304,15 +423,8 @@ export default function SavedPlacesMap() {
       base = base.filter((r) => getEmoji(r.place_id) === activeGenreEmoji);
     }
 
-    const b = BUDGETS.find((x) => x.key === activeBudgetKey) ?? BUDGETS[0];
-    if (b.key !== "any") {
-      base = base.filter((r) => {
-        const y = getBudgetYen(r.place_id);
-        if (y == null) return false;
-        const minOK = b.min == null ? true : y >= b.min;
-        const maxOK = b.max == null ? true : y <= b.max;
-        return minOK && maxOK;
-      });
+    if (activeBudgetKey !== "any") {
+      base = base.filter((r) => passesBudgetFilterLoose(r.place_id, activeBudgetKey));
     }
 
     return base;
@@ -326,6 +438,7 @@ export default function SavedPlacesMap() {
     placeToEmoji,
     placeToSuggestedEmoji,
     placeToBudgetYen,
+    placeToBudgetRange,
   ]);
 
   const mappable = useMemo(() => {
@@ -366,7 +479,7 @@ export default function SavedPlacesMap() {
     return res;
   }, [genreCounts]);
 
-  const activeName = useMemo(() => {
+  const activeCollectionName = useMemo(() => {
     if (!activeCollectionId) return "すべて";
     return collections.find((c) => c.id === activeCollectionId)?.name ?? "選択中";
   }, [activeCollectionId, collections]);
@@ -478,33 +591,43 @@ export default function SavedPlacesMap() {
     }
   };
 
-  const fetchBudgetsFromLastPosts = async (lastPostIds: string[]) => {
+  const fetchLastPostsMeta = async (lastPostIds: string[]) => {
     try {
       const uniq = Array.from(new Set(lastPostIds)).filter(Boolean);
       if (uniq.length === 0) {
         setPlaceToBudgetYen(new Map());
         setPlaceToBudgetRange(new Map());
+        setPostIdToImages(new Map());
         return;
       }
 
       const CHUNK = 100;
       const yenMap = new Map<string, number>();
       const rangeMap = new Map<string, string>();
+      const imagesMap = new Map<string, string[]>();
 
       for (let i = 0; i < uniq.length; i += CHUNK) {
         const chunk = uniq.slice(i, i + CHUNK);
         const { data, error } = await supabase
           .from("posts")
-          .select("id, place_id, price_yen, price_range")
+          .select("id, place_id, price_yen, price_range, image_urls")
           .in("id", chunk);
 
         if (error) {
-          console.warn("[posts price] fetch failed:", error.message);
+          console.warn("[posts meta] fetch failed:", error.message);
           continue;
         }
 
         (data ?? []).forEach((row: any) => {
-          const p = row as PostPriceRow;
+          const p = row as PostMiniRow;
+          if (!p.id) return;
+
+          if (Array.isArray(p.image_urls) && p.image_urls.length) {
+            imagesMap.set(p.id, p.image_urls.filter(Boolean));
+          } else {
+            imagesMap.set(p.id, []);
+          }
+
           if (!p.place_id) return;
 
           const y =
@@ -519,10 +642,12 @@ export default function SavedPlacesMap() {
 
       setPlaceToBudgetYen(yenMap);
       setPlaceToBudgetRange(rangeMap);
+      setPostIdToImages(imagesMap);
     } catch (e) {
-      console.warn("[posts price] exception:", e);
+      console.warn("[posts meta] exception:", e);
       setPlaceToBudgetYen(new Map());
       setPlaceToBudgetRange(new Map());
+      setPostIdToImages(new Map());
     }
   };
 
@@ -635,7 +760,7 @@ export default function SavedPlacesMap() {
     await Promise.all([
       fetchPins(uid, placeIds),
       fetchSuggestedEmojis(placeIds),
-      fetchBudgetsFromLastPosts(lastPostIds),
+      fetchLastPostsMeta(lastPostIds),
     ]);
 
     try {
@@ -735,7 +860,7 @@ export default function SavedPlacesMap() {
               ジャンル: ${escapeHtml(labelForEmoji(emoji) || "未設定")}
             </div>
             <div style="font-size:12px; color:rgba(0,0,0,0.55); margin-bottom:10px;">
-              予算: ${escapeHtml(getBudgetLabel(p.place_id))}
+              予算(目安): ${escapeHtml(getBudgetLooseLabel(p.place_id))}
             </div>
             <a href="${buildGoogleMapsUrl(p.place_id, p.name)}"
                target="_blank" rel="noreferrer"
@@ -794,7 +919,7 @@ export default function SavedPlacesMap() {
           ジャンル: ${escapeHtml(labelForEmoji(emoji) || "未設定")}
         </div>
         <div style="font-size:12px; color:rgba(0,0,0,0.55); margin-bottom:10px;">
-          予算: ${escapeHtml(getBudgetLabel(placeId))}
+          予算(目安): ${escapeHtml(getBudgetLooseLabel(placeId))}
         </div>
         <a href="${buildGoogleMapsUrl(p.place_id, p.name)}"
            target="_blank" rel="noreferrer"
@@ -926,27 +1051,28 @@ export default function SavedPlacesMap() {
   // ===== Filter modal handlers =====
   const openFilter = () => {
     setTmpCollectionId(activeCollectionId);
-    setTmpGenreEmoji(activeGenreEmoji);
     setTmpBudgetKey(activeBudgetKey);
     setFilterOpen(true);
   };
 
   const applyFilter = () => {
     setActiveCollectionId(tmpCollectionId);
-    setActiveGenreEmoji(tmpGenreEmoji);
     setActiveBudgetKey(tmpBudgetKey);
     setFilterOpen(false);
   };
 
   const resetFilter = () => {
     setTmpCollectionId(null);
-    setTmpGenreEmoji(null);
     setTmpBudgetKey("any");
+  };
+
+  const toggleIconMode = () => {
+    setIconMode((m) => (m === "emoji" ? "photo" : "emoji"));
   };
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[420px_1fr]">
         {/* Map */}
         <div className="order-1 lg:order-2 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
@@ -958,27 +1084,32 @@ export default function SavedPlacesMap() {
 
         {/* List */}
         <div className="order-2 lg:order-1 rounded-2xl border border-black/10 bg-white p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="mb-2 flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">
                 保存した場所{" "}
-                <span className="text-black/40">
-                  ・{activeCollectionId ? activeName : "すべて"} / {activeGenreName} / {activeBudgetName}
-                </span>
-              </div>
-              <div className="mt-0.5 text-[11px] text-black/45">
-                PCでは「絞り込み」ダイアログが横に広がります（×は常に見える）
+                <span className="text-black/40">・ジャンル: {activeGenreName}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                onClick={toggleIconMode}
+                className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
+                title="アイコン表示を切り替え"
+              >
+                {iconMode === "emoji" ? <Smile className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
+                {iconMode === "emoji" ? "絵文字" : "写真"}
+              </button>
+
+              <button
+                type="button"
                 onClick={openFilter}
                 className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
               >
                 <SlidersHorizontal className="h-4 w-4" />
-                絞り込み
+                詳細フィルター
               </button>
 
               <button
@@ -992,25 +1123,10 @@ export default function SavedPlacesMap() {
             </div>
           </div>
 
-          {/* quick chips */}
-          <div className="mb-2 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-            <Chip active={!activeCollectionId} onClick={() => setActiveCollectionId(null)}>
-              すべて
-            </Chip>
-            {collections.map((c) => (
-              <Chip
-                key={c.id}
-                active={activeCollectionId === c.id}
-                onClick={() => setActiveCollectionId(c.id)}
-              >
-                {c.name}
-              </Chip>
-            ))}
-          </div>
-
-          <div className="mb-2 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          {/* 表に出すのはジャンルだけ */}
+          <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
             <Chip active={!activeGenreEmoji} onClick={() => setActiveGenreEmoji(null)}>
-              ジャンル：すべて
+              すべて
             </Chip>
             {availableGenres.map((g) => (
               <Chip
@@ -1019,14 +1135,6 @@ export default function SavedPlacesMap() {
                 onClick={() => setActiveGenreEmoji(g.emoji)}
               >
                 {g.emoji} {g.label}
-              </Chip>
-            ))}
-          </div>
-
-          <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-            {BUDGETS.map((b) => (
-              <Chip key={b.key} active={activeBudgetKey === b.key} onClick={() => setActiveBudgetKey(b.key)}>
-                予算：{b.label}
               </Chip>
             ))}
           </div>
@@ -1050,99 +1158,98 @@ export default function SavedPlacesMap() {
               {sortedList.map((r) => {
                 const p = r.place;
                 const name = p?.name ?? r.place_id;
-                const address = p?.address ?? "";
                 const emoji = getEmoji(r.place_id);
                 const genreLabel = labelForEmoji(emoji);
+                const postHref = r.last_post_id ? `/post/${r.last_post_id}` : "#";
+                const images = getImagesForRow(r);
+                const firstImg = getFirstImageForRow(r);
 
                 return (
-                  <div key={r.place_id} className="rounded-xl border border-black/10 p-3 hover:bg-black/5">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => focusPlace(r.place_id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
+                  <div key={r.place_id} className="rounded-2xl border border-black/10 p-3 hover:bg-black/5">
+                    <div className="flex items-start gap-3">
+                      {/* icon (emoji/photo) */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
                           e.preventDefault();
-                          focusPlace(r.place_id);
-                        }
-                      }}
-                      className="w-full text-left"
-                      aria-label={`${name} を地図で表示`}
-                    >
-                      <div className="flex items-start gap-2">
+                          e.stopPropagation();
+                          openEmojiPicker(r.place_id, p?.name ?? null);
+                        }}
+                        className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-black/10 bg-white overflow-hidden shrink-0"
+                        aria-label="ジャンル（絵文字）を変更"
+                        title="ジャンル（絵文字）を変更"
+                      >
+                        {iconMode === "photo" && firstImg ? (
+                          <img src={firstImg} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-2xl">{emoji}</span>
+                        )}
+                      </button>
+
+                      <div className="min-w-0 flex-1">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openEmojiPicker(r.place_id, p?.name ?? null);
-                          }}
-                          className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/50 bg-black/70 text-[15px] shadow-sm hover:bg-black/80"
-                          aria-label="ジャンル（絵文字）を変更"
-                          title="ジャンル（絵文字）を変更"
+                          onClick={() => focusPlace(r.place_id)}
+                          className="w-full text-left"
+                          aria-label={`${name} を地図で表示`}
                         >
-                          {emoji}
-                        </button>
+                          <div className="truncate text-sm font-semibold">{name}</div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">{name}</div>
-
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
+                          {/* 情報量は削り気味：ジャンル＋目安予算だけ */}
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
                             <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5 text-black/70">
                               {emoji} {genreLabel || "未設定"}
                             </span>
                             <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5 text-black/70">
-                              予算 {getBudgetLabel(r.place_id)}
-                            </span>
-                            <span className="text-black/35">
-                              最終保存: {new Date(r.last_saved_at).toLocaleString("ja-JP")}
+                              予算(目安) {getBudgetLooseLabel(r.place_id)}
                             </span>
                           </div>
+                        </button>
 
-                          {address && (
-                            <div className="mt-1 line-clamp-2 text-xs text-black/60">{address}</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                        {/* 投稿画像カルーセル */}
+                        {r.last_post_id && images.length > 0 && (
+                          <MiniCarousel images={images} postHref={postHref} />
+                        )}
 
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={buildGoogleMapsUrl(r.place_id, p?.name)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          Googleで開く
-                        </a>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={buildGoogleMapsUrl(r.place_id, p?.name)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Google
+                            </a>
 
-                        {r.last_post_id && (
-                          <Link
-                            href={`/post/${r.last_post_id}`}
-                            className="rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
+                            {r.last_post_id && (
+                              <Link
+                                href={postHref}
+                                className="rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
+                              >
+                                投稿へ
+                              </Link>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => openDelete(r.place_id, p?.name ?? null)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs text-red-600 hover:bg-white"
                           >
-                            投稿へ
-                          </Link>
+                            <Trash2 className="h-3.5 w-3.5" />
+                            削除
+                          </button>
+                        </div>
+
+                        {(!p || p.lat == null || p.lng == null) && (
+                          <div className="mt-2 text-[11px] text-black/40">
+                            ※ この場所はまだ座標が未取得なので、地図には表示されません
+                          </div>
                         )}
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => openDelete(r.place_id, p?.name ?? null)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs text-red-600 hover:bg-white"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        削除
-                      </button>
                     </div>
-
-                    {(!p || p.lat == null || p.lng == null) && (
-                      <div className="mt-2 text-[11px] text-black/40">
-                        ※ この場所はまだ座標が未取得なので、地図には表示されません
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -1151,10 +1258,9 @@ export default function SavedPlacesMap() {
         </div>
       </div>
 
-      {/* ========= Filter Modal（修正版：PCは横に広く、×は常に見える） ========= */}
+      {/* ========= 詳細フィルター（PCは横に広く、×は常に見える） ========= */}
       {filterOpen && (
         <div className="fixed inset-0 z-[350] bg-black/40 backdrop-blur-sm">
-          {/* click outside to close */}
           <button
             type="button"
             className="absolute inset-0 cursor-default"
@@ -1162,16 +1268,15 @@ export default function SavedPlacesMap() {
             onClick={() => setFilterOpen(false)}
           />
 
-          {/* MOBILE: bottom sheet / DESKTOP: big dialog */}
           <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
             <div className="relative w-full sm:max-w-6xl sm:h-[86vh] rounded-t-3xl sm:rounded-2xl bg-white shadow-xl overflow-hidden">
               {/* header (sticky) */}
               <div className="sticky top-0 z-10 bg-white border-b border-black/10 px-4 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold">絞り込み</div>
+                    <div className="text-sm font-semibold">詳細フィルター</div>
                     <div className="mt-0.5 text-[12px] text-black/45 truncate">
-                      現在：{activeCollectionId ? activeName : "すべて"} / {activeGenreName} / {activeBudgetName}
+                      現在：{activeCollectionName} / 予算: {activeBudgetName}
                     </div>
                   </div>
 
@@ -1186,12 +1291,11 @@ export default function SavedPlacesMap() {
                 </div>
               </div>
 
-              {/* body: mobile is single column; desktop is 3 columns */}
               <div className="p-4">
-                {/* Desktop: 3 columns */}
+                {/* Desktop */}
                 <div className="hidden sm:grid grid-cols-12 gap-4 h-[calc(86vh-56px-76px)]">
                   {/* collections */}
-                  <div className="col-span-4 rounded-2xl border border-black/10 overflow-hidden">
+                  <div className="col-span-6 rounded-2xl border border-black/10 overflow-hidden">
                     <div className="px-4 py-3 border-b border-black/10 bg-white">
                       <div className="text-xs font-semibold text-black/60">コレクション</div>
                     </div>
@@ -1246,72 +1350,13 @@ export default function SavedPlacesMap() {
                     </div>
                   </div>
 
-                  {/* genres */}
-                  <div className="col-span-5 rounded-2xl border border-black/10 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-black/10 bg-white">
-                      <div className="text-xs font-semibold text-black/60">ジャンル</div>
-                    </div>
-                    <div className="p-3 overflow-y-auto h-full">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setTmpGenreEmoji(null)}
-                          className={[
-                            "rounded-2xl border px-3 py-3 text-left transition col-span-2",
-                            !tmpGenreEmoji
-                              ? "border-orange-400 bg-orange-50"
-                              : "border-black/10 hover:bg-black/5",
-                          ].join(" ")}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold">すべて</div>
-                            {!tmpGenreEmoji && (
-                              <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                                <Check className="h-4 w-4" /> 選択中
-                              </span>
-                            )}
-                          </div>
-                        </button>
-
-                        {availableGenres.map((g) => {
-                          const active = tmpGenreEmoji === g.emoji;
-                          return (
-                            <button
-                              key={`${g.emoji}-${g.label}`}
-                              type="button"
-                              onClick={() => setTmpGenreEmoji(g.emoji)}
-                              className={[
-                                "rounded-2xl border px-3 py-3 text-left transition",
-                                active
-                                  ? "border-orange-400 bg-orange-50"
-                                  : "border-black/10 hover:bg-black/5",
-                              ].join(" ")}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-2xl border border-black/10 bg-white flex items-center justify-center text-2xl">
-                                  {g.emoji}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-sm font-semibold truncate">{g.label}</div>
-                                  <div className="text-[11px] text-black/45">{g.count} 件</div>
-                                </div>
-                              </div>
-                              {active && (
-                                <div className="mt-2 text-orange-700 text-xs font-semibold inline-flex items-center gap-1">
-                                  <Check className="h-4 w-4" /> 選択中
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
                   {/* budget */}
-                  <div className="col-span-3 rounded-2xl border border-black/10 overflow-hidden">
+                  <div className="col-span-6 rounded-2xl border border-black/10 overflow-hidden">
                     <div className="px-4 py-3 border-b border-black/10 bg-white">
                       <div className="text-xs font-semibold text-black/60">予算</div>
+                      <div className="mt-1 text-[11px] text-black/45">
+                        ※ 投稿者入力が前提なので、判定は±1段階ゆるめ（目安）
+                      </div>
                     </div>
                     <div className="p-3 overflow-y-auto h-full">
                       <div className="space-y-2">
@@ -1338,7 +1383,7 @@ export default function SavedPlacesMap() {
                                 )}
                               </div>
                               <div className="mt-1 text-[11px] text-black/45">
-                                {/* ※ 未登録の店は予算フィルタ時は除外 */}
+                                ※ 予算未登録の店は予算フィルタ時は除外
                               </div>
                             </button>
                           );
@@ -1348,7 +1393,7 @@ export default function SavedPlacesMap() {
                   </div>
                 </div>
 
-                {/* Mobile: stacked (sheet) */}
+                {/* Mobile */}
                 <div className="sm:hidden space-y-4 max-h-[68vh] overflow-y-auto pr-1">
                   <div>
                     <div className="text-xs font-semibold text-black/60 mb-2">コレクション</div>
@@ -1402,67 +1447,10 @@ export default function SavedPlacesMap() {
                   </div>
 
                   <div>
-                    <div className="text-xs font-semibold text-black/60 mb-2">ジャンル</div>
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => setTmpGenreEmoji(null)}
-                        className={[
-                          "w-full rounded-2xl border px-3 py-3 text-left transition",
-                          !tmpGenreEmoji
-                            ? "border-orange-400 bg-orange-50"
-                            : "border-black/10 hover:bg-black/5",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm font-semibold">すべて</div>
-                          {!tmpGenreEmoji && (
-                            <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                              <Check className="h-4 w-4" /> 選択中
-                            </span>
-                          )}
-                        </div>
-                      </button>
-
-                      {availableGenres.map((g) => {
-                        const active = tmpGenreEmoji === g.emoji;
-                        return (
-                          <button
-                            key={`${g.emoji}-${g.label}`}
-                            type="button"
-                            onClick={() => setTmpGenreEmoji(g.emoji)}
-                            className={[
-                              "w-full rounded-2xl border px-3 py-3 text-left transition",
-                              active
-                                ? "border-orange-400 bg-orange-50"
-                                : "border-black/10 hover:bg-black/5",
-                            ].join(" ")}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="h-10 w-10 rounded-2xl border border-black/10 bg-white flex items-center justify-center text-2xl">
-                                  {g.emoji}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-sm font-semibold truncate">{g.label}</div>
-                                  <div className="text-[11px] text-black/45">{g.count} 件</div>
-                                </div>
-                              </div>
-
-                              {active && (
-                                <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                                  <Check className="h-4 w-4" /> 選択中
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
+                    <div className="text-xs font-semibold text-black/60 mb-1">予算</div>
+                    <div className="text-[11px] text-black/45 mb-2">
+                      ※ 投稿者入力が前提なので、判定は±1段階ゆるめ（目安）
                     </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs font-semibold text-black/60 mb-2">予算</div>
                     <div className="space-y-2">
                       {BUDGETS.map((b) => {
                         const active = tmpBudgetKey === b.key;
@@ -1487,7 +1475,7 @@ export default function SavedPlacesMap() {
                               )}
                             </div>
                             <div className="mt-1 text-[11px] text-black/45">
-                              ※ 未登録の店は予算フィルタ時は除外
+                              ※ 予算未登録の店は予算フィルタ時は除外
                             </div>
                           </button>
                         );
@@ -1522,7 +1510,7 @@ export default function SavedPlacesMap() {
         </div>
       )}
 
-      {/* ========= Emoji Picker（そのまま） ========= */}
+      {/* ========= Emoji Picker ========= */}
       {emojiPicker.open && (
         <div className="fixed inset-0 z-[320] bg-black/40 backdrop-blur-sm">
           <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
@@ -1571,7 +1559,6 @@ export default function SavedPlacesMap() {
                             </div>
                             <div className="min-w-0">
                               <div className="text-sm font-semibold truncate">{g.label}</div>
-                              <div className="text-[11px] text-black/45">この場所のジャンル</div>
                             </div>
                           </div>
 
