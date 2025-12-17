@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -17,44 +17,49 @@ export default function PostImageCarousel({
   initialIndex = 0,
   syncUrl,
 }: Props) {
-  const total = imageUrls.length;
-  if (total === 0) return null;
-
-  const clamp = (n: number) => Math.max(0, Math.min(n, total - 1));
-  const [index, setIndex] = useState(() => clamp(initialIndex));
-
+  // ✅ Hooks は early return より前に必ず呼ぶ
   const router = useRouter();
   const pathname = usePathname();
 
-  // デフォルトは「投稿詳細ページのときだけ URL 同期」
-  // ※タイムラインで誤爆しない
+  const total = imageUrls.length;
+
+  const clamp = useMemo(() => {
+    return (n: number) => Math.max(0, Math.min(n, Math.max(0, total - 1)));
+  }, [total]);
+
+  const [index, setIndex] = useState(() => clamp(initialIndex));
+
+  // ✅ URL同期は「投稿詳細ページならデフォルトON」(timelineで誤爆しない)
   const isPostDetailPage = pathname === `/posts/${postId}`;
   const shouldSyncUrl = syncUrl ?? isPostDetailPage;
 
-  // 画像枚数が変わって index が範囲外にならないようにする
+  // ✅ 画像枚数が変わったら index を範囲内に戻す
   useEffect(() => {
     setIndex((i) => clamp(i));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [total]);
+  }, [clamp]);
 
-  const canPrev = index > 0;
-  const canNext = index < total - 1;
+  const canPrev = total > 1 && index > 0;
+  const canNext = total > 1 && index < total - 1;
 
   const prev = () => setIndex((i) => (i > 0 ? i - 1 : i));
   const next = () => setIndex((i) => (i < total - 1 ? i + 1 : i));
 
-  // 親が Link / onClick 遷移してても矢印クリックで遷移しないように止める
+  // ✅ 親が Link / onClick で遷移してても、矢印・ドット押下で遷移しない
   const stopNav = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
   };
 
-  // URL同期（投稿詳細ページのみ、もしくは明示 syncUrl=true のとき）
+  // ✅ URL同期（投稿詳細ページのみ、または syncUrl=true 明示時）
   useEffect(() => {
     if (!shouldSyncUrl) return;
+    if (total <= 0) return;
     const url = `/posts/${postId}?img_index=${index + 1}`;
     router.replace(url, { scroll: false });
-  }, [index, postId, router, shouldSyncUrl]);
+  }, [index, postId, router, shouldSyncUrl, total]);
+
+  // ✅ early return は Hooks の後
+  if (total === 0) return null;
 
   return (
     <div className="relative w-full overflow-hidden">
@@ -63,6 +68,12 @@ export default function PostImageCarousel({
         src={imageUrls[index]}
         alt=""
         className="w-full max-h-[600px] object-cover"
+        onClick={(e) => {
+          // 親がLinkなら画像クリックで遷移させたいケースもあるので止めない
+          // 止めたいなら下2行を有効化
+          // e.preventDefault();
+          // e.stopPropagation();
+        }}
       />
 
       {total > 1 && (
