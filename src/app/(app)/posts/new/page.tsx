@@ -422,7 +422,68 @@ export default function NewPostPage() {
 
         <div className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-6">
           <form onSubmit={submit} className="space-y-5">
-            {/* ✅ おすすめ度 */}
+            {/* ✅ 画像追加（最上段へ移動） */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-medium text-slate-700">写真</span>
+                <span className="text-[11px] text-slate-400">
+                  Command+V で貼り付けもOK
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <label className="inline-flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full border border-orange-100 bg-orange-50/70 px-4 text-xs font-medium text-slate-800 transition hover:border-orange-300 hover:bg-orange-100">
+                  <ImageIcon className="h-4 w-4" />
+                  画像を追加
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleFiles(e.target.files)}
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={busy || processing}
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-orange-600 px-7 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 disabled:opacity-60"
+                >
+                  {processing ? "画像処理中..." : busy ? "投稿中..." : "投稿する"}
+                </button>
+              </div>
+            </div>
+
+            {/* 画像プレビュー */}
+            {imgs.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500">
+                  画像プレビュー{" "}
+                  {processing && <span className="text-orange-500">（HEIC変換/圧縮中…）</span>}
+                </p>
+                <ul className="grid grid-cols-3 gap-2">
+                  {imgs.map((img) => (
+                    <li key={img.id} className="group relative overflow-hidden rounded-xl">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.previewUrl}
+                        alt={img.label}
+                        className="aspect-square w-full object-cover transition group-hover:scale-[1.02]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(img.id)}
+                        className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-80 shadow-sm transition hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* ✅ おすすめ度（レンジのみ） */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">
@@ -441,33 +502,12 @@ export default function NewPostPage() {
                 className="w-full accent-orange-600"
                 aria-label="おすすめ度"
               />
-
-              <div className="flex flex-wrap gap-2">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
-                  const active = n === recommendScore;
-                  return (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setRecommendScore(n)}
-                      className={[
-                        "h-8 min-w-[32px] rounded-full px-3 text-xs font-medium transition",
-                        active
-                          ? "bg-orange-600 text-white shadow-sm"
-                          : "bg-orange-50 text-slate-700 hover:bg-orange-100 border border-orange-100",
-                      ].join(" ")}
-                    >
-                      {n}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             {/* ✅ 価格（実額/レンジ/なし） */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
-                <span className="font-medium text-slate-700">価格（任意）</span>
+                <span className="font-medium text-slate-700">価格</span>
                 <span className="text-[11px] text-slate-400">あとで検索/絞り込みに使える</span>
               </div>
 
@@ -531,9 +571,7 @@ export default function NewPostPage() {
               )}
 
               {priceMode === "none" && (
-                <div className="text-[11px] text-slate-400">
-                  価格は未入力でもOK（あとから足せる運用でも良い）
-                </div>
+                <div className="text-[11px] text-slate-400">価格は未入力でもOK（あとから足せる）</div>
               )}
             </div>
 
@@ -556,9 +594,9 @@ export default function NewPostPage() {
             {/* 店舗選択 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1 font-medium text-slate-700">
                   <MapPin className="h-3 w-3 text-orange-500" />
-                  お店をつける（任意）
+                  お店をつける
                 </span>
                 {isSearchingPlace && (
                   <span className="text-[11px] text-orange-500">検索中...</span>
@@ -638,60 +676,6 @@ export default function NewPostPage() {
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* 画像プレビュー */}
-            {imgs.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs text-slate-500">
-                  画像プレビュー{" "}
-                  {processing && <span className="text-orange-500">（HEIC変換/圧縮中…）</span>}
-                </p>
-                <ul className="grid grid-cols-3 gap-2">
-                  {imgs.map((img) => (
-                    <li key={img.id} className="group relative overflow-hidden rounded-xl">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.previewUrl}
-                        alt={img.label}
-                        className="aspect-square w-full object-cover transition group-hover:scale-[1.02]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(img.id)}
-                        className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-80 shadow-sm transition hover:opacity-100"
-                      >
-                        <X size={14} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center gap-3">
-                <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-full border border-orange-100 bg-orange-50/70 px-3 text-xs text-slate-700 transition hover:border-orange-300 hover:bg-orange-100">
-                  <span className="mr-1">
-                    <ImageIcon className="h-4 w-4" />
-                  </span>
-                  画像を追加
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => handleFiles(e.target.files)}
-                  />
-                </label>
-              </div>
-
-              <button
-                disabled={busy || processing}
-                className="inline-flex h-9 items-center rounded-full bg-orange-600 px-5 text-xs font-medium text-white shadow-sm transition hover:bg-orange-700 disabled:opacity-60"
-              >
-                {processing ? "画像処理中..." : busy ? "投稿中..." : "投稿する"}
-              </button>
             </div>
 
             {msg && <p className="text-xs text-red-600">{msg}</p>}
