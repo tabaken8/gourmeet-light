@@ -1,32 +1,129 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 type Props = {
-  refs: string[];
+  placeId: string;                 // ★ refs ではなく placeId
   placeName?: string | null;
-  attributionsHtml?: string; // Googleの要件により表示推奨（必須になり得る）
+  per?: number;                    // 取得枚数（最大10）
+  maxThumbs?: number;              // サムネ表示枚数（UI用）
 };
 
-export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }: Props) {
+type ApiResp = {
+  refs: string[];
+  attributionsHtml: string;
+  source?: "cache" | "google";
+  error?: string;
+};
+
+const mem = new Map<string, { refs: string[]; attributionsHtml: string; ts: number }>();
+const MEM_TTL_MS = 10 * 60 * 1000; // 10分
+
+export default function PlacePhotoGallery({
+  placeId,
+  placeName,
+  per = 8,
+  maxThumbs = 8,
+}: Props) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const [inView, setInView] = useState(false);
+  const [refs, setRefs] = useState<string[]>([]);
+  const [attributionsHtml, setAttributionsHtml] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
   const [open, setOpen] = useState(false);
   const [idx, setIdx] = useState(0);
 
-  const urls = useMemo(
-    () => refs.map((ref) => `/api/places/photo?ref=${encodeURIComponent(ref)}&w=1400`),
+  // IntersectionObserver：画面に入ったらだけ refs を取りに行く
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setInView(true);
+      },
+      { rootMargin: "600px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  async function ensureLoaded() {
+    if (!placeId) return;
+    if (loading) return;
+    if (loadedOnce && refs.length > 0) return;
+
+    // memory cache
+    const k = `${placeId}__${per}`;
+    const m = mem.get(k);
+    if (m && Date.now() - m.ts < MEM_TTL_MS) {
+      setRefs(m.refs);
+      setAttributionsHtml(m.attributionsHtml);
+      setLoadedOnce(true);
+      return;
+    }
+
+    setLoading(true);
+    setErr(null);
+
+    try {
+      const q = new URLSearchParams();
+      q.set("place_id", placeId);
+      q.set("per", String(per));
+
+      const res = await fetch(`/api/places/photos?${q.toString()}`);
+      const data: ApiResp = await res.json().catch(() => ({} as any));
+
+      if (!res.ok) throw new Error(data?.error ?? `failed (${res.status})`);
+
+      const newRefs = Array.isArray(data.refs) ? data.refs : [];
+      setRefs(newRefs);
+      setAttributionsHtml(data.attributionsHtml ?? "");
+      setLoadedOnce(true);
+
+      mem.set(k, { refs: newRefs, attributionsHtml: data.attributionsHtml ?? "", ts: Date.now() });
+    } catch (e: any) {
+      setErr(e?.message ?? "写真を取得できませんでした");
+      setLoadedOnce(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // inView になったら取得
+  useEffect(() => {
+    if (!inView) return;
+    ensureLoaded();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, placeId, per]);
+
+  const thumbUrls = useMemo(
+    () => refs.map((r) => `/api/places/photo?ref=${encodeURIComponent(r)}&w=480`),
+    [refs]
+  );
+  const fullUrls = useMemo(
+    () => refs.map((r) => `/api/places/photo?ref=${encodeURIComponent(r)}&w=1600`),
     [refs]
   );
 
-  const openAt = (i: number) => {
+  const openAt = async (i: number) => {
+    // クリック時点で未取得なら先に取る
+    if (!loadedOnce || refs.length === 0) {
+      await ensureLoaded();
+    }
     setIdx(i);
     setOpen(true);
   };
 
   const close = () => setOpen(false);
 
-  const prev = () => setIdx((v) => (v - 1 + urls.length) % urls.length);
-  const next = () => setIdx((v) => (v + 1) % urls.length);
+  const prev = () => setIdx((v) => (v - 1 + fullUrls.length) % fullUrls.length);
+  const next = () => setIdx((v) => (v + 1) % fullUrls.length);
 
   useEffect(() => {
     if (!open) return;
@@ -38,22 +135,28 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, urls.length]);
-
-  if (!refs?.length) return null;
+  }, [open, fullUrls.length]);
 
   return (
-    <>
-      {/* サムネ：大きめのグリッド */}
-      <div className="space-y-2">
-        {placeName ? (
-          <div className="text-xs font-medium text-slate-700 truncate">
-            Googleマップからの写真
-          </div>
+    <div ref={rootRef} className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium text-slate-700 truncate">
+          Googleマップからの写真
+        </div>
+        {loading ? (
+          <div className="text-[11px] text-slate-400">読み込み中…</div>
         ) : null}
+      </div>
 
+      {err ? <div className="text-xs text-slate-400">{err}</div> : null}
+
+      {!loading && loadedOnce && thumbUrls.length === 0 && !err ? (
+        <div className="text-xs text-slate-400">写真を取得できませんでした</div>
+      ) : null}
+
+      {thumbUrls.length > 0 ? (
         <div className="grid grid-cols-2 gap-2">
-          {urls.slice(0, 8).map((src, i) => (
+          {thumbUrls.slice(0, maxThumbs).map((src, i) => (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={src}
@@ -65,25 +168,21 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
             />
           ))}
         </div>
-{/* © 2025 Google */}
-        {/* attribution（Googleの要件で必要なことがあるので表示枠を用意） */}
-        {/* {attributionsHtml ? (
-          <div
-            className="text-[10px] leading-snug text-slate-500 [&_a]:underline [&_a]:text-slate-600"
-            dangerouslySetInnerHTML={{ __html: attributionsHtml }}
-          />
-        ) : null} */}
-      </div>
+      ) : null}
+
+      {/* attribution（返ってきた場合は表示推奨/必要になり得る） */}
+      {attributionsHtml ? (
+        <div
+          className="text-[10px] leading-snug text-slate-500 [&_a]:underline [&_a]:text-slate-600"
+          dangerouslySetInnerHTML={{ __html: attributionsHtml }}
+        />
+      ) : null}
 
       {/* モーダル */}
-      {open ? (
+      {open && fullUrls.length > 0 ? (
         <div className="fixed inset-0 z-[100]">
           {/* backdrop */}
-          <button
-            className="absolute inset-0 bg-black/70"
-            onClick={close}
-            aria-label="close"
-          />
+          <button className="absolute inset-0 bg-black/70" onClick={close} aria-label="close" />
 
           {/* content */}
           <div className="absolute inset-0 flex items-center justify-center p-4">
@@ -93,7 +192,7 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
                 <div className="text-xs text-white/80">
                   {placeName ? placeName : "Place photos"}{" "}
                   <span className="text-white/50">
-                    {idx + 1}/{urls.length}
+                    {idx + 1}/{fullUrls.length}
                   </span>
                 </div>
                 <button
@@ -108,15 +207,11 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
               {/* image */}
               <div className="flex items-center justify-center bg-black">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={urls[idx]}
-                  alt=""
-                  className="max-h-[82vh] w-full object-contain"
-                />
+                <img src={fullUrls[idx]} alt="" className="max-h-[82vh] w-full object-contain" />
               </div>
 
               {/* controls */}
-              {urls.length > 1 ? (
+              {fullUrls.length > 1 ? (
                 <>
                   <button
                     onClick={prev}
@@ -136,16 +231,16 @@ export default function PlacePhotoGallery({ refs, placeName, attributionsHtml }:
               ) : null}
 
               {/* attribution */}
-              {/* {attributionsHtml ? (
+              {attributionsHtml ? (
                 <div
                   className="p-3 text-[10px] leading-snug text-white/70 [&_a]:underline [&_a]:text-white"
                   dangerouslySetInnerHTML={{ __html: attributionsHtml }}
                 />
-              ) : null} */}
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

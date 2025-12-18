@@ -69,7 +69,6 @@ async function resizeToFile(
   input: File,
   opts: { maxLongEdge: number; mime: string; quality: number; outExt: string }
 ): Promise<File> {
-  // EXIF orientation を反映（環境により未対応なので any で保険）
   const bitmap = await createImageBitmap(input, {
     imageOrientation: "from-image",
   } as any);
@@ -83,7 +82,6 @@ async function resizeToFile(
   const tw = Math.max(1, Math.round(w * scale));
   const th = Math.max(1, Math.round(h * scale));
 
-  // まず bitmap をキャンバスへ
   let curCanvas = document.createElement("canvas");
   let curW = w;
   let curH = h;
@@ -98,7 +96,6 @@ async function resizeToFile(
     ctx.drawImage(bitmap, 0, 0, curW, curH);
   }
 
-  // 半分ずつ縮めて最終サイズへ（急激縮小の劣化を抑える）
   while (curW / 2 > tw && curH / 2 > th) {
     const nextCanvas = document.createElement("canvas");
     const nextW = Math.max(tw, Math.floor(curW / 2));
@@ -117,7 +114,6 @@ async function resizeToFile(
     curH = nextH;
   }
 
-  // 最終サイズに仕上げ
   const outCanvas = document.createElement("canvas");
   outCanvas.width = tw;
   outCanvas.height = th;
@@ -193,7 +189,8 @@ const PRICE_RANGES = [
   { value: "10000+", label: "¥10,000〜" },
 ] as const;
 
-type PriceMode = "none" | "exact" | "range";
+// ✅ none を廃止
+type PriceMode = "exact" | "range";
 
 function onlyDigits(s: string) {
   return s.replace(/[^\d]/g, "");
@@ -227,8 +224,8 @@ export default function NewPostPage() {
   // ✅ おすすめ度（1〜10）
   const [recommendScore, setRecommendScore] = useState<number>(7);
 
-  // ✅ 価格（実額 or レンジ）
-  const [priceMode, setPriceMode] = useState<PriceMode>("none");
+  // ✅ 価格（実額 or レンジ）※デフォルトを実額に
+  const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
   const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>(
     "3000-3999"
@@ -333,12 +330,12 @@ export default function NewPostPage() {
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
 
-    // 価格の整合（DB制約に合わせる）
+    // ✅ DB制約に合わせる（exact or range のみ）
     const price_yen = priceMode === "exact" ? priceYenValue : null;
     const price_range = priceMode === "range" ? priceRange : null;
 
     if (priceMode === "exact" && (price_yen === null || price_yen === 0)) {
-      return setMsg("価格（実額）を入力してください（例: 3500）。不要なら「なし」にできます。");
+      return setMsg("価格（実額）を入力してください（例: 3500）。");
     }
 
     setBusy(true);
@@ -392,7 +389,6 @@ export default function NewPostPage() {
         place_name: selectedPlace?.name ?? null,
         place_address: selectedPlace?.formatted_address ?? null,
 
-        // ✅ 追加
         recommend_score: recommendScore,
         price_yen,
         price_range,
@@ -422,13 +418,11 @@ export default function NewPostPage() {
 
         <div className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-6">
           <form onSubmit={submit} className="space-y-5">
-            {/* ✅ 画像追加（最上段へ移動） */}
+            {/* 画像追加 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">写真</span>
-                <span className="text-[11px] text-slate-400">
-                  Command+V で貼り付けもOK
-                </span>
+                <span className="text-[11px] text-slate-400">Command+V で貼り付けもOK</span>
               </div>
 
               <div className="flex items-center justify-between gap-3">
@@ -483,13 +477,13 @@ export default function NewPostPage() {
               </div>
             )}
 
-            {/* ✅ おすすめ度（レンジのみ） */}
+            {/* おすすめ度 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">
                   おすすめ度 <span className="text-orange-600">{recommendScore}</span>/10
                 </span>
-                <span className="text-[11px] text-slate-400">ポイント（あとで変えられる）</span>
+                <span className="text-[11px] text-slate-400"></span>
               </div>
 
               <input
@@ -504,16 +498,15 @@ export default function NewPostPage() {
               />
             </div>
 
-            {/* ✅ 価格（実額/レンジ/なし） */}
+            {/* ✅ 価格（none削除・デフォルト実額・最初から入力欄あり） */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">価格</span>
-                <span className="text-[11px] text-slate-400">あとで検索/絞り込みに使える</span>
               </div>
 
+              {/* 実額 / レンジ */}
               <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
                 {[
-                  { v: "none", label: "なし" },
                   { v: "exact", label: "実額" },
                   { v: "range", label: "レンジ" },
                 ].map((x) => {
@@ -536,6 +529,7 @@ export default function NewPostPage() {
                 })}
               </div>
 
+              {/* ✅ デフォルトでここが出る（exact） */}
               {priceMode === "exact" && (
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-2 rounded-full border border-orange-100 bg-white px-3 py-2">
@@ -569,10 +563,6 @@ export default function NewPostPage() {
                   </select>
                 </div>
               )}
-
-              {priceMode === "none" && (
-                <div className="text-[11px] text-slate-400">価格は未入力でもOK（あとから足せる）</div>
-              )}
             </div>
 
             {/* 本文 */}
@@ -598,9 +588,7 @@ export default function NewPostPage() {
                   <MapPin className="h-3 w-3 text-orange-500" />
                   お店をつける
                 </span>
-                {isSearchingPlace && (
-                  <span className="text-[11px] text-orange-500">検索中...</span>
-                )}
+                {isSearchingPlace && <span className="text-[11px] text-orange-500">検索中...</span>}
               </div>
 
               {selectedPlace && (
@@ -654,9 +642,7 @@ export default function NewPostPage() {
                                   <MapPin className="h-3 w-3 text-orange-500" />
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="truncate font-medium text-slate-800">
-                                    {p.name}
-                                  </div>
+                                  <div className="truncate font-medium text-slate-800">{p.name}</div>
                                   <div className="truncate text-[11px] text-slate-500">
                                     {p.formatted_address}
                                   </div>

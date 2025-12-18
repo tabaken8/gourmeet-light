@@ -19,11 +19,6 @@ type ImageVariant = {
   [k: string]: any;
 };
 
-type PlacePhotos = {
-  refs: string[];
-  attributionsHtml: string;
-};
-
 type ProfileLite = {
   id: string;
   display_name: string | null;
@@ -42,13 +37,11 @@ type PostRow = {
   place_address: string | null;
   place_id: string | null;
 
-  // ✅ 追加（APIが返す想定）
   recommend_score?: number | null; // 1-10
   price_yen?: number | null; // integer
   price_range?: string | null; // "~999" etc
 
   profile: ProfileLite | null;
-  placePhotos?: PlacePhotos | null;
 
   likeCount?: number;
   likedByMe?: boolean;
@@ -69,18 +62,15 @@ function formatJST(iso: string) {
 function getTimelineImageUrls(p: PostRow): string[] {
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
 
-  // ✅ ここが変更点：full を最優先で返す（高画質）
   const fromVariants = variants
     .map((v) => (v?.full ?? v?.thumb ?? null))
     .filter((x): x is string => !!x);
 
   if (fromVariants.length > 0) return fromVariants;
 
-  // 旧仕様: image_urls（基本 full のはず）
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy.filter((x): x is string => !!x);
 }
-
 
 function GoogleMark({ className = "" }: { className?: string }) {
   return (
@@ -118,7 +108,6 @@ function formatPrice(p: PostRow): string | null {
     return `¥${formatYen(Math.max(0, Math.floor(p.price_yen)))}`;
   }
   if (p.price_range) {
-    // DBの enum を人間向けに
     switch (p.price_range) {
       case "~999":
         return "〜¥999";
@@ -201,9 +190,7 @@ export default function TimelineFeed({
       const res = await fetch(`/api/timeline?${params.toString()}`);
       const payload = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        throw new Error(payload?.error ?? `Failed (${res.status})`);
-      }
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
       const newPosts: PostRow[] = payload.posts ?? [];
       const nextCursor: string | null = payload.nextCursor ?? null;
@@ -273,7 +260,7 @@ export default function TimelineFeed({
     );
   }
 
-  const MOBILE_PLACE_PHOTOS_MAX = 3;
+  const MOBILE_THUMBS = 3;
 
   return (
     <div className="flex flex-col items-stretch gap-6">
@@ -287,26 +274,22 @@ export default function TimelineFeed({
         const mapUrl = p.place_id
           ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
           : p.place_address
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-              p.place_address
-            )}`
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
           : null;
 
         const timelineImageUrls = getTimelineImageUrls(p);
-        const placePhotos = p.placePhotos ?? null;
 
         const initialLikeCount = p.likeCount ?? 0;
         const initialLiked = p.likedByMe ?? false;
 
-        const hasPlacePhotos = !!(p.place_id && placePhotos?.refs?.length);
+        const hasPlace = !!p.place_id;
         const isPhotosOpen = !!openPhotos[p.id];
 
         const togglePhotos = () => {
-          if (!hasPlacePhotos) return;
+          if (!hasPlace) return;
           setOpenPhotos((prev) => ({ ...prev, [p.id]: !prev[p.id] }));
         };
 
-        // ✅ 表示用（おすすめ度 / 価格）
         const score =
           typeof p.recommend_score === "number" && p.recommend_score >= 1 && p.recommend_score <= 10
             ? p.recommend_score
@@ -377,8 +360,7 @@ export default function TimelineFeed({
                     </p>
                   )}
 
-                  {/* ✅ 店名行：左=店名、右=おすすめ/価格バッジ +（モバイルのみ）Google写真トグル */}
-                  {(p.place_name || hasPlacePhotos || score || priceLabel) && (
+                  {(p.place_name || hasPlace || score || priceLabel) && (
                     <div className="flex items-center gap-2">
                       {p.place_name ? (
                         <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-orange-700">
@@ -400,7 +382,6 @@ export default function TimelineFeed({
                         <div className="flex-1" />
                       )}
 
-                      {/* 右側：バッジ群（おすすめ / 価格） */}
                       {(score || priceLabel) && (
                         <div className="flex items-center gap-2 shrink-0">
                           {score ? <Badge tone="orange">おすすめ {score}/10</Badge> : null}
@@ -408,8 +389,7 @@ export default function TimelineFeed({
                         </div>
                       )}
 
-                      {/* モバイルだけ：Google写真トグル */}
-                      {hasPlacePhotos && (
+                      {hasPlace && (
                         <button
                           type="button"
                           onClick={togglePhotos}
@@ -452,13 +432,14 @@ export default function TimelineFeed({
                 </div>
               </div>
 
-              {/* PC：右カラム */}
+              {/* PC：右カラム（表示領域に入ったら PlacePhotoGallery が refs を取りに行く） */}
               <aside className="hidden md:block p-4">
-                {hasPlacePhotos ? (
+                {p.place_id ? (
                   <PlacePhotoGallery
-                    refs={placePhotos!.refs}
+                    placeId={p.place_id}
                     placeName={p.place_name}
-                    attributionsHtml={placePhotos!.attributionsHtml}
+                    per={8}
+                    maxThumbs={8}
                   />
                 ) : (
                   <div className="text-xs text-slate-400">写真を取得できませんでした</div>
@@ -466,13 +447,14 @@ export default function TimelineFeed({
               </aside>
             </div>
 
-            {/* モバイル：開いた時だけ表示、枚数制限 */}
-            {hasPlacePhotos && isPhotosOpen ? (
-              <div className="md:hidden pb-4">
+            {/* モバイル：開いた時だけ描画 → その時だけAPIが走る */}
+            {p.place_id && isPhotosOpen ? (
+              <div className="md:hidden pb-4 px-4">
                 <PlacePhotoGallery
-                  refs={placePhotos!.refs.slice(0, MOBILE_PLACE_PHOTOS_MAX)}
+                  placeId={p.place_id}
                   placeName={p.place_name}
-                  attributionsHtml={placePhotos!.attributionsHtml}
+                  per={MOBILE_THUMBS}
+                  maxThumbs={MOBILE_THUMBS}
                 />
               </div>
             ) : null}
