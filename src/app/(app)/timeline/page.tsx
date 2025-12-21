@@ -85,7 +85,6 @@ export default async function TimelinePage({
             activeTab={activeTab}
             meId={user?.id ?? null}
             // ✅ 必要ならクライアントに渡せる（「フォロー中」判定などに使う）
-            myFolloweeIds={myFolloweeIds}
           />
         </section>
       </div>
