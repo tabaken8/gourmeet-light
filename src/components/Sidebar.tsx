@@ -12,8 +12,9 @@ import {
   UserPlus,
   LogOut,
   UserRound,
-  Map,
-  Coins, // ✅ added
+  MapPin,
+  CircleDollarSign,
+  Settings,
 } from "lucide-react";
 
 import { useNavBadges } from "@/hooks/useNavBadges";
@@ -26,6 +27,7 @@ function NavItem({
   dot,
   avatarUrl,
   avatarAlt,
+  iconClassName,
 }: {
   href: string;
   label: string;
@@ -34,6 +36,7 @@ function NavItem({
   dot?: boolean;
   avatarUrl?: string | null;
   avatarAlt?: string;
+  iconClassName?: string;
 }) {
   return (
     <Link
@@ -54,12 +57,11 @@ function NavItem({
             referrerPolicy="no-referrer"
           />
         ) : Icon ? (
-          <Icon size={22} />
+          <Icon size={22} className={iconClassName} />
         ) : (
-          <UserRound size={22} />
+          <UserRound size={22} className="text-slate-700" />
         )}
 
-        {/* count badge */}
         <span
           className={`
             absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center
@@ -70,7 +72,6 @@ function NavItem({
           {count}
         </span>
 
-        {/* dot badge */}
         {dot && (
           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
         )}
@@ -138,22 +139,52 @@ export default function Sidebar({ name }: { name?: string }) {
       </div>
 
       <nav className="flex flex-col gap-2 relative">
+        {/* メイン */}
         <NavItem
           href={gate("/timeline?tab=friends")}
           label="ホーム"
           icon={Home}
           dot={timelineDot}
+          iconClassName="text-blue-600"
         />
 
-        <NavItem href={gate("/search", true)} label="検索" icon={Search} />
+        <NavItem
+          href={gate("/search", true)}
+          label="検索"
+          icon={Search}
+          iconClassName="text-slate-700"
+        />
 
-        <NavItem href={gate("/map")} label="マップ" icon={Map} />
+        <NavItem
+          href={gate("/map")}
+          label="マップ"
+          icon={MapPin}
+          iconClassName="text-emerald-700"
+        />
+
+        <NavItem
+          href={gate("/collection")}
+          label="コレクション"
+          icon={Bookmark}
+          iconClassName="text-pink-600"
+        />
+
+        <NavItem
+          href={gate("/points")}
+          label="ポイント"
+          icon={CircleDollarSign}
+          iconClassName="text-amber-600"
+        />
+
+        {/* サブ（通知・フォロリク・設定） */}
+        <div className="my-2 h-px bg-black/[.08]" />
 
         <NavItem
           href={gate("/notifications")}
           label="通知"
           icon={Bell}
           count={notifCount}
+          iconClassName="text-violet-600"
         />
 
         <NavItem
@@ -161,12 +192,15 @@ export default function Sidebar({ name }: { name?: string }) {
           label="フォローリクエスト"
           icon={UserPlus}
           count={followReqCount}
+          iconClassName="text-sky-600"
         />
 
-        <NavItem href={gate("/collection")} label="コレクション" icon={Bookmark} />
-
-        {/* ✅ Points */}
-        <NavItem href={gate("/points")} label="ポイント" icon={Coins} />
+        <NavItem
+          href={gate("/settings")}
+          label="設定"
+          icon={Settings}
+          iconClassName="text-slate-700"
+        />
 
         <NavItem
           href={gate("/account")}
@@ -217,7 +251,7 @@ export default function Sidebar({ name }: { name?: string }) {
               w-full
             "
           >
-            <LogOut size={18} className="shrink-0" />
+            <LogOut size={18} className="shrink-0 text-rose-600" />
             <span
               className="
                 overflow-hidden whitespace-nowrap

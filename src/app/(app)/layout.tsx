@@ -4,10 +4,14 @@ export const dynamic = "force-dynamic";
 import type { ReactNode } from "react";
 import Sidebar from "@/components/Sidebar";
 import MobileHeaderNav from "@/components/MobileHeaderNav";
+import InviteReserveOnAuth from "@/components/InviteReserveOnAuth";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-white">
+      {/* ✅ ログイン後に pending_invite があれば自動で reserve（見た目は何も出ない） */}
+      <InviteReserveOnAuth />
+
       {/* PC: 左サイドバー（モバイルで誤って余白を取らないようにガード） */}
       <div className="hidden md:block">
         <Sidebar />

@@ -138,14 +138,6 @@ export default function SignUpPage() {
 
     if (error) return setMsg(error.message);
 
-    // セッションが発行されるタイプ（メール確認なし）なら pending_invite を掃除
-    if (data.user && data.session) {
-      if (typeof window !== "undefined") localStorage.removeItem("pending_invite");
-      router.push("/");
-      router.refresh();
-      return;
-    }
-
     // メール確認ありの場合：localStorage に残しておく
     if (data.user && !data.session) {
       if (trimmedInvite && typeof window !== "undefined") {
