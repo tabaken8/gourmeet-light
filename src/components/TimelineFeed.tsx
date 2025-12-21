@@ -49,6 +49,8 @@ type PostRow = {
   k_hop?: number | null;
 };
 
+type DiscoverTile = { p: PostRow; big: boolean };
+
 function formatJST(iso: string) {
   const dt = new Date(iso);
   return new Intl.DateTimeFormat("ja-JP", {
@@ -191,6 +193,100 @@ function makeSeed(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+/**
+ * 3列グリッドで「大(2x2)」が末尾で余りにくいように、
+ * クライアント側で "置き方" を決める簡易パッカー。
+ */
+function planDiscoverTiles(
+  ordered: PostRow[],
+  seed: string,
+  opts?: {
+    bigDenom?: number; // 小さいほどbig増える（例:4 => 25%）
+    minIndexForBig?: number; // 序盤はbig抑制
+    tailGuard?: number; // 末尾N件はbig禁止（余り防止）
+    maxBig?: number; // 1バッチあたり上限
+  }
+): DiscoverTile[] {
+  const bigDenom = opts?.bigDenom ?? 4;
+  const minIndexForBig = opts?.minIndexForBig ?? 3;
+  const tailGuard = opts?.tailGuard ?? 7;
+  const maxBig = opts?.maxBig ?? 4;
+
+  const occ: boolean[][] = [];
+  const ensureRow = (r: number) => {
+    while (occ.length <= r) occ.push([false, false, false]);
+  };
+
+  const firstEmpty = () => {
+    for (let r = 0; r < occ.length; r++) {
+      for (let c = 0; c < 3; c++) {
+        if (!occ[r][c]) return { r, c };
+      }
+    }
+    ensureRow(occ.length);
+    return { r: occ.length - 1, c: 0 };
+  };
+
+  const canBigAt = (r: number, c: number) => {
+    if (c > 1) return false; // 2列またぐので col=2 からは無理
+    ensureRow(r);
+    ensureRow(r + 1);
+    return (
+      !occ[r][c] &&
+      !occ[r][c + 1] &&
+      !occ[r + 1][c] &&
+      !occ[r + 1][c + 1]
+    );
+  };
+
+  const markSmall = (r: number, c: number) => {
+    ensureRow(r);
+    occ[r][c] = true;
+  };
+
+  const markBig = (r: number, c: number) => {
+    ensureRow(r);
+    ensureRow(r + 1);
+    occ[r][c] = true;
+    occ[r][c + 1] = true;
+    occ[r + 1][c] = true;
+    occ[r + 1][c + 1] = true;
+  };
+
+  let bigCount = 0;
+  const out: DiscoverTile[] = [];
+
+  for (let i = 0; i < ordered.length; i++) {
+    const p = ordered[i];
+    const remain = ordered.length - i;
+    const { r, c } = firstEmpty();
+
+    const h = hashString(`${seed}:big:${p.id}`);
+    const wantBigByRand = h % bigDenom === 0;
+
+    // ✅ 末尾付近では big を禁止して “余り” を作りにくくする
+    const allowByTail = remain > tailGuard;
+
+    const wantBig =
+      i > minIndexForBig &&
+      allowByTail &&
+      wantBigByRand &&
+      bigCount < maxBig &&
+      canBigAt(r, c);
+
+    if (wantBig) {
+      markBig(r, c);
+      bigCount++;
+      out.push({ p, big: true });
+    } else {
+      markSmall(r, c);
+      out.push({ p, big: false });
+    }
+  }
+
+  return out;
+}
+
 export default function TimelineFeed({
   activeTab,
   meId,
@@ -271,14 +367,14 @@ export default function TimelineFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, done, loading, activeTab]);
 
-  // ✅ discover用に「seedで順序を揺らした配列」をHooksの外で生成しておく（if内でuseMemoしない）
+  // ✅ discover用：自分は除外（保険）
   const discoverBase = useMemo(() => {
-    const base = meId ? posts.filter((p) => p.user_id !== meId) : posts;
-    return base;
+    return meId ? posts.filter((p) => p.user_id !== meId) : posts;
   }, [posts, meId]);
 
+  // ✅ discover用：順序をseedで揺らす（“元の順位をだいたい保つ”）
   const discoverGridPosts = useMemo(() => {
-    // APIの順位を壊しすぎないシャッフル（強度はここで調整）
+    // ランダム寄与（強いほどシャッフル）
     const jitterWeight = 8;
 
     const scored = discoverBase.map((p, rank) => {
@@ -290,6 +386,16 @@ export default function TimelineFeed({
     scored.sort((a, b) => a.key - b.key);
     return scored.map((x) => x.p);
   }, [discoverBase, seed]);
+
+  // ✅ discover用：bigが末尾で余りにくいように「置き方」を決める
+  const discoverTiles = useMemo(() => {
+    return planDiscoverTiles(discoverGridPosts, seed, {
+      bigDenom: 4, // big出現率（4=25%）
+      minIndexForBig: 3, // 序盤は抑制
+      tailGuard: 7, // ✅ 末尾7件はbig禁止（余り防止）
+      maxBig: 4, // 1バッチの上限
+    });
+  }, [discoverGridPosts, seed]);
 
   // friendsタブで未ログインなら統一LoginCardへ
   if (error?.includes("Unauthorized") && activeTab === "friends") {
@@ -319,7 +425,9 @@ export default function TimelineFeed({
   }
 
   // =========================
-  // ✅ DISCOVER: 3列固定 + 正方形タイル + たまに2x2大正方形（seedで変化）
+  // ✅ DISCOVER: 3列固定 + 正方形タイル + たまに2x2大正方形
+  //  - モバイルでは display_name を出さない
+  //  - big が末尾で余りにくいように配置を決める
   // =========================
   if (activeTab === "discover") {
     return (
@@ -331,17 +439,12 @@ export default function TimelineFeed({
             [grid-auto-flow:dense]
           "
         >
-          {discoverGridPosts.map((p, idx) => {
+          {discoverTiles.map(({ p, big }) => {
             const prof = p.profile;
             const display = prof?.display_name ?? "ユーザー";
             const isPublic = prof?.is_public ?? true;
 
             const thumb = getFirstThumb(p);
-
-            // ✅ seedで「どれが大正方形か」も決める
-            const h = hashString(`${seed}:big:${p.id}`);
-            const big = idx > 3 && h % 4 === 0; // 13小さく→増える
-
             const tileSpan = big ? "col-span-2 row-span-2" : "col-span-1 row-span-1";
 
             return (
@@ -376,7 +479,8 @@ export default function TimelineFeed({
 
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-black/45 to-transparent" />
 
-                  <div className="absolute left-2 top-2 flex items-center gap-1 text-[11px] font-medium text-white drop-shadow">
+                  {/* ✅ モバイルでは display_name を出さない */}
+                  <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
                     <span className="max-w-[120px] truncate">{display}</span>
                     {!isPublic && <Lock size={12} className="text-white/90" />}
                   </div>
@@ -404,7 +508,7 @@ export default function TimelineFeed({
 
         {done && posts.length > 0 && (
           <div className="pb-8 pt-4 text-center text-[11px] text-slate-400">
-            これ以上ありません
+            ログインしてもっと見つける
           </div>
         )}
       </div>
@@ -428,7 +532,9 @@ export default function TimelineFeed({
         const mapUrl = p.place_id
           ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
           : p.place_address
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+              p.place_address
+            )}`
           : null;
 
         const timelineImageUrls = getTimelineImageUrls(p);
@@ -445,7 +551,9 @@ export default function TimelineFeed({
         };
 
         const score =
-          typeof p.recommend_score === "number" && p.recommend_score >= 1 && p.recommend_score <= 10
+          typeof p.recommend_score === "number" &&
+          p.recommend_score >= 1 &&
+          p.recommend_score <= 10
             ? p.recommend_score
             : null;
 
@@ -472,7 +580,11 @@ export default function TimelineFeed({
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
+                        <img
+                          src={avatar}
+                          alt=""
+                          className="h-9 w-9 rounded-full object-cover"
+                        />
                       ) : (
                         initial
                       )}
@@ -486,12 +598,17 @@ export default function TimelineFeed({
                         >
                           {display}
                         </Link>
-                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
+                        {!isPublic && (
+                          <Lock size={12} className="shrink-0 text-slate-500" />
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 text-[11px] text-slate-500">
                         <span>{formatJST(p.created_at)}</span>
-                        <Link href={`/posts/${p.id}`} className="text-orange-600 hover:underline">
+                        <Link
+                          href={`/posts/${p.id}`}
+                          className="text-orange-600 hover:underline"
+                        >
                           詳細
                         </Link>
                       </div>
@@ -503,7 +620,11 @@ export default function TimelineFeed({
 
                 {timelineImageUrls.length > 0 && (
                   <Link href={`/posts/${p.id}`} className="block">
-                    <PostImageCarousel postId={p.id} imageUrls={timelineImageUrls} syncUrl={false} />
+                    <PostImageCarousel
+                      postId={p.id}
+                      imageUrls={timelineImageUrls}
+                      syncUrl={false}
+                    />
                   </Link>
                 )}
 
@@ -538,7 +659,9 @@ export default function TimelineFeed({
 
                       {(score || priceLabel) && (
                         <div className="flex items-center gap-2 shrink-0">
-                          {score ? <Badge tone="orange">おすすめ {score}/10</Badge> : null}
+                          {score ? (
+                            <Badge tone="orange">おすすめ {score}/10</Badge>
+                          ) : null}
                           {priceLabel ? <Badge>{priceLabel}</Badge> : null}
                         </div>
                       )}
@@ -547,7 +670,11 @@ export default function TimelineFeed({
                         <button
                           type="button"
                           onClick={togglePhotos}
-                          aria-label={isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"}
+                          aria-label={
+                            isPhotosOpen
+                              ? "Googleの写真を閉じる"
+                              : "Googleの写真を表示"
+                          }
                           className="
                             md:hidden
                             inline-flex h-8 w-8 items-center justify-center
@@ -582,7 +709,12 @@ export default function TimelineFeed({
                 </div>
 
                 <div className="px-4 pb-4">
-                  <PostComments postId={p.id} postUserId={p.user_id} meId={meId} previewCount={2} />
+                  <PostComments
+                    postId={p.id}
+                    postUserId={p.user_id}
+                    meId={meId}
+                    previewCount={2}
+                  />
                 </div>
               </div>
 
