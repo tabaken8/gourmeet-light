@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import InviteCodeModalTrigger from "@/components/InviteCodeModalTrigger";
+import InviteCodeModalTrigger from "../../../components/InviteCodeModalTrigger";
+
 
 type Tx = {
   id: number;
@@ -124,7 +125,7 @@ export default async function PointsPage() {
         <div className="flex items-end justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Current Balance
+              現在
             </div>
             <div className="mt-1 flex items-baseline gap-2">
               <div className="text-4xl font-extrabold tracking-tight">

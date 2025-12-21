@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, RefreshCcw } from "lucide-react";
+import { Copy, RefreshCcw, Link2, Share2 } from "lucide-react";
 
 type InviteCodeItem = {
   id: string;
@@ -42,11 +42,21 @@ function normalizeItems(json: any): InviteCodeItem[] {
   );
 }
 
+function buildInviteUrl(code: string) {
+  // client componentなので window は使える想定（念のためガード）
+  const origin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_SITE_URL || "";
+  return `${origin}/signup?invite=${encodeURIComponent(code)}`;
+}
+
 export default function InviteCodeSection() {
   const [items, setItems] = useState<InviteCodeItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   const latest = useMemo(() => items?.[0] ?? null, [items]);
 
@@ -83,12 +93,10 @@ export default function InviteCodeSection() {
       const newItem: InviteCodeItem | null = (json?.item ?? json?.current) ?? null;
 
       if (!newItem || typeof newItem.code !== "string") {
-        // ここまで来たらAPIと仕様ズレがあるので、一旦reloadして復旧
         await reload();
         return;
       }
 
-      // undefinedを絶対に混ぜない + 重複も避ける
       setItems((prev) => {
         const filteredPrev = prev.filter((x) => x && typeof x.code === "string");
         const dedup = filteredPrev.filter((x) => x.id !== newItem.id);
@@ -101,10 +109,38 @@ export default function InviteCodeSection() {
     }
   }
 
-  async function copy(code: string) {
-    await navigator.clipboard.writeText(code);
-    setCopied(code);
-    window.setTimeout(() => setCopied((v) => (v === code ? null : v)), 1200);
+  async function copyText(text: string, kind?: "code" | "url") {
+    await navigator.clipboard.writeText(text);
+
+    if (kind === "url") {
+      setCopiedUrl(text);
+      window.setTimeout(() => setCopiedUrl((v) => (v === text ? null : v)), 1200);
+      return;
+    }
+
+    setCopied(text);
+    window.setTimeout(() => setCopied((v) => (v === text ? null : v)), 1200);
+  }
+
+  async function shareInvite(code: string) {
+    const url = buildInviteUrl(code);
+
+    // Web Share API（スマホで最強）
+    if (typeof navigator !== "undefined" && "share" in navigator) {
+      try {
+        await (navigator as any).share({
+          title: "Gourmeet 招待",
+          text: "招待リンクから登録してね",
+          url,
+        });
+        return;
+      } catch {
+        // キャンセル等は無視してOK
+      }
+    }
+
+    // share不可ならURLコピーにフォールバック
+    await copyText(url, "url");
   }
 
   return (
@@ -112,9 +148,7 @@ export default function InviteCodeSection() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-lg font-semibold">招待コード</div>
-          <div className="text-sm text-gray-500">
-            友だちに共有して登録してもらう用
-          </div>
+          <div className="text-sm text-gray-500">友だちに共有して登録してもらう用</div>
         </div>
 
         <button
@@ -136,16 +170,49 @@ export default function InviteCodeSection() {
       {latest && (
         <div className="mt-4 rounded-2xl border p-4">
           <div className="text-sm text-gray-500">最新のコード</div>
-          <div className="mt-1 flex items-center justify-between gap-2">
+
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="font-mono text-xl tracking-widest">{latest.code}</div>
-            <button
-              onClick={() => copy(latest.code)}
-              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
-            >
-              <Copy size={16} />
-              {copied === latest.code ? "コピーしました" : "コピー"}
-            </button>
+
+            {/* ✅ ボタン群（コードコピー / リンクコピー / 共有） */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => copyText(latest.code, "code")}
+                className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                title="招待コードをコピー"
+              >
+                <Copy size={16} />
+                {copied === latest.code ? "コピーしました" : "コード"}
+              </button>
+
+              <button
+                onClick={() => copyText(buildInviteUrl(latest.code), "url")}
+                className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                title="招待リンクをコピー"
+              >
+                <Link2 size={16} />
+                {copiedUrl === buildInviteUrl(latest.code) ? "コピーしました" : "リンク"}
+              </button>
+
+              <button
+                onClick={() => shareInvite(latest.code)}
+                className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                title="共有"
+              >
+                <Share2 size={16} />
+                共有
+              </button>
+            </div>
           </div>
+
+          {/* ✅ 生成されたリンクを軽く見せる（長いので折り返し） */}
+          <div className="mt-3 rounded-xl bg-black/[.03] p-3">
+            <div className="text-xs text-gray-500">招待リンク</div>
+            <div className="mt-1 break-all text-xs text-gray-700">
+              {buildInviteUrl(latest.code)}
+            </div>
+          </div>
+
           <div className="mt-2 text-xs text-gray-500">
             発行: {fmt(latest.created_at)}
             {latest.expires_at ? ` / 期限: ${fmt(latest.expires_at)}` : ""}
@@ -167,28 +234,44 @@ export default function InviteCodeSection() {
           <div className="text-sm text-gray-500">まだ招待コードがありません。</div>
         ) : (
           items
-            .filter((it) => it && typeof it.code === "string") // 念のため保険
-            .map((it) => (
-              <div
-                key={it.id}
-                className="flex items-center justify-between rounded-xl border p-3"
-              >
-                <div>
-                  <div className="font-mono tracking-widest">{it.code}</div>
-                  <div className="text-xs text-gray-500">
-                    {fmt(it.created_at)} / {it.uses}/{it.max_uses} 回
-                    {it.redeemed_at ? " / 使用済み" : ""}
+            .filter((it) => it && typeof it.code === "string")
+            .map((it) => {
+              const url = buildInviteUrl(it.code);
+              return (
+                <div
+                  key={it.id}
+                  className="flex items-center justify-between rounded-xl border p-3"
+                >
+                  <div className="min-w-0">
+                    <div className="font-mono tracking-widest">{it.code}</div>
+                    <div className="text-xs text-gray-500">
+                      {fmt(it.created_at)} / {it.uses}/{it.max_uses} 回
+                      {it.redeemed_at ? " / 使用済み" : ""}
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      onClick={() => copyText(it.code, "code")}
+                      className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                      title="コードをコピー"
+                    >
+                      <Copy size={16} />
+                      {copied === it.code ? "OK" : "コード"}
+                    </button>
+
+                    <button
+                      onClick={() => copyText(url, "url")}
+                      className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                      title="リンクをコピー"
+                    >
+                      <Link2 size={16} />
+                      {copiedUrl === url ? "OK" : "リンク"}
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => copy(it.code)}
-                  className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
-                >
-                  <Copy size={16} />
-                  {copied === it.code ? "OK" : "コピー"}
-                </button>
-              </div>
-            ))
+              );
+            })
         )}
       </div>
     </div>

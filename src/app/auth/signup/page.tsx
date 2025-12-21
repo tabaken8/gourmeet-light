@@ -17,11 +17,7 @@ function strengthLabel(pw: string) {
 }
 
 function normalizeInvite(raw: string) {
-  // 余計な空白・小文字を吸収（英数想定）
-  return (raw || "")
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase();
+  return (raw || "").trim().replace(/\s+/g, "").toUpperCase();
 }
 
 export default function SignUpPage() {
@@ -37,9 +33,11 @@ export default function SignUpPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ✅ 招待コード（基本はURLから自動適用）
+  // ✅ 招待コード
   const [invite, setInvite] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
 
   // 1) URL ?invite= を拾う  2) localStorage の pending を拾う
   useEffect(() => {
@@ -54,7 +52,7 @@ export default function SignUpPage() {
 
     const picked = fromUrl || fromLs;
 
-    if (picked && !invite) {
+    if (picked && !normalizeInvite(invite)) {
       setInvite(picked);
       setInviteOpen(false); // 自動適用時は畳む
     }
@@ -65,6 +63,13 @@ export default function SignUpPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // ✅ invite が手入力/貼り付けで変わったら localStorage を更新（保険）
+  useEffect(() => {
+    const trimmed = normalizeInvite(invite);
+    if (typeof window === "undefined") return;
+    if (trimmed) localStorage.setItem("pending_invite", trimmed);
+  }, [invite]);
+
   const match = pw.length > 0 && pw === pw2;
   const strength = useMemo(() => strengthLabel(pw), [pw]);
   const canSubmit = !!email && pw.length >= 6 && match && !loading;
@@ -72,12 +77,36 @@ export default function SignUpPage() {
   const handleEmailChange = (value: string) => {
     setEmail(value);
 
-    // 表示名がまだ空なら、メールのローカル部を初期値として入れてあげる
     if (!displayName) {
       const localPart = value.split("@")[0] ?? "";
-      if (localPart) {
-        setDisplayName(localPart);
+      if (localPart) setDisplayName(localPart);
+    }
+  };
+
+  const pasteInviteFromClipboard = async () => {
+    setInviteMsg(null);
+    setPasting(true);
+    try {
+      if (!navigator.clipboard?.readText) {
+        setInviteMsg("このブラウザでは貼り付けが使えません。手入力してください。");
+        return;
       }
+      const text = await navigator.clipboard.readText();
+      const normalized = normalizeInvite(text);
+
+      if (!normalized) {
+        setInviteMsg("クリップボードに招待コードが見つかりませんでした。");
+        return;
+      }
+
+      setInvite(normalized);
+      setInviteOpen(true); // 貼り付けたら見える状態に
+      setInviteMsg("貼り付けました。");
+      window.setTimeout(() => setInviteMsg(null), 1200);
+    } catch (e) {
+      setInviteMsg("貼り付けに失敗しました。手入力してください。");
+    } finally {
+      setPasting(false);
     }
   };
 
@@ -94,7 +123,6 @@ export default function SignUpPage() {
     const { data, error } = await supabase.auth.signUp({
       email,
       password: pw,
-      // signup 時点で user_metadata に display_name / invite_code を持たせる（後でサーバー側で処理しやすい）
       options:
         trimmedDisplayName || trimmedInvite
           ? {
@@ -118,7 +146,7 @@ export default function SignUpPage() {
       return;
     }
 
-    // メール確認ありの場合：localStorage に残しておく（同端末なら後で拾える）
+    // メール確認ありの場合：localStorage に残しておく
     if (data.user && !data.session) {
       if (trimmedInvite && typeof window !== "undefined") {
         localStorage.setItem("pending_invite", trimmedInvite);
@@ -159,20 +187,21 @@ export default function SignUpPage() {
       <section className="rounded-2xl bg-white p-8 shadow-sm">
         <h1 className="mb-6 text-2xl font-bold tracking-tight">会員登録</h1>
 
-        {/* ✅ 招待コード：自動適用があればここで“適用済み”を見せる */}
+        {/* ✅ 招待コード */}
         <div className="mb-5">
           {inviteApplied ? (
             <div className="rounded-2xl border border-black/10 bg-black/[.02] p-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <div className="text-sm font-semibold">✅ 招待コードを適用しました</div>
-                  <div className="mt-1 font-mono text-lg tracking-widest">
+                  <div className="mt-1 font-mono text-lg tracking-widest break-all">
                     {normalizeInvite(invite)}
                   </div>
                   <p className="mt-1 text-xs text-gray-600">
                     変更したい場合は「変更する」から編集できます。
                   </p>
                 </div>
+
                 <button
                   type="button"
                   onClick={() => setInviteOpen((v) => !v)}
@@ -186,47 +215,86 @@ export default function SignUpPage() {
                 <div className="mt-3">
                   <label className="block">
                     <span className="mb-1 block text-sm">招待コード（任意）</span>
-                    <input
-                      className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600"
-                      value={invite}
-                      onChange={(e) => setInvite(e.target.value)}
-                      placeholder="例: ABCDEFGH12"
-                      autoComplete="off"
-                      inputMode="text"
-                    />
+
+                    <div className="flex gap-2">
+                      <input
+                        className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600"
+                        value={invite}
+                        onChange={(e) => setInvite(e.target.value)}
+                        placeholder="例: ABCDEFGH12"
+                        autoComplete="off"
+                        inputMode="text"
+                      />
+                      <button
+                        type="button"
+                        onClick={pasteInviteFromClipboard}
+                        disabled={pasting}
+                        className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50"
+                      >
+                        {pasting ? "…" : "貼り付け"}
+                      </button>
+                    </div>
                   </label>
-                  <p className="mt-1 text-xs text-gray-600">
-                    招待コードがなくても登録できます。
-                  </p>
+
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p className="text-xs text-gray-600">招待コードがなくても登録できます。</p>
+                    {inviteMsg && <p className="text-xs text-gray-600">{inviteMsg}</p>}
+                  </div>
                 </div>
               )}
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setInviteOpen((v) => !v)}
-              className="text-sm font-semibold text-gray-700 underline decoration-black/20 underline-offset-4 hover:text-black"
-            >
-              招待コードを持っていますか？（任意）
-            </button>
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setInviteOpen((v) => !v)}
+                className="text-sm font-semibold text-gray-700 underline decoration-black/20 underline-offset-4 hover:text-black"
+              >
+                招待コードを持っていますか？（任意）
+              </button>
+
+              {/* ✅ 自力で来た人向け：すぐ貼れる導線 */}
+              <button
+                type="button"
+                onClick={pasteInviteFromClipboard}
+                disabled={pasting}
+                className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03] disabled:opacity-50"
+                title="クリップボードから貼り付け"
+              >
+                {pasting ? "…" : "貼り付け"}
+              </button>
+            </div>
           )}
 
           {!inviteApplied && inviteOpen && (
             <div className="mt-3 rounded-2xl border border-black/10 bg-black/[.02] p-4">
               <label className="block">
                 <span className="mb-1 block text-sm">招待コード（任意）</span>
-                <input
-                  className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600"
-                  value={invite}
-                  onChange={(e) => setInvite(e.target.value)}
-                  placeholder="例: ABCDEFGH12"
-                  autoComplete="off"
-                  inputMode="text"
-                />
+
+                <div className="flex gap-2">
+                  <input
+                    className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600"
+                    value={invite}
+                    onChange={(e) => setInvite(e.target.value)}
+                    placeholder="例: ABCDEFGH12"
+                    autoComplete="off"
+                    inputMode="text"
+                  />
+                  <button
+                    type="button"
+                    onClick={pasteInviteFromClipboard}
+                    disabled={pasting}
+                    className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50"
+                  >
+                    {pasting ? "…" : "貼り付け"}
+                  </button>
+                </div>
               </label>
-              <p className="mt-1 text-xs text-gray-600">
-                招待コードがなくても登録できます。
-              </p>
+
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <p className="text-xs text-gray-600">招待コードがなくても登録できます。</p>
+                {inviteMsg && <p className="text-xs text-gray-600">{inviteMsg}</p>}
+              </div>
             </div>
           )}
         </div>
@@ -245,7 +313,7 @@ export default function SignUpPage() {
             />
           </label>
 
-          {/* 表示名（ハンドルネーム） */}
+          {/* 表示名 */}
           <label className="block">
             <span className="mb-1 block text-sm">表示名（ハンドルネーム）</span>
             <input
