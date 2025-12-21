@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Bell, UserPlus, Plus, Map } from "lucide-react";
+import { Home, Search, Bell, UserPlus, Plus, Map, Coins } from "lucide-react"; // ✅ added Coins
 import { useNavBadges } from "@/hooks/useNavBadges";
 
 function Badge({ count }: { count?: number }) {
@@ -53,7 +53,8 @@ function IconButton({
 
 export default function MobileHeaderNav({ name }: { name?: string }) {
   const pathname = usePathname();
-  const { avatarUrl, notifCount, followReqCount, timelineDot, displayNameSafe } = useNavBadges(name);
+  const { avatarUrl, notifCount, followReqCount, timelineDot, displayNameSafe } =
+    useNavBadges(name);
 
   const isActive = (p: string) => pathname === p || pathname.startsWith(p + "/");
 
@@ -74,6 +75,11 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </Link>
 
           <div className="flex items-center gap-1">
+            {/* ✅ Points */}
+            <IconButton href="/points" active={isActive("/points")} ariaLabel="ポイント">
+              <Coins size={20} />
+            </IconButton>
+
             <IconButton href="/notifications" active={isActive("/notifications")} ariaLabel="通知">
               <Bell size={20} />
               <Badge count={notifCount} />

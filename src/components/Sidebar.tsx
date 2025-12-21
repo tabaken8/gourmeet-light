@@ -13,6 +13,7 @@ import {
   LogOut,
   UserRound,
   Map,
+  Coins, // ✅ added
 } from "lucide-react";
 
 import { useNavBadges } from "@/hooks/useNavBadges";
@@ -90,8 +91,14 @@ function NavItem({
 }
 
 export default function Sidebar({ name }: { name?: string }) {
-  const { isAuthed, avatarUrl, displayNameSafe, notifCount, followReqCount, timelineDot } =
-    useNavBadges(name);
+  const {
+    isAuthed,
+    avatarUrl,
+    displayNameSafe,
+    notifCount,
+    followReqCount,
+    timelineDot,
+  } = useNavBadges(name);
 
   const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
 
@@ -156,9 +163,10 @@ export default function Sidebar({ name }: { name?: string }) {
           count={followReqCount}
         />
 
-        {/* ✅ DM（メッセージ）を削除 */}
-
         <NavItem href={gate("/collection")} label="コレクション" icon={Bookmark} />
+
+        {/* ✅ Points */}
+        <NavItem href={gate("/points")} label="ポイント" icon={Coins} />
 
         <NavItem
           href={gate("/account")}

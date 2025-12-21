@@ -61,6 +61,39 @@ function canUseWebp(): boolean {
 }
 
 /**
+ * Gourmeet day_key（毎日4:00 JSTで切り替え）
+ * - JSTで 00:00〜03:59 は「前日扱い」
+ * - それ以外は「当日扱い」
+ */
+function getGourmeetDayKey(now = new Date()): string {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = Object.fromEntries(dtf.formatToParts(now).map((p) => [p.type, p.value])) as any;
+  const y = Number(parts.year);
+  const m = Number(parts.month);
+  const d = Number(parts.day);
+  const h = Number(parts.hour);
+
+  // JSTのカレンダー日をUTC Dateで表現（中身のTZは気にしない。日付の演算だけに使う）
+  let day = new Date(Date.UTC(y, m - 1, d));
+  if (h < 4) day = new Date(day.getTime() - 24 * 60 * 60 * 1000);
+
+  const yyyy = day.getUTCFullYear();
+  const mm = String(day.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(day.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
  * 高品質縮小：
  * - EXIF orientation を反映（可能なら）
  * - 段階縮小（半分ずつ）でボケ/ジャギを抑える
@@ -209,6 +242,15 @@ export default function NewPostPage() {
   const router = useRouter();
 
   const [uid, setUid] = useState<string | null>(null);
+
+  // ✅ 投稿済み判定（自分の投稿が1件でもあるか）
+  const [hasPosted, setHasPosted] = useState<boolean | null>(null);
+
+  // ✅ 今日の +50（daily_post）が付与済みか（4:00 JST基準）
+  const [dailyAwarded, setDailyAwarded] = useState<boolean | null>(null);
+
+  const dayKey = useMemo(() => getGourmeetDayKey(new Date()), []);
+
   const [content, setContent] = useState("");
   const [imgs, setImgs] = useState<PreparedImage[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -242,6 +284,62 @@ export default function NewPostPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, [supabase]);
+
+  useEffect(() => {
+    if (!uid) {
+      setHasPosted(null);
+      setDailyAwarded(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // ① 投稿済みか
+        const { count: postCount, error: postErr } = await supabase
+          .from("posts")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", uid);
+
+        if (cancelled) return;
+
+        if (postErr) {
+          console.error(postErr);
+          setHasPosted(null);
+        } else {
+          setHasPosted((postCount ?? 0) > 0);
+        }
+
+        // ② 今日のdaily_post(+50)が付与済みか
+        const { count: dailyCount, error: dailyErr } = await supabase
+          .from("point_transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", uid)
+          .eq("reason", "daily_post")
+          .eq("day_key", dayKey);
+
+        if (cancelled) return;
+
+        if (dailyErr) {
+          console.error(dailyErr);
+          setDailyAwarded(null);
+        } else {
+          setDailyAwarded((dailyCount ?? 0) > 0);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setHasPosted(null);
+          setDailyAwarded(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, supabase, dayKey]);
 
   // 場所候補検索（デバウンス）
   useEffect(() => {
@@ -404,6 +502,37 @@ export default function NewPostPage() {
     }
   };
 
+  const resetNote = (
+    <span className="text-xs text-slate-500">
+      ※ リセットは <span className="font-semibold">毎日 4:00（JST）</span>（day_key:{" "}
+      <span className="font-mono">{dayKey}</span>）
+    </span>
+  );
+
+  const dailyLine = () => {
+    if (dailyAwarded === true) {
+      return (
+        <div className="text-sm text-slate-700">
+          今日の <span className="font-semibold text-orange-600">+50pt</span> は{" "}
+          <span className="font-semibold">付与済み</span>です（明日4:00にリセット）
+        </div>
+      );
+    }
+    if (dailyAwarded === false) {
+      return (
+        <div className="text-sm text-slate-700">
+          2回目以降は、<span className="font-semibold">毎日最初の投稿</span>で{" "}
+          <span className="font-semibold text-orange-600">+50pt</span>（1日1回）
+        </div>
+      );
+    }
+    return (
+      <div className="text-sm text-slate-600">
+        毎日最初の投稿で <span className="font-semibold text-orange-600">+50pt</span>（1日1回）
+      </div>
+    );
+  };
+
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
       <div className="mx-auto flex w-full max-w-2xl flex-col px-4 py-8 md:px-6">
@@ -415,6 +544,34 @@ export default function NewPostPage() {
             いまの “おいしい” を、写真と一緒にふわっと残しておく場所。
           </p>
         </div>
+
+        {/* ✅ ポイント案内（初回 +500 / 今日の+50付与状況も表示） */}
+        {(hasPosted !== null || dailyAwarded !== null) && (
+          <div className="mb-4 rounded-2xl border border-orange-100 bg-white/90 p-4 shadow-sm">
+            {hasPosted === false ? (
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                  🎁 初回投稿ボーナス
+                </div>
+
+                <div className="text-base font-bold text-slate-900">
+                  初めての投稿で <span className="text-orange-600">+500pt</span> もらえます
+                </div>
+
+                {dailyLine()}
+                <div>{resetNote}</div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-900">
+                  {dailyAwarded === true ? "今日の投稿ボーナス" : "投稿ボーナス"}
+                </div>
+                {dailyLine()}
+                <div>{resetNote}</div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-6">
           <form onSubmit={submit} className="space-y-5">
