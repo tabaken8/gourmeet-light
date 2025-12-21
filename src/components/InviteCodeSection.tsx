@@ -48,7 +48,7 @@ function buildInviteUrl(code: string) {
     typeof window !== "undefined"
       ? window.location.origin
       : process.env.NEXT_PUBLIC_SITE_URL || "";
-  return `${origin}/signup?invite=${encodeURIComponent(code)}`;
+  return `${origin}/auth/signup?invite=${encodeURIComponent(code)}`;
 }
 
 export default function InviteCodeSection() {
