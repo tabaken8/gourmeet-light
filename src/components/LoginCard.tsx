@@ -37,11 +37,11 @@ type ExploreCopy = {
 function pickExploreCopy(seed: number): ExploreCopy {
   // ここは好きに増やしてOK（“いけてるスタートアップ感”はコピーで出る）
   const variants: ExploreCopy[] = [
-    { label: "まずはサクッと覗く", sub: "公開タイムラインへ" },
-    { label: "体験してみる", sub: "ログインなしでOK" },
-    { label: "今日のおすすめを見る", sub: "公開投稿から" },
-    { label: "雰囲気だけ見てみる", sub: "公開タイムラインへ" },
-    { label: "人気の投稿を見に行く", sub: "公開タイムラインへ" },
+    { label: "ログインせずにまずはサクッと覗く", sub: "公開タイムラインへ" },
+    { label: "ログインせずに体験してみる", sub: "ログインなしでOK" },
+    { label: "ログインせずに今日のおすすめを見る", sub: "公開投稿から" },
+    { label: "ログインせずに雰囲気だけ見てみる", sub: "公開タイムラインへ" },
+    { label: "ログインせずに人気の投稿を見に行く", sub: "公開タイムラインへ" },
   ];
   return variants[seed % variants.length];
 }

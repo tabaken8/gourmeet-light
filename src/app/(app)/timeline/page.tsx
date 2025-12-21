@@ -15,11 +15,23 @@ export default async function TimelinePage({
   const sp = await searchParams;
   const activeTab = sp?.tab === "discover" ? "discover" : "friends";
 
-  // ✅ ログイン状態を取得して Feed に渡す（これが「ログインボタンが出る問題」の根本解決）
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // ✅ 自分の follow 一覧（k=1）を取得
+  let myFolloweeIds: string[] = [];
+  if (user?.id) {
+    const { data, error } = await supabase
+      .from("follows")
+      .select("followee_id")
+      .eq("follower_id", user.id);
+
+    if (!error && data) {
+      myFolloweeIds = data.map((r) => r.followee_id).filter(Boolean);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-white text-slate-800">
@@ -68,11 +80,12 @@ export default async function TimelinePage({
             </p>
           </div>
 
-          {/* ✅ keyでタブ切替時にFeedを完全リセット */}
           <TimelineFeed
             key={activeTab}
             activeTab={activeTab}
             meId={user?.id ?? null}
+            // ✅ 必要ならクライアントに渡せる（「フォロー中」判定などに使う）
+            myFolloweeIds={myFolloweeIds}
           />
         </section>
       </div>

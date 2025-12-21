@@ -1,7 +1,7 @@
 // src/components/TimelineFeed.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Lock, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -37,14 +37,16 @@ type PostRow = {
   place_address: string | null;
   place_id: string | null;
 
-  recommend_score?: number | null; // 1-10
-  price_yen?: number | null; // integer
-  price_range?: string | null; // "~999" etc
+  recommend_score?: number | null;
+  price_yen?: number | null;
+  price_range?: string | null;
 
   profile: ProfileLite | null;
 
   likeCount?: number;
   likedByMe?: boolean;
+
+  k_hop?: number | null;
 };
 
 function formatJST(iso: string) {
@@ -70,6 +72,16 @@ function getTimelineImageUrls(p: PostRow): string[] {
 
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy.filter((x): x is string => !!x);
+}
+
+function getFirstThumb(p: PostRow): string | null {
+  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
+  const v = variants[0];
+  const best = v?.thumb ?? v?.full ?? null;
+  if (best) return best;
+
+  const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
+  return legacy[0] ?? null;
 }
 
 function GoogleMark({ className = "" }: { className?: string }) {
@@ -156,6 +168,29 @@ function Badge({
   );
 }
 
+// ---- seed & hash helpers ----
+function hashString(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function makeSeed(): string {
+  try {
+    if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+      const a = new Uint32Array(2);
+      crypto.getRandomValues(a);
+      return `${a[0]}-${a[1]}`;
+    }
+  } catch {
+    // ignore
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function TimelineFeed({
   activeTab,
   meId,
@@ -169,8 +204,11 @@ export default function TimelineFeed({
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // モバイルで「Google写真」を開いた投稿だけ展開
+  // friends用：モバイルで「Google写真」を開いた投稿だけ展開
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
+
+  // ✅ refreshごとに順序が変わるseed（描画中は固定）
+  const [seed] = useState(() => makeSeed());
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -183,7 +221,7 @@ export default function TimelineFeed({
 
     const params = new URLSearchParams();
     params.set("tab", activeTab);
-    params.set("limit", "5");
+    params.set("limit", activeTab === "discover" ? "24" : "5");
     if (!reset && cursor) params.set("cursor", cursor);
 
     try {
@@ -225,13 +263,33 @@ export default function TimelineFeed({
       (entries) => {
         if (entries[0]?.isIntersecting) loadMore(false);
       },
-      { rootMargin: "600px" }
+      { rootMargin: "800px" }
     );
 
     io.observe(el);
     return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, done, loading, activeTab]);
+
+  // ✅ discover用に「seedで順序を揺らした配列」をHooksの外で生成しておく（if内でuseMemoしない）
+  const discoverBase = useMemo(() => {
+    const base = meId ? posts.filter((p) => p.user_id !== meId) : posts;
+    return base;
+  }, [posts, meId]);
+
+  const discoverGridPosts = useMemo(() => {
+    // APIの順位を壊しすぎないシャッフル（強度はここで調整）
+    const jitterWeight = 8;
+
+    const scored = discoverBase.map((p, rank) => {
+      const jitter = (hashString(`${seed}:order:${p.id}`) % 1000) / 1000; // 0..1
+      const key = rank + jitter * jitterWeight;
+      return { p, key };
+    });
+
+    scored.sort((a, b) => a.key - b.key);
+    return scored.map((x) => x.p);
+  }, [discoverBase, seed]);
 
   // friendsタブで未ログインなら統一LoginCardへ
   if (error?.includes("Unauthorized") && activeTab === "friends") {
@@ -260,6 +318,102 @@ export default function TimelineFeed({
     );
   }
 
+  // =========================
+  // ✅ DISCOVER: 3列固定 + 正方形タイル + たまに2x2大正方形（seedで変化）
+  // =========================
+  if (activeTab === "discover") {
+    return (
+      <div className="w-full">
+        <div
+          className="
+            grid grid-cols-3
+            gap-[2px] md:gap-2
+            [grid-auto-flow:dense]
+          "
+        >
+          {discoverGridPosts.map((p, idx) => {
+            const prof = p.profile;
+            const display = prof?.display_name ?? "ユーザー";
+            const isPublic = prof?.is_public ?? true;
+
+            const thumb = getFirstThumb(p);
+
+            // ✅ seedで「どれが大正方形か」も決める
+            const h = hashString(`${seed}:big:${p.id}`);
+            const big = idx > 3 && h % 4 === 0; // 13小さく→増える
+
+            const tileSpan = big ? "col-span-2 row-span-2" : "col-span-1 row-span-1";
+
+            return (
+              <Link
+                key={p.id}
+                href={`/posts/${p.id}`}
+                className={[
+                  "relative block overflow-hidden",
+                  "rounded-none",
+                  "bg-slate-100",
+                  "focus:outline-none focus:ring-2 focus:ring-orange-400",
+                  tileSpan,
+                ].join(" ")}
+              >
+                <div className="relative w-full aspect-square">
+                  {thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={thumb}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-slate-100">
+                      <div className="p-2 text-[11px] text-slate-500 line-clamp-6">
+                        {p.place_name ? `📍 ${p.place_name}\n` : ""}
+                        {p.content ? p.content : "投稿"}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-black/45 to-transparent" />
+
+                  <div className="absolute left-2 top-2 flex items-center gap-1 text-[11px] font-medium text-white drop-shadow">
+                    <span className="max-w-[120px] truncate">{display}</span>
+                    {!isPublic && <Lock size={12} className="text-white/90" />}
+                  </div>
+
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent p-2">
+                    <div className="truncate text-[10px] text-white/90">
+                      {p.place_name ? p.place_name : " "}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        <div ref={sentinelRef} className="h-10" />
+
+        {loading && (
+          <div className="pb-8 pt-4 text-center text-xs text-slate-500">読み込み中...</div>
+        )}
+
+        {error && !error.includes("Unauthorized") && (
+          <div className="pb-8 pt-4 text-center text-xs text-red-600">{error}</div>
+        )}
+
+        {done && posts.length > 0 && (
+          <div className="pb-8 pt-4 text-center text-[11px] text-slate-400">
+            これ以上ありません
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // =========================
+  // ✅ FRIENDS: 既存タイムライン
+  // =========================
   const MOBILE_THUMBS = 3;
 
   return (
@@ -432,7 +586,6 @@ export default function TimelineFeed({
                 </div>
               </div>
 
-              {/* PC：右カラム（表示領域に入ったら PlacePhotoGallery が refs を取りに行く） */}
               <aside className="hidden md:block p-4">
                 {p.place_id ? (
                   <PlacePhotoGallery
@@ -447,7 +600,6 @@ export default function TimelineFeed({
               </aside>
             </div>
 
-            {/* モバイル：開いた時だけ描画 → その時だけAPIが走る */}
             {p.place_id && isPhotosOpen ? (
               <div className="md:hidden pb-4 px-4">
                 <PlacePhotoGallery

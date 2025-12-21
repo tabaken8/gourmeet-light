@@ -32,7 +32,7 @@ const GENRES: GenreOption[] = [
   { key: "ramen", emoji: "🍜", label: "ラーメン" },
   { key: "sushi", emoji: "🍣", label: "寿司" },
   { key: "yakiniku", emoji: "🥩", label: "焼肉" },
-  { key: "izakaya", emoji: "🍢", label: "焼き鳥/居酒屋" },
+  { key: "izakaya", emoji: "🍺", label: "焼き鳥/居酒屋" },
   { key: "chinese", emoji: "🥟", label: "中華" },
   { key: "curry", emoji: "🍛", label: "カレー" },
   { key: "italian", emoji: "🍝", label: "イタリアン" },

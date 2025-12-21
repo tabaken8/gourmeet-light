@@ -12,6 +12,7 @@ import {
   Check,
   Image as ImageIcon,
   Smile,
+  Settings,
 } from "lucide-react";
 
 type PlaceRow = {
@@ -64,7 +65,7 @@ const GENRES: GenreOption[] = [
   { key: "ramen", emoji: "🍜", label: "ラーメン" },
   { key: "sushi", emoji: "🍣", label: "寿司" },
   { key: "yakiniku", emoji: "🥩", label: "焼肉" },
-  { key: "yakitori_izakaya", emoji: "🍢", label: "焼き鳥/居酒屋" },
+  { key: "yakitori_izakaya", emoji: "🍺", label: "焼き鳥/居酒屋" },
   { key: "chinese", emoji: "🥟", label: "中華" },
   { key: "curry", emoji: "🍛", label: "カレー" },
   { key: "italian", emoji: "🍝", label: "イタリアン" },
@@ -230,25 +231,14 @@ function Chip({
 }
 
 /** 画像カルーセル（軽量） */
-function MiniCarousel({
-  images,
-  postHref,
-}: {
-  images: string[];
-  postHref: string;
-}) {
+function MiniCarousel({ images, postHref }: { images: string[]; postHref: string }) {
   if (!images?.length) return null;
 
   return (
     <div className="-mx-3 mt-2">
       <div className="flex gap-2 overflow-x-auto px-3 pb-1 snap-x snap-mandatory">
         {images.slice(0, 10).map((url, idx) => (
-          <Link
-            key={`${url}-${idx}`}
-            href={postHref}
-            className="snap-start shrink-0"
-            aria-label="投稿を開く"
-          >
+          <Link key={`${url}-${idx}`} href={postHref} className="snap-start shrink-0" aria-label="投稿を開く">
             <img
               src={url}
               alt=""
@@ -264,14 +254,33 @@ function MiniCarousel({
 
 type IconMode = "emoji" | "photo";
 
+/** ====== Genre icon (settings) ====== */
+const GENRE_ICON_BUCKET = "genre-icons";
+type GenreIconRow = { genre_key: string; image_url: string; storage_path: string };
+
+type ConfigurableGenre = {
+  genreKey: string;
+  emoji: string;
+  label: string;
+  count: number;
+};
+
+function genreKeyFromEmoji(emoji: string) {
+  const known = GENRES.find((g) => g.emoji === emoji);
+  return known?.key ?? `emoji:${emoji}`;
+}
+
+function storageSafeSegment(s: string) {
+  // storage pathで安全にする（/ や % などを避けたい）
+  return encodeURIComponent(s).replaceAll("%", "_");
+}
+
 export default function SavedPlacesMap() {
   const supabase = createClientComponentClient();
 
   const [rawRows, setRawRows] = useState<RawUserPlaceRow[]>([]);
   const [collections, setCollections] = useState<CollectionRow[]>([]);
-  const [placeToCollectionIds, setPlaceToCollectionIds] = useState<Map<string, Set<string>>>(
-    new Map()
-  );
+  const [placeToCollectionIds, setPlaceToCollectionIds] = useState<Map<string, Set<string>>>(new Map());
 
   const [placeToEmoji, setPlaceToEmoji] = useState<Map<string, string>>(new Map());
   const [placeToSuggestedEmoji, setPlaceToSuggestedEmoji] = useState<Map<string, string>>(new Map());
@@ -326,6 +335,26 @@ export default function SavedPlacesMap() {
 
   const suggestInFlightRef = useRef<Map<string, Promise<string>>>(new Map());
 
+  /** ===== Settings modal: genre images ===== */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [genreKeyToImage, setGenreKeyToImage] = useState<Map<string, GenreIconRow>>(new Map());
+  const [selectedGenreKey, setSelectedGenreKey] = useState<string | null>(null);
+
+  // いま編集してるgenreのファイル（= 右ペイン）
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [savingGenreIcon, setSavingGenreIcon] = useState(false);
+
+  useEffect(() => {
+    if (!pendingFile) {
+      setPendingPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(pendingFile);
+    setPendingPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingFile]);
+
   useEffect(() => {
     try {
       const v = localStorage.getItem("savedPlacesIconMode");
@@ -354,6 +383,17 @@ export default function SavedPlacesMap() {
     if (sugE && sugE.trim()) return sugE;
 
     return "📍";
+  };
+
+  const getGenreKeyForPlace = (placeId: string): string | null => {
+    const e = getEmoji(placeId);
+    return genreKeyFromEmoji(e);
+  };
+
+  const getCustomGenreImageUrlForPlace = (placeId: string): string | null => {
+    const key = getGenreKeyForPlace(placeId);
+    if (!key) return null;
+    return genreKeyToImage.get(key)?.image_url ?? null;
   };
 
   const getBudgetYen = (placeId: string) => {
@@ -439,6 +479,7 @@ export default function SavedPlacesMap() {
     placeToSuggestedEmoji,
     placeToBudgetYen,
     placeToBudgetRange,
+    genreKeyToImage,
   ]);
 
   const mappable = useMemo(() => {
@@ -478,6 +519,18 @@ export default function SavedPlacesMap() {
 
     return res;
   }, [genreCounts]);
+
+  // ✅ 設定対象（= 保存データ上で存在するジャンルのみ）
+  const configurableGenres: ConfigurableGenre[] = useMemo(() => {
+    return availableGenres
+      .map((g) => ({
+        genreKey: genreKeyFromEmoji(g.emoji),
+        emoji: g.emoji,
+        label: g.label || "その他",
+        count: g.count,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [availableGenres]);
 
   const activeCollectionName = useMemo(() => {
     if (!activeCollectionId) return "すべて";
@@ -526,11 +579,7 @@ export default function SavedPlacesMap() {
       return;
     }
 
-    const { data: posts, error: pErr } = await supabase
-      .from("posts")
-      .select("id, place_id")
-      .in("id", postIds);
-
+    const { data: posts, error: pErr } = await supabase.from("posts").select("id, place_id").in("id", postIds);
     if (pErr) throw new Error(pErr.message);
 
     const postIdToPlaceId = new Map<string, string>();
@@ -651,6 +700,32 @@ export default function SavedPlacesMap() {
     }
   };
 
+  const fetchGenreIcons = async (uid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("user_genre_icons")
+        .select("genre_key, image_url, storage_path")
+        .eq("user_id", uid);
+
+      if (error) {
+        console.warn("[user_genre_icons] fetch failed:", error.message);
+        setGenreKeyToImage(new Map());
+        return;
+      }
+
+      const m = new Map<string, GenreIconRow>();
+      (data ?? []).forEach((r: any) => {
+        if (r?.genre_key && r?.image_url && r?.storage_path) {
+          m.set(r.genre_key, r as GenreIconRow);
+        }
+      });
+      setGenreKeyToImage(m);
+    } catch (e) {
+      console.warn("[user_genre_icons] fetch exception:", e);
+      setGenreKeyToImage(new Map());
+    }
+  };
+
   const fetchSuggestedEmojiOne = async (placeId: string): Promise<string> => {
     if (placeToEmoji.get(placeId)) return "";
     const existing = placeToSuggestedEmoji.get(placeId);
@@ -761,6 +836,7 @@ export default function SavedPlacesMap() {
       fetchPins(uid, placeIds),
       fetchSuggestedEmojis(placeIds),
       fetchLastPostsMeta(lastPostIds),
+      fetchGenreIcons(uid),
     ]);
 
     try {
@@ -890,6 +966,7 @@ export default function SavedPlacesMap() {
     activeCollectionId,
     activeGenreEmoji,
     activeBudgetKey,
+    genreKeyToImage,
   ]);
 
   const focusPlace = (placeId: string) => {
@@ -1070,6 +1147,118 @@ export default function SavedPlacesMap() {
     setIconMode((m) => (m === "emoji" ? "photo" : "emoji"));
   };
 
+  /** ===== Settings: open ===== */
+  const openSettings = () => {
+    // 最初に選択するジャンル：存在するやつの先頭
+    const first = configurableGenres[0]?.genreKey ?? null;
+    setSelectedGenreKey((cur) => cur ?? first);
+    setPendingFile(null);
+    setSettingsOpen(true);
+  };
+
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    setPendingFile(null);
+    setSelectedGenreKey(null);
+  };
+
+  const selectedGenre = useMemo(() => {
+    if (!selectedGenreKey) return null;
+    return configurableGenres.find((g) => g.genreKey === selectedGenreKey) ?? null;
+  }, [selectedGenreKey, configurableGenres]);
+
+  /** ===== Settings: upload & delete for selected genre ===== */
+  const uploadGenreIcon = async () => {
+    try {
+      if (!userId) throw new Error("ログイン情報がありません");
+      if (!selectedGenreKey) throw new Error("ジャンルが選択されていません");
+      if (!pendingFile) throw new Error("画像ファイルを選択してね");
+
+      if (pendingFile.size > 6 * 1024 * 1024) {
+        throw new Error("画像が大きすぎます（6MB以下にしてね）");
+      }
+
+      setSavingGenreIcon(true);
+      setError(null);
+
+      const prev = genreKeyToImage.get(selectedGenreKey);
+      if (prev?.storage_path) {
+        await supabase.storage.from(GENRE_ICON_BUCKET).remove([prev.storage_path]);
+      }
+
+      const ext = (pendingFile.name.split(".").pop() || "png").toLowerCase();
+      const safe = storageSafeSegment(selectedGenreKey);
+      const path = `${userId}/${safe}/${Date.now()}.${ext}`;
+
+      const { error: upErr } = await supabase.storage.from(GENRE_ICON_BUCKET).upload(path, pendingFile, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: pendingFile.type || "image/*",
+      });
+      if (upErr) throw new Error(upErr.message);
+
+      const { data: pub } = supabase.storage.from(GENRE_ICON_BUCKET).getPublicUrl(path);
+      const imageUrl = pub.publicUrl;
+
+      const { error: dbErr } = await supabase
+        .from("user_genre_icons")
+        .upsert(
+          { user_id: userId, genre_key: selectedGenreKey, image_url: imageUrl, storage_path: path },
+          { onConflict: "user_id,genre_key" }
+        );
+
+      if (dbErr) throw new Error(dbErr.message);
+
+      setGenreKeyToImage((prevMap) => {
+        const next = new Map(prevMap);
+        next.set(selectedGenreKey, { genre_key: selectedGenreKey, image_url: imageUrl, storage_path: path });
+        return next;
+      });
+
+      setPendingFile(null);
+    } catch (e: any) {
+      setError(e?.message ?? "画像の保存に失敗しました");
+    } finally {
+      setSavingGenreIcon(false);
+    }
+  };
+
+  const removeGenreIcon = async () => {
+    try {
+      if (!userId) throw new Error("ログイン情報がありません");
+      if (!selectedGenreKey) throw new Error("ジャンルが選択されていません");
+
+      setSavingGenreIcon(true);
+      setError(null);
+
+      const prev = genreKeyToImage.get(selectedGenreKey);
+
+      if (prev?.storage_path) {
+        await supabase.storage.from(GENRE_ICON_BUCKET).remove([prev.storage_path]);
+      }
+
+      const { error: dbErr } = await supabase
+        .from("user_genre_icons")
+        .delete()
+        .eq("user_id", userId)
+        .eq("genre_key", selectedGenreKey);
+
+      if (dbErr) throw new Error(dbErr.message);
+
+      setGenreKeyToImage((m) => {
+        const next = new Map(m);
+        next.delete(selectedGenreKey);
+        return next;
+      });
+
+      setPendingFile(null);
+    } catch (e: any) {
+      setError(e?.message ?? "削除に失敗しました");
+    } finally {
+      setSavingGenreIcon(false);
+    }
+  };
+
   return (
     <>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[420px_1fr]">
@@ -1087,12 +1276,21 @@ export default function SavedPlacesMap() {
           <div className="mb-2 flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">
-                保存した場所{" "}
-                <span className="text-black/40">・ジャンル: {activeGenreName}</span>
+                保存した場所 <span className="text-black/40">・ジャンル: {activeGenreName}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={openSettings}
+                className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
+                title="設定"
+              >
+                <Settings className="h-4 w-4" />
+                設定
+              </button>
+
               <button
                 type="button"
                 onClick={toggleIconMode}
@@ -1139,9 +1337,7 @@ export default function SavedPlacesMap() {
             ))}
           </div>
 
-          {error && (
-            <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
-          )}
+          {error && <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
 
           {!apiKey && (
             <div className="mb-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
@@ -1162,7 +1358,11 @@ export default function SavedPlacesMap() {
                 const genreLabel = labelForEmoji(emoji);
                 const postHref = r.last_post_id ? `/post/${r.last_post_id}` : "#";
                 const images = getImagesForRow(r);
-                const firstImg = getFirstImageForRow(r);
+
+                const customGenreImg =
+                  iconMode === "photo" ? getCustomGenreImageUrlForPlace(r.place_id) : null;
+
+                const firstImg = customGenreImg ?? getFirstImageForRow(r);
 
                 return (
                   <div key={r.place_id} className="rounded-2xl border border-black/10 p-3 hover:bg-black/5">
@@ -1203,13 +1403,16 @@ export default function SavedPlacesMap() {
                             <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5 text-black/70">
                               予算(目安) {getBudgetLooseLabel(r.place_id)}
                             </span>
+                            {customGenreImg && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5 text-black/50">
+                                ジャンル画像: 設定あり
+                              </span>
+                            )}
                           </div>
                         </button>
 
                         {/* 投稿画像カルーセル */}
-                        {r.last_post_id && images.length > 0 && (
-                          <MiniCarousel images={images} postHref={postHref} />
-                        )}
+                        {r.last_post_id && images.length > 0 && <MiniCarousel images={images} postHref={postHref} />}
 
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
@@ -1258,7 +1461,219 @@ export default function SavedPlacesMap() {
         </div>
       </div>
 
-      {/* ========= 詳細フィルター（PCは横に広く、×は常に見える） ========= */}
+      {/* ========= Settings modal (ジャンル画像) ========= */}
+      {settingsOpen && (
+        <div className="fixed inset-0 z-[380] bg-black/40 backdrop-blur-sm">
+          <button type="button" className="absolute inset-0 cursor-default" aria-label="close-overlay" onClick={closeSettings} />
+
+          <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
+            {/* ✅ 大きめ（web優先） */}
+            <div className="relative w-full sm:max-w-6xl sm:h-[86vh] rounded-t-3xl sm:rounded-2xl bg-white shadow-xl overflow-hidden">
+              {/* header */}
+              <div className="sticky top-0 z-10 bg-white border-b border-black/10 px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold">設定：ジャンル画像</div>
+                    <div className="mt-0.5 text-[12px] text-black/45 truncate">
+                      「写真」モードで、各ジャンルのアイコンとして優先表示されます
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeSettings}
+                    className="shrink-0 rounded-full p-2 text-black/50 hover:bg-black/5"
+                    aria-label="閉じる"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* body */}
+              <div className="p-4">
+                {configurableGenres.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-black/50">まだジャンルがありません。</div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 sm:h-[calc(86vh-56px-76px)]">
+                    {/* left list */}
+                    <div className="sm:col-span-5 rounded-2xl border border-black/10 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-black/10 bg-white">
+                        <div className="text-xs font-semibold text-black/60">ジャンル（存在するもののみ）</div>
+                      </div>
+                      <div className="p-3 overflow-y-auto sm:h-full">
+                        <div className="space-y-2">
+                          {configurableGenres.map((g) => {
+                            const active = selectedGenreKey === g.genreKey;
+                            const img = genreKeyToImage.get(g.genreKey)?.image_url ?? null;
+                            return (
+                              <button
+                                key={g.genreKey}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedGenreKey(g.genreKey);
+                                  setPendingFile(null);
+                                }}
+                                className={[
+                                  "w-full rounded-2xl border px-3 py-3 text-left transition",
+                                  active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
+                                ].join(" ")}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="h-12 w-12 rounded-2xl border border-black/10 bg-black/[.02] overflow-hidden shrink-0">
+                                    {img ? (
+                                      <img src={img} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                      <div className="h-full w-full flex items-center justify-center text-xs text-black/40">
+                                        未設定
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-semibold truncate">
+                                      {g.emoji} {g.label}
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] text-black/45">
+                                      保存 {g.count}件
+                                      {img ? " ・画像あり" : " ・画像なし"}
+                                    </div>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* right editor */}
+                    <div className="sm:col-span-7 rounded-2xl border border-black/10 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-black/10 bg-white">
+                        <div className="text-xs font-semibold text-black/60">編集</div>
+                      </div>
+
+                      <div className="p-4 overflow-y-auto sm:h-full">
+                        {selectedGenre ? (
+                          <>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-lg font-semibold truncate">
+                                  {selectedGenre.emoji} {selectedGenre.label}
+                                </div>
+                                <div className="mt-1 text-[12px] text-black/45">
+                                  ジャンルキー: <span className="font-mono">{selectedGenre.genreKey}</span>
+                                </div>
+                              </div>
+
+                              {savingGenreIcon && (
+                                <div className="shrink-0 text-xs text-black/50">保存中...</div>
+                              )}
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {/* preview clickable */}
+                              <div className="rounded-2xl border border-black/10 p-3">
+                                <div className="text-xs font-semibold text-black/60 mb-2">
+                                  画像（クリックして選択）
+                                </div>
+
+                                {/* ✅ “未設定”が押せない問題の修正：
+                                    画像枠をlabelにして input[type=file] に紐付ける */}
+                                <label
+                                  htmlFor="genre-icon-file"
+                                  className="block cursor-pointer select-none"
+                                  title="クリックして画像を選択"
+                                >
+                                  <div className="h-44 w-full rounded-2xl border border-black/10 bg-black/[.02] overflow-hidden flex items-center justify-center">
+                                    {pendingPreview ? (
+                                      <img src={pendingPreview} alt="" className="h-full w-full object-cover" />
+                                    ) : genreKeyToImage.get(selectedGenre.genreKey)?.image_url ? (
+                                      <img
+                                        src={genreKeyToImage.get(selectedGenre.genreKey)!.image_url}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-black/40">未設定（クリックで選択）</div>
+                                    )}
+                                  </div>
+                                </label>
+
+                                <input
+                                  id="genre-icon-file"
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  disabled={savingGenreIcon}
+                                  onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
+                                />
+
+                                <div className="mt-2 text-[11px] text-black/45">
+                                  目安: 1:1〜4:3（正方形が一番綺麗）
+                                </div>
+                              </div>
+
+                              {/* actions */}
+                              <div className="rounded-2xl border border-black/10 p-3">
+                                <div className="text-xs font-semibold text-black/60 mb-2">操作</div>
+
+                                <button
+                                  type="button"
+                                  onClick={uploadGenreIcon}
+                                  disabled={savingGenreIcon || !pendingFile}
+                                  className="w-full rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
+                                >
+                                  保存
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={removeGenreIcon}
+                                  disabled={savingGenreIcon || !genreKeyToImage.get(selectedGenre.genreKey)}
+                                  className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5 disabled:opacity-60"
+                                >
+                                  画像を削除（未設定に戻す）
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingFile(null)}
+                                  disabled={savingGenreIcon || !pendingFile}
+                                  className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5 disabled:opacity-60"
+                                >
+                                  選択を取り消す
+                                </button>
+
+                                <div className="mt-3 text-[11px] text-black/45">
+                                  ※ 「写真」モード時に、このジャンルのアイコンとして優先表示されます（投稿画像より優先）
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="py-10 text-center text-sm text-black/50">左のジャンルを選択してください</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* footer */}
+              <div className="sticky bottom-0 z-10 bg-white border-t border-black/10 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={closeSettings}
+                  className="w-full rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========= 詳細フィルター（元のまま） ========= */}
       {filterOpen && (
         <div className="fixed inset-0 z-[350] bg-black/40 backdrop-blur-sm">
           <button
@@ -1306,9 +1721,7 @@ export default function SavedPlacesMap() {
                           onClick={() => setTmpCollectionId(null)}
                           className={[
                             "w-full rounded-2xl border px-3 py-3 text-left transition",
-                            !tmpCollectionId
-                              ? "border-orange-400 bg-orange-50"
-                              : "border-black/10 hover:bg-black/5",
+                            !tmpCollectionId ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
                           ].join(" ")}
                         >
                           <div className="flex items-center justify-between">
@@ -1330,9 +1743,7 @@ export default function SavedPlacesMap() {
                               onClick={() => setTmpCollectionId(c.id)}
                               className={[
                                 "w-full rounded-2xl border px-3 py-3 text-left transition",
-                                active
-                                  ? "border-orange-400 bg-orange-50"
-                                  : "border-black/10 hover:bg-black/5",
+                                active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
                               ].join(" ")}
                             >
                               <div className="flex items-center justify-between">
@@ -1369,9 +1780,7 @@ export default function SavedPlacesMap() {
                               onClick={() => setTmpBudgetKey(b.key)}
                               className={[
                                 "w-full rounded-2xl border px-3 py-3 text-left transition",
-                                active
-                                  ? "border-orange-400 bg-orange-50"
-                                  : "border-black/10 hover:bg-black/5",
+                                active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
                               ].join(" ")}
                             >
                               <div className="flex items-center justify-between">
@@ -1403,9 +1812,7 @@ export default function SavedPlacesMap() {
                         onClick={() => setTmpCollectionId(null)}
                         className={[
                           "w-full rounded-2xl border px-3 py-3 text-left transition",
-                          !tmpCollectionId
-                            ? "border-orange-400 bg-orange-50"
-                            : "border-black/10 hover:bg-black/5",
+                          !tmpCollectionId ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
                         ].join(" ")}
                       >
                         <div className="flex items-center justify-between">
@@ -1427,9 +1834,7 @@ export default function SavedPlacesMap() {
                             onClick={() => setTmpCollectionId(c.id)}
                             className={[
                               "w-full rounded-2xl border px-3 py-3 text-left transition",
-                              active
-                                ? "border-orange-400 bg-orange-50"
-                                : "border-black/10 hover:bg-black/5",
+                              active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
                             ].join(" ")}
                           >
                             <div className="flex items-center justify-between">
@@ -1461,9 +1866,7 @@ export default function SavedPlacesMap() {
                             onClick={() => setTmpBudgetKey(b.key)}
                             className={[
                               "w-full rounded-2xl border px-3 py-3 text-left transition",
-                              active
-                                ? "border-orange-400 bg-orange-50"
-                                : "border-black/10 hover:bg-black/5",
+                              active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
                             ].join(" ")}
                           >
                             <div className="flex items-center justify-between">
@@ -1510,7 +1913,7 @@ export default function SavedPlacesMap() {
         </div>
       )}
 
-      {/* ========= Emoji Picker ========= */}
+      {/* ========= Emoji Picker（元のまま） ========= */}
       {emojiPicker.open && (
         <div className="fixed inset-0 z-[320] bg-black/40 backdrop-blur-sm">
           <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
@@ -1619,7 +2022,7 @@ export default function SavedPlacesMap() {
         </div>
       )}
 
-      {/* ========= Delete modal ========= */}
+      {/* ========= Delete modal（元のまま） ========= */}
       {confirm.open && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-lg">
