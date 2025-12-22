@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Sparkles, Users, Bookmark, MapPin, ShieldCheck } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 function GoogleMark({ className = "" }: { className?: string }) {
@@ -29,13 +29,11 @@ function GoogleMark({ className = "" }: { className?: string }) {
 }
 
 type ExploreCopy = {
-  label: string;       // 表示文字
-  sub?: string;        // 小さい補足（任意）
-  href?: string;       // 既定は /timeline?tab=discover
+  label: string;
+  sub?: string;
 };
 
 function pickExploreCopy(seed: number): ExploreCopy {
-  // ここは好きに増やしてOK（“いけてるスタートアップ感”はコピーで出る）
   const variants: ExploreCopy[] = [
     { label: "ログインせずにまずはサクッと覗く", sub: "公開タイムラインへ" },
     { label: "ログインせずに体験してみる", sub: "ログインなしでOK" },
@@ -43,7 +41,29 @@ function pickExploreCopy(seed: number): ExploreCopy {
     { label: "ログインせずに雰囲気だけ見てみる", sub: "公開タイムラインへ" },
     { label: "ログインせずに人気の投稿を見に行く", sub: "公開タイムラインへ" },
   ];
-  return variants[seed % variants.length];
+  return variants[Math.abs(seed) % variants.length];
+}
+
+type PitchItem = {
+  icon?: "friends" | "bookmark" | "map" | "trust";
+  title: string;
+  body?: string;
+};
+
+function PitchIcon({ kind }: { kind?: PitchItem["icon"] }) {
+  const cls = "h-4 w-4 shrink-0";
+  switch (kind) {
+    case "friends":
+      return <Users className={`${cls} text-blue-700`} />;
+    case "bookmark":
+      return <Bookmark className={`${cls} text-pink-700`} />;
+    case "map":
+      return <MapPin className={`${cls} text-emerald-700`} />;
+    case "trust":
+      return <ShieldCheck className={`${cls} text-violet-700`} />;
+    default:
+      return <Sparkles className={`${cls} text-orange-700`} />;
+  }
 }
 
 export default function LoginCard({
@@ -52,19 +72,30 @@ export default function LoginCard({
   nextPath,
   showDiscoverLink = true,
 
-  // ✅ 追加：見せ方を切り替えられる
+  // 既存：公開導線
   exploreHref = "/timeline?tab=discover",
   exploreMode = "rotating", // "fixed" | "rotating"
   exploreFixedText = "体験してみる",
+
+  // ✅ 追加：宣伝ブロック
+  pitchTitle = "Gourmeetってどんなアプリ？",
+  pitchSubtitle = "知らない人の★より、知り合いの「ここ良かった」が効く。",
+  pitchItems,
+  pitchNote = "ログインは数秒。無料で使えます。",
 }: {
   title?: string;
   description?: string;
-  nextPath?: string; // ログイン後に戻したいURL（/notifications など）
+  nextPath?: string;
   showDiscoverLink?: boolean;
 
   exploreHref?: string;
   exploreMode?: "fixed" | "rotating";
   exploreFixedText?: string;
+
+  pitchTitle?: string;
+  pitchSubtitle?: string;
+  pitchItems?: PitchItem[];
+  pitchNote?: string;
 }) {
   const supabase = createClientComponentClient();
 
@@ -85,16 +116,6 @@ export default function LoginCard({
     }
   };
 
-  // ✅ 動的コピー：毎回ランダムにしたいなら Math.random でもいいけど、
-  // ここでは “日替わり”っぽく安定するように「日付」をseedにしてる
-  const exploreCopy = useMemo(() => {
-    if (exploreMode === "fixed") {
-      return { label: exploreFixedText, sub: "ログインなしでOK" } as ExploreCopy;
-    }
-    const daySeed = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
-    return pickExploreCopy(daySeed);
-  }, [exploreMode, exploreFixedText]);
-
   const emailLoginHref = nextPath
     ? `/auth/login?next=${encodeURIComponent(nextPath)}`
     : "/auth/login";
@@ -103,9 +124,53 @@ export default function LoginCard({
     ? `/auth/signup?next=${encodeURIComponent(nextPath)}`
     : "/auth/signup";
 
+  // ✅ hydration-safe：初回は固定 → mount後に rotating を決める
+  const fixedExplore: ExploreCopy = useMemo(() => {
+    return { label: exploreFixedText, sub: "ログインなしでOK" };
+  }, [exploreFixedText]);
+
+  const [exploreCopy, setExploreCopy] = useState<ExploreCopy>(fixedExplore);
+
+  useEffect(() => {
+    if (exploreMode === "fixed") {
+      setExploreCopy(fixedExplore);
+      return;
+    }
+    // “日替わりっぽさ”はクライアント側でだけ決める（SSRとズレない）
+    const daySeed = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+    setExploreCopy(pickExploreCopy(daySeed));
+  }, [exploreMode, fixedExplore]);
+
+  const effectivePitchItems: PitchItem[] =
+    pitchItems && pitchItems.length > 0
+      ? pitchItems
+      : [
+          {
+            icon: "friends",
+            title: "友だち/知り合いのおすすめが見える",
+            body: "匿名レビューより信頼できる“近い距離の情報”を集める。",
+          },
+          {
+            icon: "bookmark",
+            title: "保存が資産になるコレクション",
+            body: "行きたい店を、自分のルールで整理。",
+          },
+          {
+            icon: "map",
+            title: "地図で候補を即決",
+            body: "近くの店をサッと比較できて、店選びが速い。",
+          },
+          {
+            icon: "trust",
+            title: "コミュニティが小さいほど効く",
+            body: "身内の“当たり”が蓄積していく感じ。",
+          },
+        ];
+
   return (
     <div className="flex min-h-[44vh] items-center justify-center px-2">
       <div className="w-full max-w-md rounded-2xl border border-black/[.06] bg-white p-5 shadow-sm">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-slate-900">{title}</p>
@@ -117,6 +182,36 @@ export default function LoginCard({
           </div>
         </div>
 
+        {/* ✅ Pitch / 宣伝 */}
+        <div className="mt-4 rounded-2xl bg-black/[.03] p-4">
+          <div className="flex items-start gap-2">
+            <Sparkles size={18} className="mt-0.5 text-orange-700" />
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-900">{pitchTitle}</div>
+              {pitchSubtitle ? (
+                <div className="mt-1 text-xs leading-5 text-slate-600">{pitchSubtitle}</div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {effectivePitchItems.map((it, idx) => (
+              <div key={idx} className="flex gap-2">
+                <PitchIcon kind={it.icon} />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-slate-800">{it.title}</div>
+                  {it.body ? (
+                    <div className="mt-0.5 text-[11px] leading-4 text-slate-600">{it.body}</div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {pitchNote ? <div className="mt-3 text-[11px] text-slate-500">{pitchNote}</div> : null}
+        </div>
+
+        {/* Actions */}
         <div className="mt-4 grid gap-2">
           <button
             type="button"
@@ -139,7 +234,7 @@ export default function LoginCard({
               アカウント作成
             </Link>
 
-            {/* ✅ “公開を見る”を「ボタンっぽいピル」にして目立たせる */}
+            {/* 公開を見る */}
             {showDiscoverLink ? (
               <Link
                 href={exploreHref}

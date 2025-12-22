@@ -45,7 +45,7 @@ function IconButton({
   active?: boolean;
   children: React.ReactNode;
   ariaLabel?: string;
-  activeClassName?: string; // ✅ active背景を各アイコンで変える
+  activeClassName?: string;
 }) {
   return (
     <Link
@@ -64,10 +64,25 @@ function IconButton({
 
 export default function MobileHeaderNav({ name }: { name?: string }) {
   const pathname = usePathname();
-  const { avatarUrl, notifCount, followReqCount, timelineDot, displayNameSafe } =
-    useNavBadges(name);
+  const {
+    isAuthed,
+    avatarUrl,
+    notifCount,
+    followReqCount,
+    timelineDot,
+    displayNameSafe,
+  } = useNavBadges(name);
 
   const isActive = (p: string) => pathname === p || pathname.startsWith(p + "/");
+
+  // ✅ Sidebar と同じゲート
+  const gate = (href: string, allowGuest = false) => {
+    if (allowGuest) return href;
+    return isAuthed ? href : `/auth/required?next=${encodeURIComponent(href)}`;
+  };
+
+  // ✅ ロゴ/ホームは必ず friends tab に統一
+  const homeHref = "/timeline?tab=friends";
 
   return (
     <div className="md:hidden">
@@ -79,16 +94,16 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           pt-[env(safe-area-inset-top)]
         "
       >
-        {/* 1段目：サブnav（ポイント/通知/フォロリク/アカウント） */}
+        {/* 1段目：サブnav */}
         <div className="flex h-12 items-center justify-between px-3">
-          <Link href="/timeline" className="text-[15px] font-bold tracking-tight">
+          <Link href={gate(homeHref)} className="text-[15px] font-bold tracking-tight">
             Gourmeet
           </Link>
 
           <div className="flex items-center gap-1">
             {/* Points */}
             <IconButton
-              href="/points"
+              href={gate("/points")}
               active={isActive("/points")}
               ariaLabel="ポイント"
               activeClassName="bg-amber-100/70"
@@ -98,7 +113,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
             {/* 通知 */}
             <IconButton
-              href="/notifications"
+              href={gate("/notifications")}
               active={isActive("/notifications")}
               ariaLabel="通知"
               activeClassName="bg-violet-100/70"
@@ -109,7 +124,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
             {/* フォローリクエスト */}
             <IconButton
-              href="/follow-requests"
+              href={gate("/follow-requests")}
               active={isActive("/follow-requests")}
               ariaLabel="フォローリクエスト"
               activeClassName="bg-sky-100/70"
@@ -120,7 +135,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
             {/* Account */}
             <Link
-              href="/account"
+              href={gate("/account")}
               className={`
                 relative inline-flex h-10 w-10 items-center justify-center rounded-full
                 transition-colors
@@ -145,11 +160,12 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </div>
         </div>
 
-        {/* 2段目：メインnav（右端=Settings） */}
+        {/* 2段目：メインnav */}
         <div className="px-2 pb-2">
           <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
+            {/* Home */}
             <IconButton
-              href="/timeline"
+              href={gate(homeHref)} // ✅ 未ログインなら /auth/required に
               active={isActive("/timeline")}
               ariaLabel="ホーム"
               activeClassName="bg-blue-100/70"
@@ -158,17 +174,19 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Dot on={timelineDot} />
             </IconButton>
 
+            {/* Search (guest OK) */}
             <IconButton
-              href="/search"
+              href={gate("/search", true)}
               active={isActive("/search")}
               ariaLabel="検索"
-              activeClassName="bg-slate-100"
+              activeClassName="bg-teal-100/70"
             >
-              <Search size={20} className="text-slate-700" />
+              <Search size={20} className="text-teal-700" />
             </IconButton>
 
+            {/* Post */}
             <Link
-              href="/posts/new"
+              href={gate("/posts/new")}
               className="
                 relative inline-flex h-11 w-11 items-center justify-center
                 rounded-full bg-orange-700 text-white
@@ -179,8 +197,9 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Plus size={20} />
             </Link>
 
+            {/* Map */}
             <IconButton
-              href="/map"
+              href={gate("/map")}
               active={isActive("/map")}
               ariaLabel="マップ"
               activeClassName="bg-emerald-100/70"
@@ -188,13 +207,14 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <MapPin size={20} className="text-emerald-700" />
             </IconButton>
 
+            {/* Settings */}
             <IconButton
-              href="/settings"
+              href={gate("/settings")}
               active={isActive("/settings")}
               ariaLabel="設定"
-              activeClassName="bg-slate-100"
+              activeClassName="bg-fuchsia-100/70"
             >
-              <Settings size={20} className="text-slate-700" />
+              <Settings size={20} className="text-fuchsia-700" />
             </IconButton>
           </div>
         </div>

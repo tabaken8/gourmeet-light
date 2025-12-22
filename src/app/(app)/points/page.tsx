@@ -1,4 +1,4 @@
-// app/(points)/points/page.tsx
+// app/(app)/points/page.tsx
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -184,8 +184,8 @@ export default async function PointsPage() {
 
           {/* ✅ “※”を枠で囲まず自然に */}
           <p className="mt-3 text-xs text-gray-500">
-            ※ 交換申請はいつでも行うことができます。実際に送付されるのは{" "}
-            <span className="font-semibold">1000pt以上</span> の場合に限ります。
+            ※ 交換申請はいつでも行うことができます。実際に送付されるのは保有ポイントが{" "}
+            <span className="font-semibold">1000pt以上</span> かつ③の条件をクリアした場合に限ります。
           </p>
         </div>
       </section>

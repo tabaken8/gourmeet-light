@@ -1,4 +1,4 @@
-// app/(points)/points/redeem/page.tsx
+// app/(app)/points/redeem/page.tsx
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
