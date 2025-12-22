@@ -33,18 +33,22 @@ export default function SettingsPage() {
 
   const normalized = useMemo(() => normalizeInvite(invite), [invite]);
 
-  async function reload() {
+  // ✅ reload() を「値を返す」形にして、applyInvite() からも判定に使えるようにする
+  async function reload(): Promise<CurrentReserved> {
     setErr(null);
     try {
       const res = await fetch("/api/invites/reserve", { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErr(json?.error ?? "Failed to load");
-        return;
+        return null;
       }
-      setCurrent(json?.current ?? null);
+      const cur = (json?.current ?? null) as CurrentReserved;
+      setCurrent(cur);
+      return cur;
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load");
+      return null;
     }
   }
 
@@ -104,15 +108,31 @@ export default function SettingsPage() {
         body: JSON.stringify({ code: v }),
       });
       const json = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         setErr(json?.error ?? "Failed");
         return;
       }
 
       const r = json?.result;
+
       if (!r?.ok) {
-        // message を人間向けに整形
         const m = String(r?.message ?? "failed");
+
+        // ✅ ここが今回の本題：
+        // code_unavailable でも「実は適用済み」なら成功表示にする
+        if (m === "code_unavailable") {
+          const cur = await reload();
+          if (cur?.code && normalizeInvite(cur.code) === v) {
+            localStorage.setItem("pending_invite", v);
+            setErr(null);
+            setMsg("すでに適用されています。");
+            window.setTimeout(() => setMsg(null), 2000);
+            return;
+          }
+        }
+
+        // message を人間向けに整形（従来通り）
         const map: Record<string, string> = {
           expired_window: "登録から24時間を過ぎています（招待コードは適用できません）。",
           already_posted: "すでに投稿済みのため、招待コードは適用できません。",
@@ -124,6 +144,7 @@ export default function SettingsPage() {
         return;
       }
 
+      // ✅ 成功
       localStorage.setItem("pending_invite", v);
       setMsg("招待コードを適用しました。初回投稿で招待ボーナスが確定します。");
       await reload();
@@ -166,7 +187,7 @@ export default function SettingsPage() {
 
           <button
             type="button"
-            onClick={reload}
+            onClick={() => reload()}
             className="shrink-0 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03]"
           >
             更新
@@ -199,9 +220,7 @@ export default function SettingsPage() {
                     {current.code}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    {current.reserved_until
-                      ? `有効期限: ${fmt(current.reserved_until)}`
-                      : ""}
+                    {current.reserved_until ? `有効期限: ${fmt(current.reserved_until)}` : ""}
                   </div>
                 </div>
 
@@ -220,9 +239,7 @@ export default function SettingsPage() {
               </p>
             </div>
           ) : (
-            <div className="mt-2 text-sm text-gray-700">
-              招待コードはまだ適用されていません。
-            </div>
+            <div className="mt-2 text-sm text-gray-700">招待コードはまだ適用されていません。</div>
           )}
         </div>
 
