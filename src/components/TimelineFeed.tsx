@@ -264,7 +264,6 @@ function planDiscoverTiles(
     const h = hashString(`${seed}:big:${p.id}`);
     const wantBigByRand = h % bigDenom === 0;
 
-    // ✅ 末尾付近では big を禁止して “余り” を作りにくくする
     const allowByTail = remain > tailGuard;
 
     const wantBig =
@@ -374,7 +373,6 @@ export default function TimelineFeed({
 
   // ✅ discover用：順序をseedで揺らす（“元の順位をだいたい保つ”）
   const discoverGridPosts = useMemo(() => {
-    // ランダム寄与（強いほどシャッフル）
     const jitterWeight = 8;
 
     const scored = discoverBase.map((p, rank) => {
@@ -390,10 +388,10 @@ export default function TimelineFeed({
   // ✅ discover用：bigが末尾で余りにくいように「置き方」を決める
   const discoverTiles = useMemo(() => {
     return planDiscoverTiles(discoverGridPosts, seed, {
-      bigDenom: 4, // big出現率（4=25%）
-      minIndexForBig: 3, // 序盤は抑制
-      tailGuard: 7, // ✅ 末尾7件はbig禁止（余り防止）
-      maxBig: 4, // 1バッチの上限
+      bigDenom: 4,
+      minIndexForBig: 3,
+      tailGuard: 7,
+      maxBig: 4,
     });
   }, [discoverGridPosts, seed]);
 
@@ -426,8 +424,7 @@ export default function TimelineFeed({
 
   // =========================
   // ✅ DISCOVER: 3列固定 + 正方形タイル + たまに2x2大正方形
-  //  - モバイルでは display_name を出さない
-  //  - big が末尾で余りにくいように配置を決める
+  //  - “押した感”と“面の質感”を足す
   // =========================
   if (activeTab === "discover") {
     return (
@@ -453,9 +450,10 @@ export default function TimelineFeed({
                 href={`/posts/${p.id}`}
                 className={[
                   "relative block overflow-hidden",
-                  "rounded-none",
                   "bg-slate-100",
                   "focus:outline-none focus:ring-2 focus:ring-orange-400",
+                  "gm-press",
+                  "ring-1 ring-black/[.05]",
                   tileSpan,
                 ].join(" ")}
               >
@@ -477,7 +475,8 @@ export default function TimelineFeed({
                     </div>
                   )}
 
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-black/45 to-transparent" />
+                  {/* ✅ “薄いハイライト”で質感 */}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
 
                   {/* ✅ モバイルでは display_name を出さない */}
                   <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
@@ -485,9 +484,9 @@ export default function TimelineFeed({
                     {!isPublic && <Lock size={12} className="text-white/90" />}
                   </div>
 
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent p-2">
-                    <div className="truncate text-[10px] text-white/90">
-                      {p.place_name ? p.place_name : " "}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2">
+                    <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
+                      <span className="truncate">{p.place_name ? p.place_name : " "}</span>
                     </div>
                   </div>
                 </div>
@@ -516,7 +515,7 @@ export default function TimelineFeed({
   }
 
   // =========================
-  // ✅ FRIENDS: 既存タイムライン
+  // ✅ FRIENDS: “紙片” + “署名ストリップ”
   // =========================
   const MOBILE_THUMBS = 3;
 
@@ -563,17 +562,15 @@ export default function TimelineFeed({
           <article
             key={p.id}
             className="
-              bg-white
-              rounded-none md:rounded-2xl
-              shadow-none md:shadow-sm
-              border-y border-black/[.06] md:border md:border-black/[.06]
-              transition
+              gm-card gm-press
+              overflow-hidden
             "
           >
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
               <div className="md:border-r md:border-black/[.05]">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-3">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                  <div className="flex items-center gap-3 min-w-0">
                     <Link
                       href={`/u/${p.user_id}`}
                       className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700"
@@ -603,14 +600,8 @@ export default function TimelineFeed({
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                        <span>{formatJST(p.created_at)}</span>
-                        <Link
-                          href={`/posts/${p.id}`}
-                          className="text-orange-600 hover:underline"
-                        >
-                          詳細
-                        </Link>
+                      <div className="text-[11px] text-slate-500">
+                        友達のおすすめ
                       </div>
                     </div>
                   </div>
@@ -618,6 +609,79 @@ export default function TimelineFeed({
                   <PostMoreMenu postId={p.id} isMine={meId === p.user_id} />
                 </div>
 
+                {/* ✅ Gourmeet 署名ストリップ（皿の端のソース） */}
+                <div className="px-4 pb-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {p.place_name ? (
+                      <div className="gm-chip inline-flex items-center gap-1 px-2 py-1 text-[11px] text-slate-800">
+                        <MapPin size={13} className="opacity-70" />
+                        {mapUrl ? (
+                          <a
+                            href={mapUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="max-w-[240px] truncate hover:underline"
+                          >
+                            {p.place_name}
+                          </a>
+                        ) : (
+                          <span className="max-w-[240px] truncate">{p.place_name}</span>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {score ? (
+                      <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-orange-800">
+                        おすすめ <span className="ml-1 font-semibold">{score}/10</span>
+                      </span>
+                    ) : null}
+
+                    {priceLabel ? (
+                      <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-slate-700">
+                        {priceLabel}
+                      </span>
+                    ) : null}
+
+                    <span className="flex-1" />
+
+                    <Link
+                      href={`/posts/${p.id}`}
+                      className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-orange-700 hover:underline"
+                    >
+                      詳細
+                    </Link>
+
+                    <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-slate-500">
+                      {formatJST(p.created_at)}
+                    </span>
+
+                    {hasPlace && (
+                      <button
+                        type="button"
+                        onClick={togglePhotos}
+                        aria-label={
+                          isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"
+                        }
+                        className="
+                          md:hidden
+                          gm-chip gm-press
+                          inline-flex h-7 items-center gap-1 px-2
+                          text-[11px] text-slate-700
+                        "
+                      >
+                        <GoogleMark className="h-4 w-4" />
+                        <span className="leading-none">写真</span>
+                        {isPhotosOpen ? (
+                          <ChevronUp size={14} className="text-slate-700" />
+                        ) : (
+                          <ChevronDown size={14} className="text-slate-700" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Media */}
                 {timelineImageUrls.length > 0 && (
                   <Link href={`/posts/${p.id}`} className="block">
                     <PostImageCarousel
@@ -628,73 +692,17 @@ export default function TimelineFeed({
                   </Link>
                 )}
 
-                <div className="space-y-2 px-4 py-3">
+                {/* Body */}
+                <div className="space-y-2 px-4 py-4">
                   {p.content && (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
                       {p.content}
                     </p>
                   )}
-
-                  {(p.place_name || hasPlace || score || priceLabel) && (
-                    <div className="flex items-center gap-2">
-                      {p.place_name ? (
-                        <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-orange-700">
-                          <MapPin size={14} className="shrink-0" />
-                          {mapUrl ? (
-                            <a
-                              href={mapUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="truncate hover:underline"
-                            >
-                              {p.place_name}
-                            </a>
-                          ) : (
-                            <span className="truncate">{p.place_name}</span>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex-1" />
-                      )}
-
-                      {(score || priceLabel) && (
-                        <div className="flex items-center gap-2 shrink-0">
-                          {score ? (
-                            <Badge tone="orange">おすすめ {score}/10</Badge>
-                          ) : null}
-                          {priceLabel ? <Badge>{priceLabel}</Badge> : null}
-                        </div>
-                      )}
-
-                      {hasPlace && (
-                        <button
-                          type="button"
-                          onClick={togglePhotos}
-                          aria-label={
-                            isPhotosOpen
-                              ? "Googleの写真を閉じる"
-                              : "Googleの写真を表示"
-                          }
-                          className="
-                            md:hidden
-                            inline-flex h-8 w-8 items-center justify-center
-                            rounded-full border border-black/10 bg-white
-                            active:scale-[0.99]
-                          "
-                        >
-                          <GoogleMark className="h-4 w-4" />
-                          {isPhotosOpen ? (
-                            <ChevronUp size={14} className="-ml-0.5 text-slate-700" />
-                          ) : (
-                            <ChevronDown size={14} className="-ml-0.5 text-slate-700" />
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
 
-                <div className="flex items-center justify-between px-4 pb-3 pt-1">
+                {/* Actions */}
+                <div className="flex items-center justify-between px-4 pb-3 pt-0">
                   <PostActions
                     postId={p.id}
                     postUserId={p.user_id}
@@ -708,7 +716,8 @@ export default function TimelineFeed({
                   <PostCollectionButton postId={p.id} />
                 </div>
 
-                <div className="px-4 pb-4">
+                {/* Comments */}
+                <div className="px-4 pb-5">
                   <PostComments
                     postId={p.id}
                     postUserId={p.user_id}
@@ -718,6 +727,7 @@ export default function TimelineFeed({
                 </div>
               </div>
 
+              {/* Right panel (PC) */}
               <aside className="hidden md:block p-4">
                 {p.place_id ? (
                   <PlacePhotoGallery
@@ -732,8 +742,9 @@ export default function TimelineFeed({
               </aside>
             </div>
 
+            {/* Mobile expand photos */}
             {p.place_id && isPhotosOpen ? (
-              <div className="md:hidden pb-4 px-4">
+              <div className="md:hidden pb-5 px-4">
                 <PlacePhotoGallery
                   placeId={p.place_id}
                   placeName={p.place_name}

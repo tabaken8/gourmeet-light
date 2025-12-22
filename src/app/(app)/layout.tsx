@@ -8,28 +8,20 @@ import InviteReserveOnAuth from "@/components/InviteReserveOnAuth";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-white">
-      {/* ✅ ログイン後に pending_invite があれば自動で reserve（見た目は何も出ない） */}
+    <div className="min-h-screen gm-bg">
       <InviteReserveOnAuth />
 
-      {/* PC: 左サイドバー（モバイルで誤って余白を取らないようにガード） */}
       <div className="hidden md:block">
         <Sidebar />
       </div>
 
-      {/* Mobile: 上ヘッダー（sticky） */}
       <MobileHeaderNav />
 
-      <main
-        className="
-          w-full
-          px-0 md:px-6
-          pb-6 md:py-6
-          pt-0 md:pt-6
-          md:pl-[240px]
-        "
-      >
-        {children}
+      <main className="w-full px-0 md:px-6 pb-6 md:py-6 pt-0 md:pt-6 md:pl-[240px]">
+        {/* ここが “紙面” */}
+        <div className="mx-auto max-w-5xl md:gm-surface">
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -115,3 +115,46 @@ html.dark {
 
   color-scheme: dark;
 }
+
+@layer utilities {
+  /* 背景（空気） */
+  .gm-bg {
+    background-color: #fffaf5;
+    background-image:
+      radial-gradient(1200px 600px at 20% 0%, rgba(0,0,0,0.045), transparent 60%),
+      radial-gradient(900px 500px at 90% 20%, rgba(0,0,0,0.03), transparent 55%);
+  }
+
+  /* 1枚の紙（surface） */
+  .gm-surface {
+    background: rgba(255,255,255,0.86);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 18px;
+  }
+
+  /* カード（紙片） */
+  .gm-card {
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 18px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.05);
+  }
+
+  /* 押した感（統一） */
+  .gm-press {
+    transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+    will-change: transform;
+  }
+  .gm-press:active {
+    transform: scale(0.985);
+  }
+
+  /* 小さなチップ */
+  .gm-chip {
+    border: 1px solid rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.75);
+    backdrop-filter: blur(8px);
+    border-radius: 999px;
+  }
+}
