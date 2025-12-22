@@ -287,11 +287,15 @@ export default async function PostPage({
 
     // できれば「フォロー中は外す」
     // ※ Supabase の .not('user_id','in',...) は配列を文字列化する必要あり
-    if (user && followingIds.length > 0) {
-      const csv = `(${followingIds.map((x) => `"${x}"`).join(",")})`;
-      // @ts-ignore
-      q = q.not("user_id", "in", csv);
-    }
+if (user && followingIds.length > 0) {
+  const csv = `(${followingIds.map((x) => `"${x}"`).join(",")})`;
+
+  // Supabaseの型定義が `not(..., 'in', string)` をうまく推論できないことがあるので
+  // ここだけクエリビルダを any に落として型エラーとlint回避（実行時挙動は同じ）
+  const qa: any = q;
+  q = qa.not("user_id", "in", csv);
+}
+
 
     const { data: rData } = await q;
     recPosts = (rData as any[])?.filter(Boolean) as PostRow[];
