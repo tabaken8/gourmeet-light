@@ -174,6 +174,9 @@ export default function SignUpPage() {
 
   const inviteApplied = !!normalizeInvite(invite);
 
+  // ✅ ボタン付近にも出す補足文（入力欄を見落としても伝わる）
+  const emailConfirmNote = "「登録する」を押すと、このメールアドレス宛に確認メールが届きます。";
+
   return (
     <main className="grid gap-8 md:grid-cols-2">
       <section className="rounded-2xl bg-white p-8 shadow-sm">
@@ -242,7 +245,7 @@ export default function SignUpPage() {
                 onClick={() => setInviteOpen((v) => !v)}
                 className="text-sm font-semibold text-gray-700 underline decoration-black/20 underline-offset-4 hover:text-black"
               >
-                招待コードを持っていますか？（任意）
+                招待コードをお持ちの方はこちら
               </button>
 
               {/* ✅ 自力で来た人向け：すぐ貼れる導線 */}
@@ -302,7 +305,9 @@ export default function SignUpPage() {
               onChange={(e) => handleEmailChange(e.target.value)}
               required
               autoComplete="email"
+              placeholder="例: gourmeet@gmail.com"
             />
+            <p className="mt-1 text-xs text-black/60">{emailConfirmNote}</p>
           </label>
 
           {/* 表示名 */}
@@ -313,7 +318,7 @@ export default function SignUpPage() {
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="例: けんた / gourmeet好きの人"
+              placeholder="例: たばけん"
             />
             <p className="mt-1 text-xs text-black/60">
               タイムラインなどに表示される名前です(@つきユーザーIDとは別)。未入力の場合はメールアドレスから自動的に補完されます。
@@ -373,6 +378,9 @@ export default function SignUpPage() {
             />
             {pw2 && !match && <p className="mt-1 text-xs text-red-600">一致しません。</p>}
           </label>
+
+          {/* ✅ ちょい改善：ボタン近くにも同じ補足を出す（見落とし防止） */}
+          <p className="text-xs text-black/60">{emailConfirmNote}</p>
 
           {msg && <p className="text-sm text-orange-800">{msg}</p>}
 
