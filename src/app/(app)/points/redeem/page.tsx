@@ -38,7 +38,7 @@ export default async function RedeemPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">選べるe-ギフトに交換</h1>
           <p className="mt-1 text-sm text-gray-600">
-            交換申請が完了すると「受け取り済みギフト」に pending が作成されます。
+            交換したギフトは「受け取り済みギフト」ページに届きます。
           </p>
         </div>
         <Link

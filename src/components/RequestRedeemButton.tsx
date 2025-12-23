@@ -58,7 +58,7 @@ export default function RequestRedeemButton({
             : "bg-orange-700/10 text-orange-900/40 cursor-not-allowed",
         ].join(" ")}
       >
-        {loading ? "申請中..." : `${points}ptを交換申請する`}
+        {loading ? "申請中..." : `${points}ptを交換する`}
       </button>
 
       {err ? (
