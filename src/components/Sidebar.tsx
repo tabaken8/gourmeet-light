@@ -203,7 +203,7 @@ export default function Sidebar({ name }: { name?: string }) {
         />
 
         <NavItem
-          href={gate("/account")}
+          href={gate("/profile")}
           label="プロフィール"
           avatarUrl={avatarUrl}
           avatarAlt={displayNameMemo}

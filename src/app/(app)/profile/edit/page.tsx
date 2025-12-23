@@ -1,4 +1,4 @@
-// src/app/(app)/account/edit/page.tsx
+// src/app/(app)/profile/edit/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -40,7 +40,7 @@ export default async function AccountEditPage() {
             プロフィールを編集
           </h1>
           <Link
-            href="/account"
+            href="/profile"
             className="text-sm text-black/60 underline hover:text-black/80"
           >
             戻る
@@ -94,7 +94,7 @@ export default async function AccountEditPage() {
         {/* 編集フォーム */}
         <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm">
           <form
-            action="/account/update"
+            action="/profile/update"
             method="post"
             encType="multipart/form-data"
             className="space-y-4"

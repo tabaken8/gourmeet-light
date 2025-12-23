@@ -2,6 +2,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import RequestRedeemButton from "@/components/RequestRedeemButton";
+
+type TicketRow = { balance: number } | null;
 
 export default async function RedeemPage() {
   const supabase = await createClient();
@@ -11,25 +14,37 @@ export default async function RedeemPage() {
 
   if (!user) redirect("/auth/required?next=%2Fpoints%2Fredeem");
 
-  const { data: balanceRow } = await supabase
-    .from("point_balances")
-    .select("balance")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data: balanceRow }, { data: ticketRow }] = await Promise.all([
+    supabase
+      .from("point_balances")
+      .select("balance")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("exchange_tickets")
+      .select("balance")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
 
   const balance = balanceRow?.balance ?? 0;
-  const canRedeem = balance >= 1000;
+  const tickets = (ticketRow as TicketRow)?.balance ?? 0;
+
+  const canRedeem = balance >= 1000 && tickets >= 1;
 
   return (
     <main className="mx-auto w-full max-w-xl px-4 pb-24 pt-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Amazonギフト券に交換</h1>
+          <h1 className="text-xl font-bold tracking-tight">選べるe-ギフトに交換</h1>
           <p className="mt-1 text-sm text-gray-600">
-            ギフト券はメールで届きます（送信元：<span className="font-mono">rewards@gourmeet.jp</span>）。
+            交換申請が完了すると「受け取り済みギフト」に pending が作成されます。
           </p>
         </div>
-        <Link href="/points" className="text-sm font-semibold text-gray-700 hover:underline">
+        <Link
+          href="/points"
+          className="text-sm font-semibold text-gray-700 hover:underline"
+        >
           戻る
         </Link>
       </div>
@@ -37,37 +52,67 @@ export default async function RedeemPage() {
       <section className="mt-5 rounded-2xl border border-black/10 bg-white p-5">
         <div className="flex items-end justify-between">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Balance</div>
-            <div className="mt-1 text-3xl font-extrabold">{balance.toLocaleString()} pt</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Balance
+            </div>
+            <div className="mt-1 text-3xl font-extrabold">
+              {balance.toLocaleString()} pt
+            </div>
+
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-black/[.04] px-3 py-1 text-xs text-gray-700">
+              <span className="font-semibold">交換チケット</span>
+              <span className="font-mono font-semibold">{tickets}</span>
+              <span>枚</span>
+            </div>
           </div>
+
           <div className="text-right text-sm text-gray-600">
-            交換単位：<span className="font-bold text-gray-900">1000 pt</span>
+            交換条件：
+            <div className="mt-1 font-bold text-gray-900">1000pt + チケット1枚</div>
           </div>
         </div>
 
         <p className="mt-3 text-xs text-gray-500">
-          ※ 交換は「申請 → 確認 → 送付」の流れです。
+          ※ チケットは「招待が成立（相手が初回投稿まで完了）」したときに付与されます。
         </p>
 
-        {/* ✅ ここでブロック（ギリギリ） */}
-        <button
-          disabled={!canRedeem}
-          className={[
-            "mt-4 w-full rounded-2xl px-4 py-3 text-sm font-bold shadow-sm transition",
-            canRedeem
-              ? "bg-orange-700 text-white hover:bg-orange-800"
-              : "bg-orange-700/10 text-orange-900/40 cursor-not-allowed",
-          ].join(" ")}
-          title={!canRedeem ? "1000pt以上で交換できます" : "交換申請（次の実装でDBに書き込み）"}
-        >
-          1000ptを交換申請する
-        </button>
+        <RequestRedeemButton canRedeem={canRedeem} points={1000} />
 
         {!canRedeem && (
-          <div className="mt-3 text-xs text-gray-600">
-            あと <span className="font-semibold">{(1000 - balance).toLocaleString()}pt</span> で交換できます。
+          <div className="mt-3 text-xs text-gray-600 space-y-1">
+            {balance < 1000 ? (
+              <div>
+                あと{" "}
+                <span className="font-semibold">
+                  {(1000 - balance).toLocaleString()}pt
+                </span>{" "}
+                で交換できます。
+              </div>
+            ) : null}
+            {tickets < 1 ? (
+              <div>
+                交換チケットがありません。招待成立で{" "}
+                <span className="font-semibold">+1枚</span> されます。
+              </div>
+            ) : null}
           </div>
         )}
+
+        <div className="mt-4 flex items-center justify-between">
+          <Link
+            href="/points/gifts"
+            className="text-sm font-semibold text-gray-700 hover:underline"
+          >
+            受け取り済みギフトを見る
+          </Link>
+
+          <Link
+            href="/points"
+            className="text-sm font-semibold text-gray-700 hover:underline"
+          >
+            ポイントへ戻る
+          </Link>
+        </div>
       </section>
     </main>
   );

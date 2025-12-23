@@ -195,7 +195,7 @@ export default async function AccountPage() {
 
                 {/* 右：編集ボタン */}
                 <Link
-                  href="/account/edit"
+                  href="/profile/edit"
                   className="mt-2 inline-flex items-center rounded-full border border-orange-200 bg-white/80 px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-orange-400 hover:bg-orange-50"
                 >
                   プロフィールを編集

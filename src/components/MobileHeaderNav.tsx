@@ -133,13 +133,13 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Badge count={followReqCount} />
             </IconButton>
 
-            {/* Account */}
+            {/* Profile */}
             <Link
-              href={gate("/account")}
+              href={gate("/profile")}
               className={`
                 relative inline-flex h-10 w-10 items-center justify-center rounded-full
                 transition-colors
-                ${isActive("/account") ? "bg-slate-100" : "hover:bg-black/[.04]"}
+                ${isActive("/profile") ? "bg-slate-100" : "hover:bg-black/[.04]"}
               `}
               aria-label={displayNameSafe || "プロフィール"}
             >
