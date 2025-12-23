@@ -16,8 +16,8 @@ export default async function ClientAuthNav() {
           <Link href="/timeline" className="text-sm text-black/70 hover:text-black">
             Timeline
           </Link>
-          <Link href="/account" className="text-sm text-black/70 hover:text-black">
-            Account
+          <Link href="/profile" className="text-sm text-black/70 hover:text-black">
+            Profile
           </Link>
         </>
       ) : (

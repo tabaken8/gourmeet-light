@@ -24,7 +24,7 @@ export default async function UserPublicPage({
 
   // 自分のページなら /account に飛ばす
   if (userId === me.id) {
-    redirect("/account");
+    redirect("/profile");
   }
 
   // プロフィール取得

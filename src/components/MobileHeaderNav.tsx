@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import {
   Home,
   Search,
@@ -43,7 +46,7 @@ function IconButton({
 }: {
   href: string;
   active?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
   ariaLabel?: string;
   activeClassName?: string;
 }) {
@@ -62,8 +65,40 @@ function IconButton({
   );
 }
 
+/**
+ * Gourmeet day_key（毎日4:00 JSTで切り替え）
+ * - JSTで 00:00〜03:59 は「前日扱い」
+ * - それ以外は「当日扱い」
+ */
+function getGourmeetDayKey(now = new Date()): string {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  });
+
+  const parts = Object.fromEntries(dtf.formatToParts(now).map((p) => [p.type, p.value])) as any;
+  const y = Number(parts.year);
+  const m = Number(parts.month);
+  const d = Number(parts.day);
+  const h = Number(parts.hour);
+
+  let day = new Date(Date.UTC(y, m - 1, d));
+  if (h < 4) day = new Date(day.getTime() - 24 * 60 * 60 * 1000);
+
+  const yyyy = day.getUTCFullYear();
+  const mm = String(day.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(day.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function MobileHeaderNav({ name }: { name?: string }) {
   const pathname = usePathname();
+  const supabase = createClientComponentClient();
+
   const {
     isAuthed,
     avatarUrl,
@@ -83,6 +118,99 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
   // ✅ ロゴ/ホームは必ず friends tab に統一
   const homeHref = "/timeline?tab=friends";
+
+  // ===== 投稿インセンティブ判定（初回 or 今日の+50未取得） =====
+  const [uid, setUid] = useState<string | null>(null);
+  const [hasPosted, setHasPosted] = useState<boolean | null>(null);
+  const [dailyAwarded, setDailyAwarded] = useState<boolean | null>(null);
+
+  const dayKey = useMemo(() => getGourmeetDayKey(new Date()), []);
+
+  useEffect(() => {
+    if (!isAuthed) {
+      setUid(null);
+      setHasPosted(null);
+      setDailyAwarded(null);
+      return;
+    }
+    supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
+  }, [supabase, isAuthed]);
+
+  useEffect(() => {
+    if (!isAuthed || !uid) {
+      setHasPosted(null);
+      setDailyAwarded(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // ① 投稿済みか（自分の投稿が1件でもあるか）
+        const { count: postCount, error: postErr } = await supabase
+          .from("posts")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", uid);
+
+        if (cancelled) return;
+
+        if (postErr) {
+          console.error(postErr);
+          setHasPosted(null);
+        } else {
+          setHasPosted((postCount ?? 0) > 0);
+        }
+
+        // ② 今日のdaily_post(+50)が付与済みか（4:00 JST基準）
+        const { count: dailyCount, error: dailyErr } = await supabase
+          .from("point_transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", uid)
+          .eq("reason", "daily_post")
+          .eq("day_key", dayKey);
+
+        if (cancelled) return;
+
+        if (dailyErr) {
+          console.error(dailyErr);
+          setDailyAwarded(null);
+        } else {
+          setDailyAwarded((dailyCount ?? 0) > 0);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setHasPosted(null);
+          setDailyAwarded(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, uid, isAuthed, dayKey]);
+
+  // 初回未投稿 → 550pt（初回+500 + 今日の+50 の “体感” を押し出す想定）
+  const showFirstPostPromo = isAuthed && hasPosted === false;
+  // 既投稿 & 今日の+50未取得 → 50pt
+  const showDailyPromo = isAuthed && hasPosted === true && dailyAwarded === false;
+
+  const promoPoints = showFirstPostPromo ? 550 : showDailyPromo ? 50 : 0;
+  const showPromo = promoPoints > 0;
+
+  const promoText = showFirstPostPromo
+    ? "初投稿で +550pt（今がチャンス）"
+    : showDailyPromo
+    ? "今日の投稿で +50pt もらえる"
+    : "";
+
+  const promoSub = showFirstPostPromo
+    ? "投稿ボタンから1発。ポイントは /points で確認できます"
+    : showDailyPromo
+    ? "1日1回。投稿すると自動で付与されます"
+    : "";
 
   return (
     <div className="md:hidden">
@@ -165,7 +293,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
             {/* Home */}
             <IconButton
-              href={gate(homeHref)} // ✅ 未ログインなら /auth/required に
+              href={gate(homeHref)}
               active={isActive("/timeline")}
               ariaLabel="ホーム"
               activeClassName="bg-blue-100/70"
@@ -184,17 +312,35 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Search size={20} className="text-teal-700" />
             </IconButton>
 
-            {/* Post */}
+            {/* Post（プロモ時に光らせる） */}
             <Link
               href={gate("/posts/new")}
-              className="
-                relative inline-flex h-11 w-11 items-center justify-center
-                rounded-full bg-orange-700 text-white
-                active:scale-[0.99]
-              "
+              className={[
+                "relative inline-flex h-11 w-11 items-center justify-center rounded-full",
+                "bg-orange-700 text-white active:scale-[0.99] transition",
+                showPromo
+                  ? "shadow-lg shadow-orange-200/70 ring-2 ring-orange-300 animate-pulse"
+                  : "",
+              ].join(" ")}
               aria-label="投稿"
             >
-              <Plus size={20} />
+              {/* ふわっと光る外側 */}
+              {showPromo && (
+                <span
+                  className="pointer-events-none absolute -inset-2 rounded-full bg-orange-300/20 blur-md"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="relative">
+                <Plus size={20} />
+              </span>
+
+              {/* 右上に +pt バッジ（さりげなく） */}
+              {showPromo && (
+                <span className="absolute -right-1 -top-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-orange-700 shadow-sm">
+                  +{promoPoints}
+                </span>
+              )}
             </Link>
 
             {/* Map */}
@@ -217,6 +363,25 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Settings size={20} className="text-fuchsia-700" />
             </IconButton>
           </div>
+
+          {/* 投稿インセンティブ（ちょろっと案内） */}
+          {showPromo && (
+            <div className="mt-2 flex items-start justify-between gap-2 px-1">
+              <div className="min-w-0">
+                <div className="truncate text-[11px] font-semibold text-slate-900">
+                  🎁 {promoText}
+                </div>
+                <div className="truncate text-[10px] text-slate-500">{promoSub}</div>
+              </div>
+
+              <Link
+                href={gate("/points")}
+                className="shrink-0 rounded-full border border-orange-100 bg-orange-50 px-2 py-1 text-[10px] font-semibold text-orange-700 hover:bg-orange-100"
+              >
+                ここからポイント残高を見る
+              </Link>
+            </div>
+          )}
         </div>
       </header>
     </div>

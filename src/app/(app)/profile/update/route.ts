@@ -180,5 +180,5 @@ export async function POST(req: Request) {
   }
 
   // 正常終了
-  return NextResponse.redirect(new URL("/account", req.url));
+  return NextResponse.redirect(new URL("/profile", req.url));
 }
