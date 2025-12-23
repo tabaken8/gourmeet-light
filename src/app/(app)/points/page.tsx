@@ -247,7 +247,7 @@ export default async function PointsPage() {
           </div>
 
           <div className="rounded-2xl bg-black/[.03] p-4">
-            <div className="text-sm font-semibold">④ 保存したお店に来店</div>
+            <div className="text-sm font-semibold">④ 保存したお店に来店(導入予定)</div>
             <div className="mt-1 text-sm text-gray-700">
               「投稿が来店のきっかけ」になった場合、
               <span className="font-semibold">投稿者</span> と{" "}
