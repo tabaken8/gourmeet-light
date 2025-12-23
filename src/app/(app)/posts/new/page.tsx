@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Image as ImageIcon, MapPin, X } from "lucide-react";
+import { Image as ImageIcon, MapPin, X, Check } from "lucide-react";
+import confetti from "canvas-confetti";
 
 type PlaceResult = {
   place_id: string;
@@ -222,7 +223,6 @@ const PRICE_RANGES = [
   { value: "10000+", label: "¥10,000〜" },
 ] as const;
 
-// ✅ none を廃止
 type PriceMode = "exact" | "range";
 
 function onlyDigits(s: string) {
@@ -237,16 +237,82 @@ function formatYen(n: number) {
   }
 }
 
+/** points差分演出用：profiles.points を読む（列名が違うならここだけ直す） */
+async function fetchPointBalance(supabase: any, uid: string): Promise<number | null> {
+  const { data, error } = await supabase.from("point_balances").select("balance").eq("user_id", uid).single();
+  if (error) {
+    console.warn("fetchPointBalance error:", error);
+    return null;
+  }
+  const n = Number((data as any)?.balance);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** 付与がトリガー等で遅れることがあるので、最大 ~10秒くらい差分が出るまで待つ */
+async function waitForDelta(
+  getAfter: () => Promise<number | null>,
+  before: number | null,
+  { tries = 10, delayMs = 220 } = {}
+): Promise<number | null> {
+  if (before === null) return null;
+
+  for (let i = 0; i < tries; i++) {
+    const after = await getAfter();
+    if (after !== null) {
+      const delta = after - before;
+      if (delta !== 0) return delta;
+    }
+    await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+  }
+  return 0;
+}
+
+function RailDot({
+  done,
+  label,
+  optional,
+}: {
+  done: boolean;
+  label: string;
+  optional?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-center pt-6">
+      <div className="relative">
+        <div
+          className={[
+            "grid h-6 w-6 place-items-center rounded-full transition",
+            done
+              ? "bg-orange-600 text-white shadow-sm"
+              : optional
+              ? "border border-dashed border-slate-300 bg-white/70 text-slate-300"
+              : "border border-slate-300 bg-white/70 text-slate-300",
+          ].join(" ")}
+          aria-label={label}
+          title={optional ? `${label}（任意）` : label}
+        >
+          {done ? <Check className="h-4 w-4" /> : <div className="h-1.5 w-1.5 rounded-full bg-current" />}
+        </div>
+        {optional && !done && (
+          <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-slate-400">
+            任意
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function NewPostPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
 
   const [uid, setUid] = useState<string | null>(null);
 
-  // ✅ 投稿済み判定（自分の投稿が1件でもあるか）
+  // 投稿済み判定（自分の投稿が1件でもあるか）
   const [hasPosted, setHasPosted] = useState<boolean | null>(null);
 
-  // ✅ 今日の +50（daily_post）が付与済みか（4:00 JST基準）
+  // 今日の +50（daily_post）が付与済みか（4:00 JST基準）
   const [dailyAwarded, setDailyAwarded] = useState<boolean | null>(null);
 
   const dayKey = useMemo(() => getGourmeetDayKey(new Date()), []);
@@ -263,15 +329,18 @@ export default function NewPostPage() {
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
   const [isSearchingPlace, setIsSearchingPlace] = useState(false);
 
-  // ✅ おすすめ度（1〜10）
+  // おすすめ度（1〜10）
   const [recommendScore, setRecommendScore] = useState<number>(7);
 
-  // ✅ 価格（実額 or レンジ）※デフォルトを実額に
+  // 価格（実額 or レンジ）※デフォルト実額
   const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
   const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>(
     "3000-3999"
   );
+
+  // 付与演出モーダル
+  const [award, setAward] = useState<{ points: number } | null>(null);
 
   const priceYenValue = useMemo(() => {
     const digits = onlyDigits(priceYenText);
@@ -280,6 +349,15 @@ export default function NewPostPage() {
     if (!Number.isFinite(n)) return null;
     return Math.max(0, Math.floor(n));
   }, [priceYenText]);
+
+  const isPriceComplete = useMemo(() => {
+    if (priceMode === "range") return true;
+    return !!priceYenValue && priceYenValue > 0;
+  }, [priceMode, priceYenValue]);
+
+  const isContentComplete = content.trim().length > 0;
+  const isPhotoComplete = imgs.length > 0;
+  const isPlaceComplete = !!selectedPlace;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
@@ -380,7 +458,7 @@ export default function NewPostPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ objectURL解放（アンマウント時のみ）
+  // objectURL解放（アンマウント時のみ）
   const imgsRef = useRef<PreparedImage[]>([]);
   useEffect(() => {
     imgsRef.current = imgs;
@@ -428,7 +506,6 @@ export default function NewPostPage() {
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
 
-    // ✅ DB制約に合わせる（exact or range のみ）
     const price_yen = priceMode === "exact" ? priceYenValue : null;
     const price_range = priceMode === "range" ? priceRange : null;
 
@@ -438,6 +515,9 @@ export default function NewPostPage() {
 
     setBusy(true);
     setMsg(null);
+
+    // 付与演出のため、投稿前ポイントを取得（環境によっては列/テーブルが違うので失敗したら演出なしで進む）
+    const beforePoints = await fetchPointBalance(supabase, uid);
 
     try {
       const CACHE = "31536000"; // 1年（調整中は短くするのもおすすめ）
@@ -453,22 +533,18 @@ export default function NewPostPage() {
         const fullPath = `${uid}/${base}_full.${fullExt}`;
         const thumbPath = `${uid}/${base}_thumb.${thumbExt}`;
 
-        const upThumb = await supabase.storage
-          .from("post-images")
-          .upload(thumbPath, img.thumb, {
-            cacheControl: CACHE,
-            upsert: false,
-            contentType: img.thumb.type,
-          });
+        const upThumb = await supabase.storage.from("post-images").upload(thumbPath, img.thumb, {
+          cacheControl: CACHE,
+          upsert: false,
+          contentType: img.thumb.type,
+        });
         if (upThumb.error) throw upThumb.error;
 
-        const upFull = await supabase.storage
-          .from("post-images")
-          .upload(fullPath, img.full, {
-            cacheControl: CACHE,
-            upsert: false,
-            contentType: img.full.type,
-          });
+        const upFull = await supabase.storage.from("post-images").upload(fullPath, img.full, {
+          cacheControl: CACHE,
+          upsert: false,
+          contentType: img.full.type,
+        });
         if (upFull.error) throw upFull.error;
 
         const { data: pubThumb } = supabase.storage.from("post-images").getPublicUrl(thumbPath);
@@ -486,13 +562,27 @@ export default function NewPostPage() {
         place_id: selectedPlace?.place_id ?? null,
         place_name: selectedPlace?.name ?? null,
         place_address: selectedPlace?.formatted_address ?? null,
-
         recommend_score: recommendScore,
         price_yen,
         price_range,
       });
       if (insErr) throw insErr;
 
+      // 付与はトリガー等で遅れることがあるので、最大 ~10秒程度差分を待つ
+      const delta = await waitForDelta(() => fetchPointBalance(supabase, uid), beforePoints);
+
+      if (delta && delta > 0) {
+        setAward({ points: delta });
+
+        // クラッカー（軽めに2発）
+        confetti({ particleCount: 90, spread: 70, origin: { y: 0.7 } });
+        confetti({ particleCount: 60, spread: 120, origin: { y: 0.6 } });
+
+        // 演出を見せたいので、ここでは遷移しない
+        return;
+      }
+
+      // 演出なしはそのまま遷移
       router.push("/timeline");
       router.refresh();
     } catch (err: any) {
@@ -535,7 +625,7 @@ export default function NewPostPage() {
 
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      <div className="mx-auto flex w-full max-w-2xl flex-col px-4 py-8 md:px-6">
+      <div className="mx-auto flex w-full max-w-2xl flex-col px-4 py-7 md:px-6 md:py-8">
         <div className="mb-4">
           <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
             New Post
@@ -545,7 +635,7 @@ export default function NewPostPage() {
           </p>
         </div>
 
-        {/* ✅ ポイント案内（初回 +500 / 今日の+50付与状況も表示） */}
+        {/* ポイント案内 */}
         {(hasPosted !== null || dailyAwarded !== null) && (
           <div className="mb-4 rounded-2xl border border-orange-100 bg-white/90 p-4 shadow-sm">
             {hasPosted === false ? (
@@ -574,7 +664,7 @@ export default function NewPostPage() {
         )}
 
         <div className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-6">
-          <form onSubmit={submit} className="space-y-5">
+          <form onSubmit={submit} className="grid grid-cols-[1fr_28px] gap-x-3 gap-y-5">
             {/* 画像追加 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
@@ -595,44 +685,50 @@ export default function NewPostPage() {
                   />
                 </label>
 
-                <button
-                  type="submit"
-                  disabled={busy || processing}
-                  className="inline-flex h-11 items-center justify-center rounded-full bg-orange-600 px-7 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 disabled:opacity-60"
-                >
-                  {processing ? "画像処理中..." : busy ? "投稿中..." : "投稿する"}
-                </button>
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="submit"
+                    disabled={busy || processing}
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-orange-600 px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 disabled:opacity-60"
+                  >
+                    {processing ? "画像処理中..." : busy ? "投稿中..." : "投稿する"}
+                  </button>
+                  <div className="text-[11px] text-slate-400">
+                    ※ 環境によって投稿完了まで <span className="font-semibold">最大10秒</span>ほどかかる場合があります
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* 画像プレビュー */}
-            {imgs.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs text-slate-500">
-                  画像プレビュー{" "}
-                  {processing && <span className="text-orange-500">（HEIC変換/圧縮中…）</span>}
-                </p>
-                <ul className="grid grid-cols-3 gap-2">
-                  {imgs.map((img) => (
-                    <li key={img.id} className="group relative overflow-hidden rounded-xl">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.previewUrl}
-                        alt={img.label}
-                        className="aspect-square w-full object-cover transition group-hover:scale-[1.02]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(img.id)}
-                        className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-80 shadow-sm transition hover:opacity-100"
-                      >
-                        <X size={14} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {/* 画像プレビュー */}
+              {imgs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-500">
+                    画像プレビュー{" "}
+                    {processing && <span className="text-orange-500">（HEIC変換/圧縮中…）</span>}
+                  </p>
+                  <ul className="grid grid-cols-3 gap-2">
+                    {imgs.map((img) => (
+                      <li key={img.id} className="group relative overflow-hidden rounded-xl">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.previewUrl}
+                          alt={img.label}
+                          className="aspect-square w-full object-cover transition group-hover:scale-[1.02]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(img.id)}
+                          className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-80 shadow-sm transition hover:opacity-100"
+                        >
+                          <X size={14} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <RailDot done={isPhotoComplete} label="写真" />
 
             {/* おすすめ度 */}
             <div className="space-y-2">
@@ -640,7 +736,6 @@ export default function NewPostPage() {
                 <span className="font-medium text-slate-700">
                   おすすめ度 <span className="text-orange-600">{recommendScore}</span>/10
                 </span>
-                <span className="text-[11px] text-slate-400"></span>
               </div>
 
               <input
@@ -654,14 +749,14 @@ export default function NewPostPage() {
                 aria-label="おすすめ度"
               />
             </div>
+            <RailDot done={true} label="おすすめ度" />
 
-            {/* ✅ 価格（none削除・デフォルト実額・最初から入力欄あり） */}
+            {/* 価格 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">価格</span>
               </div>
 
-              {/* 実額 / レンジ */}
               <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
                 {[
                   { v: "exact", label: "実額" },
@@ -686,7 +781,6 @@ export default function NewPostPage() {
                 })}
               </div>
 
-              {/* ✅ デフォルトでここが出る（exact） */}
               {priceMode === "exact" && (
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-2 rounded-full border border-orange-100 bg-white px-3 py-2">
@@ -699,7 +793,7 @@ export default function NewPostPage() {
                       className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
                     />
                   </div>
-                  <div className="text-[11px] text-slate-500 min-w-[88px] text-right">
+                  <div className="min-w-[88px] text-right text-[11px] text-slate-500">
                     {priceYenValue ? `≈ ¥${formatYen(priceYenValue)}` : ""}
                   </div>
                 </div>
@@ -720,12 +814,22 @@ export default function NewPostPage() {
                   </select>
                 </div>
               )}
-            </div>
 
-            {/* 本文 */}
-            <div>
+              {priceMode === "exact" && !isPriceComplete && (
+                <p className="text-[11px] text-slate-400">実額の場合は入力が必要です。</p>
+              )}
+            </div>
+            <RailDot done={isPriceComplete} label="価格" />
+
+            {/* 本文（スマホでデカすぎ対策：高さを下げ、mdで戻す） */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-medium text-slate-700">本文</span>
+                <span className="text-[11px] text-slate-400">Cmd/Ctrl + Enter で投稿</span>
+              </div>
+
               <textarea
-                className="h-32 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-0"
+                className="h-24 md:h-32 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-0"
                 placeholder="いま何食べてる？（ここに Command+V でも画像を貼り付けできます）"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
@@ -737,6 +841,7 @@ export default function NewPostPage() {
                 }}
               />
             </div>
+            <RailDot done={isContentComplete} label="本文" />
 
             {/* 店舗選択 */}
             <div className="space-y-2">
@@ -819,12 +924,60 @@ export default function NewPostPage() {
                   </div>
                 )}
               </div>
-            </div>
 
-            {msg && <p className="text-xs text-red-600">{msg}</p>}
+              <p className="text-[11px] text-slate-400">※ お店は任意です（後で編集したい人向け）</p>
+            </div>
+            <RailDot done={isPlaceComplete} label="お店" optional />
+
+            {/* エラーメッセージ（列を崩さないため col-span） */}
+            {msg && <p className="col-span-2 text-xs text-red-600">{msg}</p>}
           </form>
         </div>
       </div>
+
+      {/* 付与演出モーダル */}
+      {award && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-orange-100 bg-white p-5 shadow-xl">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+              Points Get!
+            </div>
+
+            <div className="mt-2 text-lg font-bold text-slate-900">
+              🎉 {award.points}pt 獲得しました！
+            </div>
+
+            <p className="mt-1 text-sm text-slate-600">
+              {award.points >= 500 ? "初回投稿ボーナスです。" : "今日の投稿ボーナスです。"}
+            </p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-orange-100"
+                onClick={() => {
+                  setAward(null);
+                  router.push("/points");
+                }}
+              >
+                詳しく見る
+              </button>
+
+              <button
+                type="button"
+                className="flex-1 rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+                onClick={() => {
+                  setAward(null);
+                  router.push("/timeline");
+                  router.refresh();
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

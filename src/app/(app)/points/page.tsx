@@ -13,7 +13,15 @@ type Tx = {
 };
 
 type TicketRow = { balance: number; updated_at: string } | null;
-
+function formatJST(iso: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
 function reasonLabel(reason: string) {
   switch (reason) {
     case "signup_bonus":
@@ -281,7 +289,7 @@ export default async function PointsPage() {
                     <div>
                       <div className="text-sm font-semibold">{reasonLabel(t.reason)}</div>
                       <div className="text-xs text-gray-500">
-                        {new Date(t.created_at).toLocaleString()}
+                        {formatJST(t.created_at)}
                       </div>
                     </div>
 
