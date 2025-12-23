@@ -23,7 +23,7 @@ function reasonLabel(reason: string) {
     case "invite_bonus":
       return "招待ボーナス";
     case "visit_conversion":
-      return "保存した店に来店";
+      return "保存した店に来店(導入予定)";
     case "redeem_request":
       return "交換申請";
     default:
@@ -226,7 +226,7 @@ export default async function PointsPage() {
           </div>
 
           <div className="rounded-2xl bg-black/[.03] p-4">
-            <div className="text-sm font-semibold">② 継続投稿（1日1回まで）</div>
+            <div className="text-sm font-semibold">② 投稿（1日1回まで）</div>
             <div className="mt-1 text-sm text-gray-700">
               投稿すると <span className="font-bold">+50pt</span>（1日1投稿まで）。
             </div>
