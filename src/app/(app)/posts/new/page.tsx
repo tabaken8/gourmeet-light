@@ -611,7 +611,7 @@ export default function NewPostPage() {
     if (dailyAwarded === false) {
       return (
         <div className="text-sm text-slate-700">
-          2回目以降は、<span className="font-semibold">毎日最初の投稿</span>で{" "}
+          <span className="font-semibold">毎日最初の投稿</span>で{" "}
           <span className="font-semibold text-orange-600">+50pt</span>（1日1回）
         </div>
       );
