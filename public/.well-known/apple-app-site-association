@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["2AR8QKBSNZ.com.tabaken.gourmeetmobile"],
+        "components": [
+          { "/": "/*" }
+        ]
+      }
+    ]
+  }
+}
