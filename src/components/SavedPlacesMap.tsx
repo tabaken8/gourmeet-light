@@ -1,66 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import {
-  ExternalLink,
-  RefreshCw,
-  Trash2,
-  X,
-  SlidersHorizontal,
-  Check,
-  Image as ImageIcon,
-  Smile,
-  Settings,
-} from "lucide-react";
+import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 
+type FollowRow = { follower_id: string; followee_id: string; status: string };
+type PostRow = {
+  id: string;
+  user_id: string;
+  place_id: string | null;
+  place_name: string | null;
+  place_address: string | null;
+  created_at: string | null;
+  image_urls?: string[] | null;
+  price_yen?: number | null;
+  price_range?: string | null;
+};
 type PlaceRow = {
   place_id: string;
-  name: string | null;
-  address: string | null;
   lat: number | null;
   lng: number | null;
+  name: string | null;
+  address: string | null;
   photo_url: string | null;
 };
+type ProfileRow = { id: string; avatar_url: string | null };
+type UserPlacePinRow = { place_id: string; emoji: string | null };
+type UserPlaceRow = { place_id: string };
 
-type RawUserPlaceRow = {
-  place_id: string;
-  first_saved_at: string;
-  last_saved_at: string;
-  last_post_id: string | null;
-  last_collection_id: string | null;
-  places?: PlaceRow[] | PlaceRow | null;
-  place?: PlaceRow[] | PlaceRow | null;
-};
+type IconMode = "avatar" | "photo";
 
-type NormalizedRow = Omit<RawUserPlaceRow, "places" | "place"> & {
-  place: PlaceRow | null;
-};
-
-type CollectionRow = { id: string; name: string };
-
-type UserPlacePinRow = {
-  place_id: string;
-  emoji: string | null;
-};
-
-type SuggestTypeResponse = {
-  ok: boolean;
-  suggestion?: { emoji: string; key: string; matchedType?: string; source?: string } | null;
-  suggestedEmoji?: string | null;
-};
-
-type PostMiniRow = {
-  id: string;
-  place_id: string | null;
-  price_yen: number | null;
-  price_range: string | null;
-  image_urls: string[] | null;
-};
-
+/** ---- Genre (emoji) options ---- */
 type GenreOption = { key: string; emoji: string; label: string };
-
 const GENRES: GenreOption[] = [
   { key: "ramen", emoji: "🍜", label: "ラーメン" },
   { key: "sushi", emoji: "🍣", label: "寿司" },
@@ -82,86 +53,15 @@ function labelForEmoji(emoji: string | null | undefined) {
   return GENRES.find((g) => g.emoji === emoji)?.label ?? "";
 }
 
-declare global {
-  interface Window {
-    google?: any;
-  }
-}
+/** ---- Budget helpers (loose range) ---- */
+type BudgetKey =
+  | "any"
+  | "0_2000"
+  | "2000_5000"
+  | "5000_10000"
+  | "10000_20000"
+  | "20000_plus";
 
-function escapeHtml(str: string) {
-  return str
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function buildGoogleMapsUrl(placeId: string, name?: string | null) {
-  const q = name?.trim() ? name.trim() : placeId;
-  return (
-    "https://www.google.com/maps/search/?api=1" +
-    `&query=${encodeURIComponent(q)}` +
-    `&query_place_id=${encodeURIComponent(placeId)}`
-  );
-}
-
-function loadGoogleMapsScript(apiKey: string) {
-  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
-  if (window.google?.maps) return Promise.resolve();
-
-  return new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-gm="true"]');
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("failed to load")), { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      apiKey
-    )}&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.dataset.gm = "true";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("failed to load Google Maps"));
-    document.head.appendChild(script);
-  });
-}
-
-function normalizePlace(x: PlaceRow[] | PlaceRow | null | undefined): PlaceRow | null {
-  if (!x) return null;
-  if (Array.isArray(x)) return x[0] ?? null;
-  return x;
-}
-
-/** ✅ ライト地図でも見やすいチャコール半透明（白縁＋影） */
-function makeEmojiSvgDataUrl(emoji: string) {
-  const e = (emoji || "📍").slice(0, 4);
-  const svg = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56">
-    <defs>
-      <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="rgba(0,0,0,0.28)"/>
-      </filter>
-    </defs>
-    <g filter="url(#s)">
-      <circle cx="28" cy="28" r="21" fill="rgba(17,24,39,0.78)" stroke="rgba(255,255,255,0.85)" stroke-width="2"/>
-      <circle cx="28" cy="28" r="20" fill="rgba(17,24,39,0.60)"/>
-      <text x="28" y="35" text-anchor="middle" font-size="20"
-        font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif">${escapeHtml(
-          e
-        )}</text>
-    </g>
-  </svg>`;
-  const encoded = encodeURIComponent(svg).replaceAll("'", "%27").replaceAll('"', "%22");
-  return `data:image/svg+xml;charset=UTF-8,${encoded}`;
-}
-
-/** ---- Budget helpers ---- */
-type BudgetKey = "any" | "0_2000" | "2000_5000" | "5000_10000" | "10000_20000" | "20000_plus";
 const BUDGETS: Array<{ key: BudgetKey; label: string; min: number | null; max: number | null }> = [
   { key: "any", label: "指定なし", min: null, max: null },
   { key: "0_2000", label: "〜 ¥2,000", min: 0, max: 2000 },
@@ -171,10 +71,11 @@ const BUDGETS: Array<{ key: BudgetKey; label: string; min: number | null; max: n
   { key: "20000_plus", label: "¥20,000〜", min: 20000, max: null },
 ];
 
-function parsePriceRangeToYen(priceRange: string | null): number | null {
+function parsePriceRangeToYen(priceRange: string | null | undefined): number | null {
   if (!priceRange) return null;
   const s = priceRange.replaceAll(",", "");
-  const nums = s.match(/\d+/g)?.map((x) => Number(x)).filter((n) => Number.isFinite(n)) ?? [];
+  const nums =
+    s.match(/\d+/g)?.map((x) => Number(x)).filter((n) => Number.isFinite(n)) ?? [];
   if (nums.length === 0) return null;
   if (nums.length === 1) return nums[0];
   return Math.round((nums[0] + nums[1]) / 2);
@@ -184,9 +85,7 @@ function formatYen(n: number) {
   return `¥${n.toLocaleString("ja-JP")}`;
 }
 
-/** y から「所属レンジ」を推定 */
 function budgetIndexFromYen(y: number): number {
-  // BUDGETS[0] は any なので除外
   for (let i = 1; i < BUDGETS.length; i++) {
     const b = BUDGETS[i];
     const minOK = b.min == null ? true : y >= b.min;
@@ -196,15 +95,186 @@ function budgetIndexFromYen(y: number): number {
   return BUDGETS.length - 1;
 }
 
-/** ✅ ±1段階広げた「目安レンジ」 */
 function expandedBudgetFromYen(y: number) {
   const i = budgetIndexFromYen(y);
   const lo = Math.max(1, i - 1);
   const hi = Math.min(BUDGETS.length - 1, i + 1);
   const min = BUDGETS[lo].min ?? 0;
-  const max = BUDGETS[hi].max; // null あり
+  const max = BUDGETS[hi].max;
   const label = max == null ? `${formatYen(min)}〜` : `${formatYen(min)}〜${formatYen(max)}`;
   return { min, max, label };
+}
+
+function passesBudgetFilterLoose(midYen: number | null, budgetKey: BudgetKey) {
+  if (budgetKey === "any") return true;
+  const sel = BUDGETS.find((b) => b.key === budgetKey);
+  if (!sel || sel.min == null) return true;
+  if (midYen == null) return false;
+
+  const loose = expandedBudgetFromYen(midYen);
+  const selMin = sel.min ?? 0;
+  const selMax = sel.max;
+
+  const aMin = loose.min;
+  const aMax = loose.max;
+
+  const left = Math.max(aMin, selMin);
+  const right =
+    aMax == null && selMax == null
+      ? Infinity
+      : Math.min(aMax == null ? Infinity : aMax, selMax == null ? Infinity : selMax);
+
+  return left <= right;
+}
+
+/** ---- Pin model (place-aggregated) ---- */
+type PlacePin = {
+  place_id: string;
+  lat: number;
+  lng: number;
+  place_name: string;
+  place_address: string;
+
+  users: Map<
+    string,
+    {
+      avatar_url: string | null;
+      latest_created_at: number; // ms
+    }
+  >;
+
+  latest_post_at: number; // ms
+  latest_user_id: string;
+
+  latest_post_id: string;
+  latest_image_url: string | null;
+  budget_mid_yen: number | null;
+
+  genre_emoji: string;
+  is_saved: boolean;
+};
+
+function toMs(ts: string | null): number {
+  if (!ts) return 0;
+  const ms = Date.parse(ts);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function fallbackInitial(uid: string) {
+  return uid.slice(0, 2).toUpperCase();
+}
+
+function ensureGmapsOptionsOnce(opts: Parameters<typeof setOptions>[0]) {
+  const g = globalThis as any;
+  if (!g.__GMAPS_OPTIONS_SET__) {
+    setOptions(opts);
+    g.__GMAPS_OPTIONS_SET__ = true;
+  }
+}
+
+function attachBadge(wrap: HTMLDivElement, badge: number) {
+  if (badge >= 2) {
+    const b = document.createElement("div");
+    b.textContent = String(badge);
+    b.style.position = "absolute";
+    b.style.top = "-6px";
+    b.style.right = "-6px";
+    b.style.minWidth = "20px";
+    b.style.height = "20px";
+    b.style.padding = "0 6px";
+    b.style.borderRadius = "9999px";
+    b.style.display = "flex";
+    b.style.alignItems = "center";
+    b.style.justifyContent = "center";
+    b.style.fontSize = "12px";
+    b.style.fontWeight = "800";
+    b.style.color = "white";
+    b.style.background = "#111827";
+    b.style.border = "2px solid rgba(255,255,255,0.95)";
+    wrap.appendChild(b);
+  }
+}
+
+function makeAvatarPinContent(args: { avatarUrl: string | null; badge?: number; fallbackText: string }) {
+  const wrap = document.createElement("div");
+  wrap.style.position = "relative";
+  wrap.style.width = "44px";
+  wrap.style.height = "44px";
+  wrap.style.borderRadius = "9999px";
+  wrap.style.overflow = "hidden";
+  wrap.style.boxShadow = "0 6px 18px rgba(0,0,0,0.22)";
+  wrap.style.border = "2px solid rgba(255,255,255,0.95)";
+  wrap.style.background = "white";
+  wrap.style.cursor = "pointer";
+  wrap.style.transform = "translateZ(0)";
+
+  if (args.avatarUrl) {
+    const img = document.createElement("img");
+    img.src = args.avatarUrl;
+    img.alt = "avatar";
+    img.referrerPolicy = "no-referrer";
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "cover";
+    wrap.appendChild(img);
+  } else {
+    const div = document.createElement("div");
+    div.textContent = args.fallbackText;
+    div.style.width = "100%";
+    div.style.height = "100%";
+    div.style.display = "flex";
+    div.style.alignItems = "center";
+    div.style.justifyContent = "center";
+    div.style.fontWeight = "800";
+    div.style.fontSize = "13px";
+    div.style.color = "#111";
+    div.style.background = "linear-gradient(180deg,#fff,#f3f4f6)";
+    wrap.appendChild(div);
+  }
+
+  attachBadge(wrap, args.badge ?? 0);
+  return wrap;
+}
+
+function makePhotoPinContent(args: { imageUrl: string | null; badge?: number; fallbackText: string }) {
+  const wrap = document.createElement("div");
+  wrap.style.position = "relative";
+  wrap.style.width = "44px";
+  wrap.style.height = "44px";
+  wrap.style.borderRadius = "9999px";
+  wrap.style.overflow = "hidden";
+  wrap.style.boxShadow = "0 6px 18px rgba(0,0,0,0.22)";
+  wrap.style.border = "2px solid rgba(255,255,255,0.95)";
+  wrap.style.background = "white";
+  wrap.style.cursor = "pointer";
+  wrap.style.transform = "translateZ(0)";
+
+  if (args.imageUrl) {
+    const img = document.createElement("img");
+    img.src = args.imageUrl;
+    img.alt = "photo";
+    img.referrerPolicy = "no-referrer";
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "cover";
+    wrap.appendChild(img);
+  } else {
+    const div = document.createElement("div");
+    div.textContent = args.fallbackText;
+    div.style.width = "100%";
+    div.style.height = "100%";
+    div.style.display = "flex";
+    div.style.alignItems = "center";
+    div.style.justifyContent = "center";
+    div.style.fontWeight = "900";
+    div.style.fontSize = "12px";
+    div.style.color = "#111";
+    div.style.background = "linear-gradient(180deg,#fff,#f3f4f6)";
+    wrap.appendChild(div);
+  }
+
+  attachBadge(wrap, args.badge ?? 0);
+  return wrap;
 }
 
 function Chip({
@@ -220,289 +290,75 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={[
-        "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition",
-        active ? "bg-orange-600 text-white" : "bg-black/[.04] text-black/70 hover:bg-black/[.06]",
-      ].join(" ")}
+      style={{
+        flexShrink: 0,
+        borderRadius: 9999,
+        padding: "6px 10px",
+        fontSize: 12,
+        fontWeight: 700,
+        border: "1px solid rgba(0,0,0,0.08)",
+        background: active ? "#ea580c" : "rgba(0,0,0,0.04)",
+        color: active ? "white" : "rgba(0,0,0,0.65)",
+        cursor: "pointer",
+      }}
     >
       {children}
     </button>
   );
 }
 
-/** 画像カルーセル（軽量） */
-function MiniCarousel({ images, postHref }: { images: string[]; postHref: string }) {
-  if (!images?.length) return null;
-
-  return (
-    <div className="-mx-3 mt-2">
-      <div className="flex gap-2 overflow-x-auto px-3 pb-1 snap-x snap-mandatory">
-        {images.slice(0, 10).map((url, idx) => (
-          <Link key={`${url}-${idx}`} href={postHref} className="snap-start shrink-0" aria-label="投稿を開く">
-            <img
-              src={url}
-              alt=""
-              className="h-28 w-40 rounded-xl object-cover border border-black/10 bg-black/[.02]"
-              loading="lazy"
-            />
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-type IconMode = "emoji" | "photo";
-
-/** ====== Genre icon (settings) ====== */
-const GENRE_ICON_BUCKET = "genre-icons";
-type GenreIconRow = { genre_key: string; image_url: string; storage_path: string };
-
-type ConfigurableGenre = {
-  genreKey: string;
-  emoji: string;
-  label: string;
-  count: number;
-};
-
-function genreKeyFromEmoji(emoji: string) {
-  const known = GENRES.find((g) => g.emoji === emoji);
-  return known?.key ?? `emoji:${emoji}`;
-}
-
-function storageSafeSegment(s: string) {
-  // storage pathで安全にする（/ や % などを避けたい）
-  return encodeURIComponent(s).replaceAll("%", "_");
+function escapeHtml(s: string) {
+  return (s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 export default function SavedPlacesMap() {
   const supabase = createClientComponentClient();
 
-  const [rawRows, setRawRows] = useState<RawUserPlaceRow[]>([]);
-  const [collections, setCollections] = useState<CollectionRow[]>([]);
-  const [placeToCollectionIds, setPlaceToCollectionIds] = useState<Map<string, Set<string>>>(new Map());
-
-  const [placeToEmoji, setPlaceToEmoji] = useState<Map<string, string>>(new Map());
-  const [placeToSuggestedEmoji, setPlaceToSuggestedEmoji] = useState<Map<string, string>>(new Map());
-
-  const [placeToBudgetYen, setPlaceToBudgetYen] = useState<Map<string, number>>(new Map());
-  const [placeToBudgetRange, setPlaceToBudgetRange] = useState<Map<string, string>>(new Map());
-
-  const [postIdToImages, setPostIdToImages] = useState<Map<string, string[]>>(new Map());
-
-  // 表に出すのはジャンルだけ
-  const [activeGenreEmoji, setActiveGenreEmoji] = useState<string | null>(null);
-
-  // 詳細フィルター内
-  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
-  const [activeBudgetKey, setActiveBudgetKey] = useState<BudgetKey>("any");
-
-  const [loading, setLoading] = useState(true);
-  const [mapReady, setMapReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // ✅ フィルターモーダル
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [tmpCollectionId, setTmpCollectionId] = useState<string | null>(null);
-  const [tmpBudgetKey, setTmpBudgetKey] = useState<BudgetKey>("any");
-
-  const [confirm, setConfirm] = useState<{
-    open: boolean;
-    placeId: string | null;
-    placeName: string | null;
-  }>({ open: false, placeId: null, placeName: null });
-
-  const [emojiPicker, setEmojiPicker] = useState<{
-    open: boolean;
-    placeId: string | null;
-    placeName: string | null;
-    currentEmoji: string;
-  }>({ open: false, placeId: null, placeName: null, currentEmoji: "📍" });
-
-  const [customEmoji, setCustomEmoji] = useState<string>("");
-  const [savingEmoji, setSavingEmoji] = useState(false);
-
-  const [iconMode, setIconMode] = useState<IconMode>("emoji");
-
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-  const [userId, setUserId] = useState<string | null>(null);
-
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
-  const infoWindowRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
-  const placeIdToMarkerRef = useRef<Map<string, any>>(new Map());
+  const infoRef = useRef<any>(null);
 
-  const suggestInFlightRef = useRef<Map<string, Promise<string>>>(new Map());
+  const gmapsRef = useRef<{
+    GMap: any;
+    AdvancedMarkerElement: any;
+    InfoWindow: any;
+  } | null>(null);
 
-  /** ===== Settings modal: genre images ===== */
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [genreKeyToImage, setGenreKeyToImage] = useState<Map<string, GenreIconRow>>(new Map());
-  const [selectedGenreKey, setSelectedGenreKey] = useState<string | null>(null);
+  // ✅ 重要：libsRef(=gmapsRef) は ref なので state で準備完了を通知する
+  const [gmapsReady, setGmapsReady] = useState(false);
 
-  // いま編集してるgenreのファイル（= 右ペイン）
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
-  const [savingGenreIcon, setSavingGenreIcon] = useState(false);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [errorText, setErrorText] = useState<string>("");
 
-  useEffect(() => {
-    if (!pendingFile) {
-      setPendingPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(pendingFile);
-    setPendingPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [pendingFile]);
+  // filters & view modes
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [activeGenreEmoji, setActiveGenreEmoji] = useState<string | null>(null);
+  const [activeBudgetKey, setActiveBudgetKey] = useState<BudgetKey>("any");
+  const [iconMode, setIconMode] = useState<IconMode>("avatar");
 
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem("savedPlacesIconMode");
-      if (v === "emoji" || v === "photo") setIconMode(v);
-    } catch {}
-  }, []);
+  // loaded pins
+  const [pins, setPins] = useState<PlacePin[]>([]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem("savedPlacesIconMode", iconMode);
-    } catch {}
-  }, [iconMode]);
-
-  const rows: NormalizedRow[] = useMemo(() => {
-    return rawRows.map((r) => {
-      const p = normalizePlace(r.place ?? r.places);
-      return { ...r, place: p };
-    });
-  }, [rawRows]);
-
-  const getEmoji = (placeId: string) => {
-    const userE = placeToEmoji.get(placeId);
-    if (userE && userE.trim()) return userE;
-
-    const sugE = placeToSuggestedEmoji.get(placeId);
-    if (sugE && sugE.trim()) return sugE;
-
-    return "📍";
-  };
-
-  const getGenreKeyForPlace = (placeId: string): string | null => {
-    const e = getEmoji(placeId);
-    return genreKeyFromEmoji(e);
-  };
-
-  const getCustomGenreImageUrlForPlace = (placeId: string): string | null => {
-    const key = getGenreKeyForPlace(placeId);
-    if (!key) return null;
-    return genreKeyToImage.get(key)?.image_url ?? null;
-  };
-
-  const getBudgetYen = (placeId: string) => {
-    const v = placeToBudgetYen.get(placeId);
-    return typeof v === "number" && Number.isFinite(v) ? v : null;
-  };
-
-  /** 店の「目安予算（±1段階）」 */
-  const getBudgetLooseLabel = (placeId: string) => {
-    const y = getBudgetYen(placeId);
-    if (y != null) return expandedBudgetFromYen(y).label;
-
-    const range = placeToBudgetRange.get(placeId) ?? null;
-    const mid = range ? parsePriceRangeToYen(range) : null;
-    if (mid != null) return expandedBudgetFromYen(mid).label;
-
-    return "—";
-  };
-
-  /** 予算フィルタは「ゆるめレンジ」と選択レンジが交差するか */
-  const passesBudgetFilterLoose = (placeId: string, budgetKey: BudgetKey) => {
-    if (budgetKey === "any") return true;
-
-    const selected = BUDGETS.find((b) => b.key === budgetKey);
-    if (!selected || selected.min == null) return true;
-
-    const y = getBudgetYen(placeId);
-    const range = placeToBudgetRange.get(placeId) ?? null;
-    const mid = y ?? (range ? parsePriceRangeToYen(range) : null);
-    if (mid == null) return false;
-
-    const loose = expandedBudgetFromYen(mid);
-    const selMin = selected.min ?? 0;
-    const selMax = selected.max; // null あり
-
-    const aMin = loose.min;
-    const aMax = loose.max;
-
-    const left = Math.max(aMin, selMin);
-    const right =
-      aMax == null && selMax == null
-        ? Infinity
-        : Math.min(aMax == null ? Infinity : aMax, selMax == null ? Infinity : selMax);
-
-    return left <= right;
-  };
-
-  const getImagesForRow = (r: NormalizedRow) => {
-    const pid = r.last_post_id;
-    if (!pid) return [];
-    return postIdToImages.get(pid) ?? [];
-  };
-
-  const getFirstImageForRow = (r: NormalizedRow) => {
-    const imgs = getImagesForRow(r);
-    return imgs?.[0] ?? null;
-  };
-
-  const filteredRows = useMemo(() => {
-    let base = rows;
-
-    if (activeCollectionId) {
-      base = base.filter((r) => placeToCollectionIds.get(r.place_id)?.has(activeCollectionId));
-    }
-
-    if (activeGenreEmoji) {
-      base = base.filter((r) => getEmoji(r.place_id) === activeGenreEmoji);
-    }
-
-    if (activeBudgetKey !== "any") {
-      base = base.filter((r) => passesBudgetFilterLoose(r.place_id, activeBudgetKey));
-    }
-
-    return base;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    rows,
-    activeCollectionId,
-    activeGenreEmoji,
-    activeBudgetKey,
-    placeToCollectionIds,
-    placeToEmoji,
-    placeToSuggestedEmoji,
-    placeToBudgetYen,
-    placeToBudgetRange,
-    genreKeyToImage,
-  ]);
-
-  const mappable = useMemo(() => {
-    return filteredRows.filter((r) => r.place?.lat != null && r.place?.lng != null);
-  }, [filteredRows]);
-
-  const sortedList = useMemo(() => {
-    return [...filteredRows].sort((a, b) => {
-      const ta = new Date(a.last_saved_at).getTime();
-      const tb = new Date(b.last_saved_at).getTime();
-      return tb - ta;
-    });
-  }, [filteredRows]);
+  const apiKey =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY ||
+    "";
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || "";
 
   const genreCounts = useMemo(() => {
     const m = new Map<string, number>();
-    rows.forEach((r) => {
-      const e = getEmoji(r.place_id);
+    pins.forEach((p) => {
+      const e = p.genre_emoji || "📍";
       m.set(e, (m.get(e) ?? 0) + 1);
     });
     return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, placeToEmoji, placeToSuggestedEmoji]);
+  }, [pins]);
 
   const availableGenres = useMemo(() => {
     const res: Array<{ emoji: string; label: string; count: number }> = [];
@@ -510,1568 +366,515 @@ export default function SavedPlacesMap() {
       const c = genreCounts.get(g.emoji) ?? 0;
       if (c > 0) res.push({ emoji: g.emoji, label: g.label, count: c });
     });
-
     genreCounts.forEach((count, emoji) => {
       if (count <= 0) return;
       const known = GENRES.some((g) => g.emoji === emoji);
       if (!known) res.push({ emoji, label: labelForEmoji(emoji) || "その他", count });
     });
-
     return res;
   }, [genreCounts]);
 
-  // ✅ 設定対象（= 保存データ上で存在するジャンルのみ）
-  const configurableGenres: ConfigurableGenre[] = useMemo(() => {
-    return availableGenres
-      .map((g) => ({
-        genreKey: genreKeyFromEmoji(g.emoji),
-        emoji: g.emoji,
-        label: g.label || "その他",
-        count: g.count,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [availableGenres]);
+  const filteredPins = useMemo(() => {
+    let base = pins;
+    if (savedOnly) base = base.filter((p) => p.is_saved);
+    if (activeGenreEmoji) base = base.filter((p) => p.genre_emoji === activeGenreEmoji);
+    if (activeBudgetKey !== "any")
+      base = base.filter((p) => passesBudgetFilterLoose(p.budget_mid_yen, activeBudgetKey));
+    return base;
+  }, [pins, savedOnly, activeGenreEmoji, activeBudgetKey]);
 
-  const activeCollectionName = useMemo(() => {
-    if (!activeCollectionId) return "すべて";
-    return collections.find((c) => c.id === activeCollectionId)?.name ?? "選択中";
-  }, [activeCollectionId, collections]);
+  /** ---- Load pins once (Supabase) ---- */
+  useEffect(() => {
+    let cancelled = false;
 
-  const activeGenreName = useMemo(() => {
-    if (!activeGenreEmoji) return "すべて";
-    const l = labelForEmoji(activeGenreEmoji);
-    return l ? `${activeGenreEmoji} ${l}` : `${activeGenreEmoji}`;
-  }, [activeGenreEmoji]);
+    async function run() {
+      setStatus("loading");
+      setErrorText("");
 
-  const activeBudgetName = useMemo(() => {
-    return (BUDGETS.find((x) => x.key === activeBudgetKey) ?? BUDGETS[0]).label;
-  }, [activeBudgetKey]);
+      if (!apiKey) {
+        setStatus("error");
+        setErrorText("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定です");
+        return;
+      }
+      if (!mapId) {
+        setStatus("error");
+        setErrorText("NEXT_PUBLIC_GOOGLE_MAP_ID が未設定です（Map IDが必要）");
+        return;
+      }
 
-  const buildMapping = async (uid: string) => {
-    const { data: cols, error: cErr } = await supabase
-      .from("collections")
-      .select("id, name")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: true });
+      const { data: userRes, error: uErr } = await supabase.auth.getUser();
+      if (uErr || !userRes?.user) {
+        setStatus("error");
+        setErrorText("ログイン情報が取得できませんでした");
+        return;
+      }
+      const myUid = userRes.user.id;
 
-    if (cErr) throw new Error(cErr.message);
-    const colList = (cols ?? []) as CollectionRow[];
-    setCollections(colList);
+      // 1) followees
+      const { data: follows, error: fErr } = await supabase
+        .from("follows")
+        .select("followee_id, status")
+        .eq("follower_id", myUid)
+        .eq("status", "accepted");
 
-    if (colList.length === 0) {
-      setPlaceToCollectionIds(new Map());
-      return;
-    }
+      if (fErr) {
+        setStatus("error");
+        setErrorText(`follows 取得失敗: ${fErr.message}`);
+        return;
+      }
 
-    const colIds = colList.map((c) => c.id);
+      const followeeIds = (follows as FollowRow[] | null)?.map((r) => r.followee_id) ?? [];
+      if (followeeIds.length === 0) {
+        setPins([]);
+        setStatus("ready");
+        return;
+      }
 
-    const { data: pcs, error: pcErr } = await supabase
-      .from("post_collections")
-      .select("collection_id, post_id")
-      .in("collection_id", colIds);
+      // 2) profiles avatars
+      const { data: profiles, error: prErr } = await supabase
+        .from("profiles")
+        .select("id, avatar_url")
+        .in("id", followeeIds);
 
-    if (pcErr) throw new Error(pcErr.message);
+      if (prErr) console.warn("profiles fetch error:", prErr.message);
 
-    const pcRows = (pcs ?? []) as { collection_id: string; post_id: string }[];
-    const postIds = Array.from(new Set(pcRows.map((x) => x.post_id)));
-    if (postIds.length === 0) {
-      setPlaceToCollectionIds(new Map());
-      return;
-    }
+      const avatarByUser = new Map<string, string | null>();
+      (profiles as ProfileRow[] | null)?.forEach((p) => avatarByUser.set(p.id, p.avatar_url ?? null));
 
-    const { data: posts, error: pErr } = await supabase.from("posts").select("id, place_id").in("id", postIds);
-    if (pErr) throw new Error(pErr.message);
+      // 3) posts (include images/budget)
+      const { data: posts, error: poErr } = await supabase
+        .from("posts")
+        .select("id, user_id, place_id, place_name, place_address, created_at, image_urls, price_yen, price_range")
+        .in("user_id", followeeIds)
+        .not("place_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(800);
 
-    const postIdToPlaceId = new Map<string, string>();
-    (posts ?? []).forEach((p: any) => {
-      if (p?.id && p?.place_id) postIdToPlaceId.set(p.id, p.place_id);
-    });
+      if (poErr) {
+        setStatus("error");
+        setErrorText(`posts 取得失敗: ${poErr.message}`);
+        return;
+      }
 
-    const map = new Map<string, Set<string>>();
-    for (const x of pcRows) {
-      const placeId = postIdToPlaceId.get(x.post_id);
-      if (!placeId) continue;
-      if (!map.has(placeId)) map.set(placeId, new Set());
-      map.get(placeId)!.add(x.collection_id);
-    }
-    setPlaceToCollectionIds(map);
-  };
+      const postRows = (posts as PostRow[] | null) ?? [];
+      const placeIds = Array.from(new Set(postRows.map((p) => p.place_id).filter(Boolean) as string[]));
 
-  const fetchPins = async (uid: string, placeIds: string[]) => {
-    try {
       if (placeIds.length === 0) {
-        setPlaceToEmoji(new Map());
+        setPins([]);
+        setStatus("ready");
         return;
       }
 
-      const uniq = Array.from(new Set(placeIds)).filter(Boolean);
-      const CHUNK = 100;
-      const map = new Map<string, string>();
+      // 4) places lat/lng
+      const { data: places, error: plErr } = await supabase
+        .from("places")
+        .select("place_id, lat, lng, name, address, photo_url")
+        .in("place_id", placeIds);
 
-      for (let i = 0; i < uniq.length; i += CHUNK) {
-        const chunk = uniq.slice(i, i + CHUNK);
-        const { data, error: pErr } = await supabase
-          .from("user_place_pins")
-          .select("place_id, emoji")
-          .eq("user_id", uid)
-          .in("place_id", chunk);
-
-        if (pErr) {
-          console.warn("[user_place_pins] fetch failed:", pErr.message);
-          continue;
-        }
-
-        (data ?? []).forEach((r: any) => {
-          const row = r as UserPlacePinRow;
-          if (row.place_id) map.set(row.place_id, (row.emoji ?? "").toString());
-        });
-      }
-
-      const cleaned = new Map<string, string>();
-      map.forEach((v, k) => {
-        const t = (v ?? "").trim();
-        if (t) cleaned.set(k, t);
-      });
-
-      setPlaceToEmoji(cleaned);
-    } catch (e) {
-      console.warn("[user_place_pins] fetch exception:", e);
-      setPlaceToEmoji(new Map());
-    }
-  };
-
-  const fetchLastPostsMeta = async (lastPostIds: string[]) => {
-    try {
-      const uniq = Array.from(new Set(lastPostIds)).filter(Boolean);
-      if (uniq.length === 0) {
-        setPlaceToBudgetYen(new Map());
-        setPlaceToBudgetRange(new Map());
-        setPostIdToImages(new Map());
+      if (plErr) {
+        setStatus("error");
+        setErrorText(`places 取得失敗: ${plErr.message}`);
         return;
       }
 
-      const CHUNK = 100;
-      const yenMap = new Map<string, number>();
-      const rangeMap = new Map<string, string>();
-      const imagesMap = new Map<string, string[]>();
+      const placeById = new Map<string, PlaceRow>();
+      ((places as PlaceRow[] | null) ?? []).forEach((p) => placeById.set(p.place_id, p));
 
-      for (let i = 0; i < uniq.length; i += CHUNK) {
-        const chunk = uniq.slice(i, i + CHUNK);
-        const { data, error } = await supabase
-          .from("posts")
-          .select("id, place_id, price_yen, price_range, image_urls")
-          .in("id", chunk);
+      // 5) my saved set (user_places)
+      const savedSet = new Set<string>();
+      try {
+        const CHUNK = 200;
+        for (let i = 0; i < placeIds.length; i += CHUNK) {
+          const chunk = placeIds.slice(i, i + CHUNK);
+          const { data: up, error } = await supabase
+            .from("user_places")
+            .select("place_id")
+            .eq("user_id", myUid)
+            .in("place_id", chunk);
 
-        if (error) {
-          console.warn("[posts meta] fetch failed:", error.message);
-          continue;
+          if (error) {
+            console.warn("[user_places] fetch failed:", error.message);
+            continue;
+          }
+          (up as UserPlaceRow[] | null)?.forEach((r) => {
+            if (r?.place_id) savedSet.add(r.place_id);
+          });
         }
+      } catch (e) {
+        console.warn("[user_places] exception:", e);
+      }
 
-        (data ?? []).forEach((row: any) => {
-          const p = row as PostMiniRow;
-          if (!p.id) return;
+      // 6) my genre pins (user_place_pins)
+      const emojiByPlace = new Map<string, string>();
+      try {
+        const CHUNK = 200;
+        for (let i = 0; i < placeIds.length; i += CHUNK) {
+          const chunk = placeIds.slice(i, i + CHUNK);
+          const { data: upp, error } = await supabase
+            .from("user_place_pins")
+            .select("place_id, emoji")
+            .eq("user_id", myUid)
+            .in("place_id", chunk);
 
-          if (Array.isArray(p.image_urls) && p.image_urls.length) {
-            imagesMap.set(p.id, p.image_urls.filter(Boolean));
-          } else {
-            imagesMap.set(p.id, []);
+          if (error) {
+            console.warn("[user_place_pins] fetch failed:", error.message);
+            continue;
           }
 
-          if (!p.place_id) return;
-
-          const y =
-            typeof p.price_yen === "number" && Number.isFinite(p.price_yen)
-              ? p.price_yen
-              : parsePriceRangeToYen(p.price_range);
-
-          if (y != null) yenMap.set(p.place_id, y);
-          if (p.price_range) rangeMap.set(p.place_id, p.price_range);
-        });
-      }
-
-      setPlaceToBudgetYen(yenMap);
-      setPlaceToBudgetRange(rangeMap);
-      setPostIdToImages(imagesMap);
-    } catch (e) {
-      console.warn("[posts meta] exception:", e);
-      setPlaceToBudgetYen(new Map());
-      setPlaceToBudgetRange(new Map());
-      setPostIdToImages(new Map());
-    }
-  };
-
-  const fetchGenreIcons = async (uid: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("user_genre_icons")
-        .select("genre_key, image_url, storage_path")
-        .eq("user_id", uid);
-
-      if (error) {
-        console.warn("[user_genre_icons] fetch failed:", error.message);
-        setGenreKeyToImage(new Map());
-        return;
-      }
-
-      const m = new Map<string, GenreIconRow>();
-      (data ?? []).forEach((r: any) => {
-        if (r?.genre_key && r?.image_url && r?.storage_path) {
-          m.set(r.genre_key, r as GenreIconRow);
+          (upp as UserPlacePinRow[] | null)?.forEach((r) => {
+            const e2 = (r?.emoji ?? "").toString().trim();
+            if (r?.place_id && e2) emojiByPlace.set(r.place_id, e2);
+          });
         }
-      });
-      setGenreKeyToImage(m);
-    } catch (e) {
-      console.warn("[user_genre_icons] fetch exception:", e);
-      setGenreKeyToImage(new Map());
-    }
-  };
-
-  const fetchSuggestedEmojiOne = async (placeId: string): Promise<string> => {
-    if (placeToEmoji.get(placeId)) return "";
-    const existing = placeToSuggestedEmoji.get(placeId);
-    if (existing) return existing;
-
-    const inflight = suggestInFlightRef.current.get(placeId);
-    if (inflight) return inflight;
-
-    const p = (async () => {
-      try {
-        const res = await fetch("/api/places/suggest-type", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ placeId }),
-        });
-
-        if (!res.ok) return "";
-        const j = (await res.json().catch(() => null)) as SuggestTypeResponse | null;
-
-        const emoji = (j?.suggestion?.emoji ?? j?.suggestedEmoji ?? "").toString().trim();
-        if (!emoji) return "";
-
-        setPlaceToSuggestedEmoji((prev) => {
-          const next = new Map(prev);
-          if (!next.has(placeId)) next.set(placeId, emoji);
-          return next;
-        });
-
-        return emoji;
-      } catch {
-        return "";
-      } finally {
-        suggestInFlightRef.current.delete(placeId);
+      } catch (e) {
+        console.warn("[user_place_pins] exception:", e);
       }
-    })();
 
-    suggestInFlightRef.current.set(placeId, p);
-    return p;
-  };
+      // 7) aggregate by place_id
+      const pinByPlace = new Map<string, PlacePin>();
 
-  const fetchSuggestedEmojis = async (placeIds: string[]) => {
-    const targets = placeIds.filter((pid) => {
-      if (!pid) return false;
-      if (placeToEmoji.get(pid)) return false;
-      if (placeToSuggestedEmoji.get(pid)) return false;
-      return true;
+      for (const p of postRows) {
+        if (!p.place_id) continue;
+        const plc = placeById.get(p.place_id);
+        if (!plc || plc.lat == null || plc.lng == null) continue;
+
+        const createdMs = toMs(p.created_at);
+        const placeName = p.place_name || plc.name || "(no name)";
+        const placeAddr = p.place_address || plc.address || "";
+
+        const uid = p.user_id;
+        const avatarUrl = avatarByUser.get(uid) ?? null;
+
+        const img0 =
+          Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
+
+        const mid =
+          typeof p.price_yen === "number" && Number.isFinite(p.price_yen)
+            ? p.price_yen
+            : parsePriceRangeToYen(p.price_range ?? null);
+
+        const existing = pinByPlace.get(p.place_id);
+        if (!existing) {
+          const users = new Map<string, { avatar_url: string | null; latest_created_at: number }>();
+          users.set(uid, { avatar_url: avatarUrl, latest_created_at: createdMs });
+
+          pinByPlace.set(p.place_id, {
+            place_id: p.place_id,
+            lat: plc.lat,
+            lng: plc.lng,
+            place_name: placeName,
+            place_address: placeAddr,
+            users,
+            latest_post_at: createdMs,
+            latest_user_id: uid,
+
+            latest_post_id: p.id,
+            latest_image_url: img0,
+            budget_mid_yen: mid ?? null,
+
+            genre_emoji: emojiByPlace.get(p.place_id) ?? "📍",
+            is_saved: savedSet.has(p.place_id),
+          });
+        } else {
+          const u = existing.users.get(uid);
+          if (!u || createdMs > u.latest_created_at) {
+            existing.users.set(uid, { avatar_url: avatarUrl, latest_created_at: createdMs });
+          }
+          if (createdMs > existing.latest_post_at) {
+            existing.latest_post_at = createdMs;
+            existing.latest_user_id = uid;
+            existing.place_name = placeName || existing.place_name;
+            existing.place_address = placeAddr || existing.place_address;
+
+            existing.latest_post_id = p.id;
+            existing.latest_image_url = img0 ?? existing.latest_image_url;
+            existing.budget_mid_yen = (mid ?? null) ?? existing.budget_mid_yen;
+          }
+        }
+      }
+
+      const pinsSorted = Array.from(pinByPlace.values()).sort(
+        (a, b) => b.latest_post_at - a.latest_post_at
+      );
+
+      if (cancelled) return;
+      setPins(pinsSorted);
+      setStatus("ready");
+    }
+
+    run().catch((e) => {
+      console.error(e);
+      setStatus("error");
+      setErrorText(e?.message ?? "unknown error");
     });
-
-    if (targets.length === 0) return;
-
-    const CONCURRENCY = 6;
-    let idx = 0;
-
-    const workers = Array.from({ length: CONCURRENCY }).map(async () => {
-      while (idx < targets.length) {
-        const i = idx++;
-        const pid = targets[i];
-        await fetchSuggestedEmojiOne(pid);
-      }
-    });
-
-    await Promise.all(workers);
-  };
-
-  const fetchSaved = async () => {
-    setError(null);
-    setLoading(true);
-
-    const {
-      data: { session },
-      error: sessErr,
-    } = await supabase.auth.getSession();
-
-    if (sessErr) {
-      setError("セッション取得に失敗しました");
-      setLoading(false);
-      return;
-    }
-    if (!session?.user) {
-      setError("ログインが必要です");
-      setLoading(false);
-      return;
-    }
-
-    const uid = session.user.id;
-    setUserId(uid);
-
-    const { data, error: qErr } = await supabase
-      .from("user_places")
-      .select(
-        "place_id, first_saved_at, last_saved_at, last_post_id, last_collection_id, places(place_id, name, address, lat, lng, photo_url)"
-      )
-      .order("last_saved_at", { ascending: false });
-
-    if (qErr) {
-      setError(qErr.message);
-      setLoading(false);
-      return;
-    }
-
-    const rs = (data ?? []) as RawUserPlaceRow[];
-    setRawRows(rs);
-
-    const placeIds = rs.map((r) => r.place_id).filter(Boolean);
-    const lastPostIds = rs.map((r) => r.last_post_id).filter(Boolean) as string[];
-
-    await Promise.all([
-      fetchPins(uid, placeIds),
-      fetchSuggestedEmojis(placeIds),
-      fetchLastPostsMeta(lastPostIds),
-      fetchGenreIcons(uid),
-    ]);
-
-    try {
-      await buildMapping(uid);
-    } catch (e: any) {
-      setError(e?.message ?? "フィルタ情報の取得に失敗しました");
-    }
-
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchSaved();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!apiKey) {
-      setMapReady(false);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        await loadGoogleMapsScript(apiKey);
-        if (cancelled) return;
-        setMapReady(true);
-      } catch {
-        if (cancelled) return;
-        setError("Google Maps の読み込みに失敗しました（APIキーを確認してね）");
-        setMapReady(false);
-      }
-    })();
 
     return () => {
       cancelled = true;
     };
-  }, [apiKey]);
+  }, [supabase, apiKey, mapId]);
 
+  /** ---- Load Google Maps libs once ---- */
   useEffect(() => {
-    if (!mapReady) return;
-    if (!mapDivRef.current) return;
+    let cancelled = false;
 
-    if (!mapRef.current) {
-      mapRef.current = new window.google.maps.Map(mapDivRef.current, {
-        center: { lat: 35.681236, lng: 139.767125 },
-        zoom: 12,
-        mapTypeControl: false,
-        fullscreenControl: false,
-        streetViewControl: false,
+    async function load() {
+      if (!apiKey || !mapId) return;
+
+      ensureGmapsOptionsOnce({
+        key: apiKey,
+        v: "weekly",
+        language: "ja",
+        region: "JP",
       });
-      infoWindowRef.current = new window.google.maps.InfoWindow();
+
+      const [{ Map: GMap, InfoWindow }, { AdvancedMarkerElement }] = await Promise.all([
+        importLibrary("maps") as Promise<any>,
+        importLibrary("marker") as Promise<any>,
+      ]);
+
+      if (cancelled) return;
+
+      gmapsRef.current = { GMap, AdvancedMarkerElement, InfoWindow };
+
+      // ✅ ここが今回の勝ち筋：ref 更新後に state で再レンダーを起こす
+      setGmapsReady(true);
     }
 
-    markersRef.current.forEach((m) => m.setMap(null));
+    load().catch((e) => console.error(e));
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey, mapId]);
+
+  /** ---- Init map once (gmapsReady をトリガにする) ---- */
+  useEffect(() => {
+    if (!gmapsReady) return;
+    if (!gmapsRef.current) return;
+    if (!mapDivRef.current) return;
+    if (mapRef.current) return;
+
+    const { GMap, InfoWindow } = gmapsRef.current;
+
+    mapRef.current = new GMap(mapDivRef.current, {
+      center: { lat: 35.681236, lng: 139.767125 },
+      zoom: 12,
+      mapId,
+      mapTypeControl: false,
+      fullscreenControl: false,
+      streetViewControl: false,
+      clickableIcons: false,
+    });
+
+    infoRef.current = new InfoWindow();
+  }, [gmapsReady, mapId]);
+
+  /** ---- Render markers whenever filteredPins / iconMode change ---- */
+  useEffect(() => {
+    const map = mapRef.current;
+    const libs = gmapsRef.current;
+    if (!map || !libs) return;
+
+    // cleanup markers
+    for (const m of markersRef.current) {
+      try {
+        m.map = null;
+      } catch {}
+    }
     markersRef.current = [];
-    placeIdToMarkerRef.current.clear();
+    try {
+      infoRef.current?.close();
+    } catch {}
 
-    if (mappable.length === 0) return;
+    if (filteredPins.length === 0) return;
 
-    const bounds = new window.google.maps.LatLngBounds();
+    // ✅ ここが今回のもう一つの勝ち筋：Boundsは google.maps から
+    const bounds = new google.maps.LatLngBounds();
 
-    mappable.forEach((r) => {
-      const p = r.place!;
-      const pos = { lat: p.lat!, lng: p.lng! };
+    for (const pin of filteredPins) {
+      const badgeCount = pin.users.size;
 
-      const emoji = getEmoji(p.place_id);
-      const iconUrl = makeEmojiSvgDataUrl(emoji);
+      const latestUid = pin.latest_user_id;
+      const latestAvatar = pin.users.get(latestUid)?.avatar_url ?? null;
 
-      const marker = new window.google.maps.Marker({
-        position: pos,
-        map: mapRef.current,
-        title: `${emoji} ${p.name ?? "Saved Place"}`,
-        icon: {
-          url: iconUrl,
-          scaledSize: new window.google.maps.Size(44, 44),
-          anchor: new window.google.maps.Point(22, 22),
-        },
+      const content =
+        iconMode === "photo"
+          ? makePhotoPinContent({
+              imageUrl: pin.latest_image_url,
+              badge: badgeCount,
+              fallbackText: "📷",
+            })
+          : makeAvatarPinContent({
+              avatarUrl: latestAvatar,
+              badge: badgeCount,
+              fallbackText: fallbackInitial(latestUid),
+            });
+
+      const marker = new libs.AdvancedMarkerElement({
+        map,
+        position: { lat: pin.lat, lng: pin.lng },
+        content,
       });
 
-      marker.addListener("click", () => {
+      content.addEventListener("click", () => {
+        const budgetLabel =
+          pin.budget_mid_yen != null ? expandedBudgetFromYen(pin.budget_mid_yen).label : "—";
+
+        const genreLabel =
+          labelForEmoji(pin.genre_emoji) || (pin.genre_emoji === "📍" ? "未設定" : "その他");
+
         const html = `
-          <div style="max-width:240px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-              <div style="width:30px; height:30px; border-radius:16px; border:1px solid rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; background:rgba(17,24,39,0.78);">
-                ${escapeHtml(emoji)}
-              </div>
-              <div style="font-weight:600; font-size:14px;">
-                ${escapeHtml(p.name ?? "Saved Place")}
-              </div>
+          <div style="min-width:240px">
+            <div style="font-weight:800;font-size:14px;margin-bottom:6px;">${escapeHtml(
+              pin.place_name
+            )}</div>
+            ${
+              pin.place_address
+                ? `<div style="color:#374151;font-size:12px;margin-bottom:8px;">${escapeHtml(
+                    pin.place_address
+                  )}</div>`
+                : ""
+            }
+            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+              <span style="font-size:12px; padding:4px 8px; border-radius:9999px; border:1px solid rgba(0,0,0,0.08); background:rgba(0,0,0,0.03);">
+                ジャンル: ${escapeHtml(pin.genre_emoji)} ${escapeHtml(genreLabel)}
+              </span>
+              <span style="font-size:12px; padding:4px 8px; border-radius:9999px; border:1px solid rgba(0,0,0,0.08); background:rgba(0,0,0,0.03);">
+                予算(目安): ${escapeHtml(budgetLabel)}
+              </span>
+              ${
+                pin.is_saved
+                  ? `<span style="font-size:12px; padding:4px 8px; border-radius:9999px; border:1px solid rgba(0,0,0,0.08); background:rgba(255,237,213,1); color:#9a3412; font-weight:800;">保存済み</span>`
+                  : ""
+              }
             </div>
-            <div style="font-size:12px; color:rgba(0,0,0,0.7); margin-bottom:10px;">
-              ${escapeHtml(p.address ?? "")}
-            </div>
-            <div style="font-size:12px; color:rgba(0,0,0,0.55); margin-bottom:6px;">
-              ジャンル: ${escapeHtml(labelForEmoji(emoji) || "未設定")}
-            </div>
-            <div style="font-size:12px; color:rgba(0,0,0,0.55); margin-bottom:10px;">
-              予算(目安): ${escapeHtml(getBudgetLooseLabel(p.place_id))}
-            </div>
-            <a href="${buildGoogleMapsUrl(p.place_id, p.name)}"
-               target="_blank" rel="noreferrer"
-               style="font-size:12px; text-decoration:underline;">
-              Google Mapsで開く
-            </a>
+            <div style="font-size:12px;color:#111827;">投稿者: ${badgeCount}人</div>
           </div>
         `;
-        infoWindowRef.current.setContent(html);
-        infoWindowRef.current.open(mapRef.current, marker);
+        infoRef.current?.setContent(html);
+        infoRef.current?.open({ map, anchor: marker });
       });
 
       markersRef.current.push(marker);
-      placeIdToMarkerRef.current.set(p.place_id, marker);
-      bounds.extend(pos);
-    });
-
-    mapRef.current.fitBounds(bounds, 60);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    mapReady,
-    mappable,
-    placeToEmoji,
-    placeToSuggestedEmoji,
-    placeToBudgetYen,
-    placeToBudgetRange,
-    activeCollectionId,
-    activeGenreEmoji,
-    activeBudgetKey,
-    genreKeyToImage,
-  ]);
-
-  const focusPlace = (placeId: string) => {
-    const marker = placeIdToMarkerRef.current.get(placeId);
-    const r = filteredRows.find((x) => x.place_id === placeId);
-    const p = r?.place;
-    if (!marker || !mapRef.current || !infoWindowRef.current || !p) return;
-
-    mapRef.current.panTo(marker.getPosition());
-    mapRef.current.setZoom(Math.max(mapRef.current.getZoom() ?? 14, 15));
-
-    const emoji = getEmoji(placeId);
-    const html = `
-      <div style="max-width:240px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-          <div style="width:30px; height:30px; border-radius:16px; border:1px solid rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; background:rgba(17,24,39,0.78);">
-            ${escapeHtml(emoji)}
-          </div>
-          <div style="font-weight:600; font-size:14px;">
-            ${escapeHtml(p.name ?? "Saved Place")}
-          </div>
-        </div>
-        <div style="font-size:12px; color:rgba(0,0,0,0.7); margin-bottom:10px;">
-          ${escapeHtml(p.address ?? "")}
-        </div>
-        <div style="font-size:12px; color:rgba(0,0,0,0.55); margin-bottom:6px;">
-          ジャンル: ${escapeHtml(labelForEmoji(emoji) || "未設定")}
-        </div>
-        <div style="font-size:12px; color:rgba(0,0,0,0.55); margin-bottom:10px;">
-          予算(目安): ${escapeHtml(getBudgetLooseLabel(placeId))}
-        </div>
-        <a href="${buildGoogleMapsUrl(p.place_id, p.name)}"
-           target="_blank" rel="noreferrer"
-           style="font-size:12px; text-decoration:underline;">
-          Google Mapsで開く
-        </a>
-      </div>
-    `;
-    infoWindowRef.current.setContent(html);
-    infoWindowRef.current.open(mapRef.current, marker);
-  };
-
-  const openEmojiPicker = (placeId: string, placeName: string | null) => {
-    const cur = getEmoji(placeId);
-    setCustomEmoji("");
-    setEmojiPicker({ open: true, placeId, placeName, currentEmoji: cur });
-  };
-
-  const closeEmojiPicker = () => {
-    setEmojiPicker({ open: false, placeId: null, placeName: null, currentEmoji: "📍" });
-    setCustomEmoji("");
-    setSavingEmoji(false);
-  };
-
-  const applyEmojiLocal = (placeId: string, emoji: string | null) => {
-    setPlaceToEmoji((prev) => {
-      const next = new Map(prev);
-      if (!emoji || !emoji.trim()) next.delete(placeId);
-      else next.set(placeId, emoji);
-      return next;
-    });
-  };
-
-  const setEmojiForPlace = async (placeId: string, emoji: string) => {
-    const e = (emoji || "📍").trim();
-    if (!placeId) return;
-
-    setError(null);
-    setSavingEmoji(true);
-
-    const prev = placeToEmoji.get(placeId) ?? null;
-    applyEmojiLocal(placeId, e);
-
-    try {
-      const uid = userId;
-      if (!uid) throw new Error("ログイン情報がありません");
-
-      const { error: upErr } = await supabase
-        .from("user_place_pins")
-        .upsert({ user_id: uid, place_id: placeId, emoji: e }, { onConflict: "user_id,place_id" });
-
-      if (upErr) throw new Error(upErr.message);
-
-      setEmojiPicker((s) => ({ ...s, currentEmoji: e }));
-    } catch (err: any) {
-      applyEmojiLocal(placeId, prev);
-      setError(err?.message ?? "絵文字の保存に失敗しました");
-    } finally {
-      setSavingEmoji(false);
-    }
-  };
-
-  const resetEmojiForPlace = async (placeId: string) => {
-    if (!placeId) return;
-
-    setError(null);
-    setSavingEmoji(true);
-
-    const prev = placeToEmoji.get(placeId) ?? null;
-    applyEmojiLocal(placeId, null);
-
-    try {
-      const uid = userId;
-      if (!uid) throw new Error("ログイン情報がありません");
-
-      const { error: delErr } = await supabase
-        .from("user_place_pins")
-        .delete()
-        .eq("user_id", uid)
-        .eq("place_id", placeId);
-
-      if (delErr) throw new Error(delErr.message);
-
-      setEmojiPicker((s) => ({ ...s, currentEmoji: getEmoji(placeId) }));
-    } catch (err: any) {
-      applyEmojiLocal(placeId, prev);
-      setError(err?.message ?? "リセットに失敗しました");
-    } finally {
-      setSavingEmoji(false);
-    }
-  };
-
-  const commitCustomEmoji = async () => {
-    const placeId = emojiPicker.placeId;
-    if (!placeId) return;
-
-    const c = customEmoji.trim();
-    if (!c) return;
-
-    const compact = Array.from(c).slice(0, 2).join("");
-    await setEmojiForPlace(placeId, compact);
-  };
-
-  const openDelete = (placeId: string, placeName: string | null) => {
-    setConfirm({ open: true, placeId, placeName });
-  };
-
-  const doRemove = async (mode: "this" | "all") => {
-    if (!confirm.placeId) return;
-
-    setError(null);
-
-    const target_collection_id = mode === "this" ? activeCollectionId : null;
-
-    const { error: rpcErr } = await supabase.rpc("remove_place_from_my_collections", {
-      target_place_id: confirm.placeId,
-      target_collection_id,
-    });
-
-    if (rpcErr) {
-      setError(rpcErr.message);
-      return;
+      bounds.extend({ lat: pin.lat, lng: pin.lng });
     }
 
-    setConfirm({ open: false, placeId: null, placeName: null });
-    await fetchSaved();
-  };
-
-  // ===== Filter modal handlers =====
-  const openFilter = () => {
-    setTmpCollectionId(activeCollectionId);
-    setTmpBudgetKey(activeBudgetKey);
-    setFilterOpen(true);
-  };
-
-  const applyFilter = () => {
-    setActiveCollectionId(tmpCollectionId);
-    setActiveBudgetKey(tmpBudgetKey);
-    setFilterOpen(false);
-  };
-
-  const resetFilter = () => {
-    setTmpCollectionId(null);
-    setTmpBudgetKey("any");
-  };
-
-  const toggleIconMode = () => {
-    setIconMode((m) => (m === "emoji" ? "photo" : "emoji"));
-  };
-
-  /** ===== Settings: open ===== */
-  const openSettings = () => {
-    // 最初に選択するジャンル：存在するやつの先頭
-    const first = configurableGenres[0]?.genreKey ?? null;
-    setSelectedGenreKey((cur) => cur ?? first);
-    setPendingFile(null);
-    setSettingsOpen(true);
-  };
-
-  const closeSettings = () => {
-    setSettingsOpen(false);
-    setPendingFile(null);
-    setSelectedGenreKey(null);
-  };
-
-  const selectedGenre = useMemo(() => {
-    if (!selectedGenreKey) return null;
-    return configurableGenres.find((g) => g.genreKey === selectedGenreKey) ?? null;
-  }, [selectedGenreKey, configurableGenres]);
-
-  /** ===== Settings: upload & delete for selected genre ===== */
-  const uploadGenreIcon = async () => {
-    try {
-      if (!userId) throw new Error("ログイン情報がありません");
-      if (!selectedGenreKey) throw new Error("ジャンルが選択されていません");
-      if (!pendingFile) throw new Error("画像ファイルを選択してね");
-
-      if (pendingFile.size > 6 * 1024 * 1024) {
-        throw new Error("画像が大きすぎます（6MB以下にしてね）");
-      }
-
-      setSavingGenreIcon(true);
-      setError(null);
-
-      const prev = genreKeyToImage.get(selectedGenreKey);
-      if (prev?.storage_path) {
-        await supabase.storage.from(GENRE_ICON_BUCKET).remove([prev.storage_path]);
-      }
-
-      const ext = (pendingFile.name.split(".").pop() || "png").toLowerCase();
-      const safe = storageSafeSegment(selectedGenreKey);
-      const path = `${userId}/${safe}/${Date.now()}.${ext}`;
-
-      const { error: upErr } = await supabase.storage.from(GENRE_ICON_BUCKET).upload(path, pendingFile, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: pendingFile.type || "image/*",
-      });
-      if (upErr) throw new Error(upErr.message);
-
-      const { data: pub } = supabase.storage.from(GENRE_ICON_BUCKET).getPublicUrl(path);
-      const imageUrl = pub.publicUrl;
-
-      const { error: dbErr } = await supabase
-        .from("user_genre_icons")
-        .upsert(
-          { user_id: userId, genre_key: selectedGenreKey, image_url: imageUrl, storage_path: path },
-          { onConflict: "user_id,genre_key" }
-        );
-
-      if (dbErr) throw new Error(dbErr.message);
-
-      setGenreKeyToImage((prevMap) => {
-        const next = new Map(prevMap);
-        next.set(selectedGenreKey, { genre_key: selectedGenreKey, image_url: imageUrl, storage_path: path });
-        return next;
-      });
-
-      setPendingFile(null);
-    } catch (e: any) {
-      setError(e?.message ?? "画像の保存に失敗しました");
-    } finally {
-      setSavingGenreIcon(false);
-    }
-  };
-
-  const removeGenreIcon = async () => {
-    try {
-      if (!userId) throw new Error("ログイン情報がありません");
-      if (!selectedGenreKey) throw new Error("ジャンルが選択されていません");
-
-      setSavingGenreIcon(true);
-      setError(null);
-
-      const prev = genreKeyToImage.get(selectedGenreKey);
-
-      if (prev?.storage_path) {
-        await supabase.storage.from(GENRE_ICON_BUCKET).remove([prev.storage_path]);
-      }
-
-      const { error: dbErr } = await supabase
-        .from("user_genre_icons")
-        .delete()
-        .eq("user_id", userId)
-        .eq("genre_key", selectedGenreKey);
-
-      if (dbErr) throw new Error(dbErr.message);
-
-      setGenreKeyToImage((m) => {
-        const next = new Map(m);
-        next.delete(selectedGenreKey);
-        return next;
-      });
-
-      setPendingFile(null);
-    } catch (e: any) {
-      setError(e?.message ?? "削除に失敗しました");
-    } finally {
-      setSavingGenreIcon(false);
-    }
-  };
+    map.fitBounds(bounds, 60);
+  }, [filteredPins, iconMode]);
 
   return (
-    <>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[420px_1fr]">
-        {/* Map */}
-        <div className="order-1 lg:order-2 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
-            <div className="text-sm font-semibold">Map</div>
-            <div className="text-xs text-black/50">{mappable.length} pins</div>
-          </div>
-          <div className="h-[65vh] w-full" ref={mapDivRef} />
-        </div>
+    <div style={{ width: "100%" }}>
+      {/* header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ fontWeight: 900 }}>フォロー中の投稿マップ</div>
 
-        {/* List */}
-        <div className="order-2 lg:order-1 rounded-2xl border border-black/10 bg-white p-3 shadow-sm">
-          <div className="mb-2 flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">
-                保存した場所 <span className="text-black/40">・ジャンル: {activeGenreName}</span>
-              </div>
-            </div>
+        {status === "loading" && <div style={{ fontSize: 12, color: "#6b7280" }}>読み込み中…</div>}
+        {status === "error" && <div style={{ fontSize: 12, color: "#ef4444" }}>{errorText}</div>}
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={openSettings}
-                className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
-                title="設定"
-              >
-                <Settings className="h-4 w-4" />
-                設定
-              </button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {/* saved only */}
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#374151" }}>
+            <input
+              type="checkbox"
+              checked={savedOnly}
+              onChange={(e) => setSavedOnly(e.target.checked)}
+            />
+            保存済みのみ
+          </label>
 
-              <button
-                type="button"
-                onClick={toggleIconMode}
-                className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
-                title="アイコン表示を切り替え"
-              >
-                {iconMode === "emoji" ? <Smile className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
-                {iconMode === "emoji" ? "絵文字" : "写真"}
-              </button>
+          {/* icon mode */}
+          <button
+            type="button"
+            onClick={() => setIconMode((m) => (m === "avatar" ? "photo" : "avatar"))}
+            style={{
+              borderRadius: 12,
+              padding: "8px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              border: "1px solid rgba(0,0,0,0.10)",
+              background: "white",
+              cursor: "pointer",
+            }}
+            title="ピン表示を切り替え"
+          >
+            {iconMode === "avatar" ? "👤 アイコン" : "🖼️ 写真"}
+          </button>
 
-              <button
-                type="button"
-                onClick={openFilter}
-                className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-                詳細フィルター
-              </button>
-
-              <button
-                type="button"
-                onClick={fetchSaved}
-                className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-xs hover:bg-black/5"
-              >
-                <RefreshCw className="h-4 w-4" />
-                更新
-              </button>
-            </div>
-          </div>
-
-          {/* 表に出すのはジャンルだけ */}
-          <div className="mb-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-            <Chip active={!activeGenreEmoji} onClick={() => setActiveGenreEmoji(null)}>
-              すべて
-            </Chip>
-            {availableGenres.map((g) => (
-              <Chip
-                key={`${g.emoji}-${g.label}`}
-                active={activeGenreEmoji === g.emoji}
-                onClick={() => setActiveGenreEmoji(g.emoji)}
-              >
-                {g.emoji} {g.label}
-              </Chip>
+          {/* budget */}
+          <select
+            value={activeBudgetKey}
+            onChange={(e) => setActiveBudgetKey(e.target.value as BudgetKey)}
+            style={{
+              borderRadius: 12,
+              padding: "8px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              border: "1px solid rgba(0,0,0,0.10)",
+              background: "white",
+            }}
+            title="価格帯"
+          >
+            {BUDGETS.map((b) => (
+              <option key={b.key} value={b.key}>
+                {b.label}
+              </option>
             ))}
-          </div>
+          </select>
 
-          {error && <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
-
-          {!apiKey && (
-            <div className="mb-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
-              NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定です（地図が表示できません）
-            </div>
-          )}
-
-          {loading ? (
-            <div className="py-6 text-center text-sm text-black/50">読み込み中...</div>
-          ) : sortedList.length === 0 ? (
-            <div className="py-6 text-center text-sm text-black/50">まだ保存がありません。</div>
-          ) : (
-            <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
-              {sortedList.map((r) => {
-                const p = r.place;
-                const name = p?.name ?? r.place_id;
-                const emoji = getEmoji(r.place_id);
-                const genreLabel = labelForEmoji(emoji);
-                const postHref = r.last_post_id ? `/post/${r.last_post_id}` : "#";
-                const images = getImagesForRow(r);
-
-                const customGenreImg =
-                  iconMode === "photo" ? getCustomGenreImageUrlForPlace(r.place_id) : null;
-
-                const firstImg = customGenreImg ?? getFirstImageForRow(r);
-
-                return (
-                  <div key={r.place_id} className="rounded-2xl border border-black/10 p-3 hover:bg-black/5">
-                    <div className="flex items-start gap-3">
-                      {/* icon (emoji/photo) */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          openEmojiPicker(r.place_id, p?.name ?? null);
-                        }}
-                        className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-black/10 bg-white overflow-hidden shrink-0"
-                        aria-label="ジャンル（絵文字）を変更"
-                        title="ジャンル（絵文字）を変更"
-                      >
-                        {iconMode === "photo" && firstImg ? (
-                          <img src={firstImg} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="text-2xl">{emoji}</span>
-                        )}
-                      </button>
-
-                      <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          onClick={() => focusPlace(r.place_id)}
-                          className="w-full text-left"
-                          aria-label={`${name} を地図で表示`}
-                        >
-                          <div className="truncate text-sm font-semibold">{name}</div>
-
-                          {/* 情報量は削り気味：ジャンル＋目安予算だけ */}
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                            <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5 text-black/70">
-                              {emoji} {genreLabel || "未設定"}
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5 text-black/70">
-                              予算(目安) {getBudgetLooseLabel(r.place_id)}
-                            </span>
-                            {customGenreImg && (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5 text-black/50">
-                                ジャンル画像: 設定あり
-                              </span>
-                            )}
-                          </div>
-                        </button>
-
-                        {/* 投稿画像カルーセル */}
-                        {r.last_post_id && images.length > 0 && <MiniCarousel images={images} postHref={postHref} />}
-
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={buildGoogleMapsUrl(r.place_id, p?.name)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                              Google
-                            </a>
-
-                            {r.last_post_id && (
-                              <Link
-                                href={postHref}
-                                className="rounded-lg border border-black/10 px-2 py-1 text-xs hover:bg-white"
-                              >
-                                投稿へ
-                              </Link>
-                            )}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => openDelete(r.place_id, p?.name ?? null)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs text-red-600 hover:bg-white"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            削除
-                          </button>
-                        </div>
-
-                        {(!p || p.lat == null || p.lng == null) && (
-                          <div className="mt-2 text-[11px] text-black/40">
-                            ※ この場所はまだ座標が未取得なので、地図には表示されません
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              setSavedOnly(false);
+              setActiveGenreEmoji(null);
+              setActiveBudgetKey("any");
+            }}
+            style={{
+              borderRadius: 12,
+              padding: "8px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              border: "1px solid rgba(0,0,0,0.10)",
+              background: "rgba(0,0,0,0.03)",
+              cursor: "pointer",
+            }}
+            title="フィルタをクリア"
+          >
+            リセット
+          </button>
         </div>
       </div>
 
-      {/* ========= Settings modal (ジャンル画像) ========= */}
-      {settingsOpen && (
-        <div className="fixed inset-0 z-[380] bg-black/40 backdrop-blur-sm">
-          <button type="button" className="absolute inset-0 cursor-default" aria-label="close-overlay" onClick={closeSettings} />
+      {/* genre chips */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 10 }}>
+        <Chip active={!activeGenreEmoji} onClick={() => setActiveGenreEmoji(null)}>
+          すべて
+        </Chip>
+        {availableGenres.map((g) => (
+          <Chip
+            key={`${g.emoji}-${g.label}`}
+            active={activeGenreEmoji === g.emoji}
+            onClick={() => setActiveGenreEmoji(g.emoji)}
+          >
+            {g.emoji} {g.label} ({g.count})
+          </Chip>
+        ))}
+      </div>
 
-          <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
-            {/* ✅ 大きめ（web優先） */}
-            <div className="relative w-full sm:max-w-6xl sm:h-[86vh] rounded-t-3xl sm:rounded-2xl bg-white shadow-xl overflow-hidden">
-              {/* header */}
-              <div className="sticky top-0 z-10 bg-white border-b border-black/10 px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">設定：ジャンル画像</div>
-                    <div className="mt-0.5 text-[12px] text-black/45 truncate">
-                      「写真」モードで、各ジャンルのアイコンとして優先表示されます
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeSettings}
-                    className="shrink-0 rounded-full p-2 text-black/50 hover:bg-black/5"
-                    aria-label="閉じる"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
+      {/* map */}
+      <div
+        ref={mapDivRef}
+        style={{
+          width: "100%",
+          height: "calc(100dvh - 190px)",
+          borderRadius: 16,
+          overflow: "hidden",
+          background: "#f3f4f6",
+        }}
+      />
 
-              {/* body */}
-              <div className="p-4">
-                {configurableGenres.length === 0 ? (
-                  <div className="py-10 text-center text-sm text-black/50">まだジャンルがありません。</div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 sm:h-[calc(86vh-56px-76px)]">
-                    {/* left list */}
-                    <div className="sm:col-span-5 rounded-2xl border border-black/10 overflow-hidden">
-                      <div className="px-4 py-3 border-b border-black/10 bg-white">
-                        <div className="text-xs font-semibold text-black/60">ジャンル（存在するもののみ）</div>
-                      </div>
-                      <div className="p-3 overflow-y-auto sm:h-full">
-                        <div className="space-y-2">
-                          {configurableGenres.map((g) => {
-                            const active = selectedGenreKey === g.genreKey;
-                            const img = genreKeyToImage.get(g.genreKey)?.image_url ?? null;
-                            return (
-                              <button
-                                key={g.genreKey}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedGenreKey(g.genreKey);
-                                  setPendingFile(null);
-                                }}
-                                className={[
-                                  "w-full rounded-2xl border px-3 py-3 text-left transition",
-                                  active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                                ].join(" ")}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className="h-12 w-12 rounded-2xl border border-black/10 bg-black/[.02] overflow-hidden shrink-0">
-                                    {img ? (
-                                      <img src={img} alt="" className="h-full w-full object-cover" />
-                                    ) : (
-                                      <div className="h-full w-full flex items-center justify-center text-xs text-black/40">
-                                        未設定
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="text-sm font-semibold truncate">
-                                      {g.emoji} {g.label}
-                                    </div>
-                                    <div className="mt-0.5 text-[11px] text-black/45">
-                                      保存 {g.count}件
-                                      {img ? " ・画像あり" : " ・画像なし"}
-                                    </div>
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* right editor */}
-                    <div className="sm:col-span-7 rounded-2xl border border-black/10 overflow-hidden">
-                      <div className="px-4 py-3 border-b border-black/10 bg-white">
-                        <div className="text-xs font-semibold text-black/60">編集</div>
-                      </div>
-
-                      <div className="p-4 overflow-y-auto sm:h-full">
-                        {selectedGenre ? (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-lg font-semibold truncate">
-                                  {selectedGenre.emoji} {selectedGenre.label}
-                                </div>
-                                <div className="mt-1 text-[12px] text-black/45">
-                                  ジャンルキー: <span className="font-mono">{selectedGenre.genreKey}</span>
-                                </div>
-                              </div>
-
-                              {savingGenreIcon && (
-                                <div className="shrink-0 text-xs text-black/50">保存中...</div>
-                              )}
-                            </div>
-
-                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              {/* preview clickable */}
-                              <div className="rounded-2xl border border-black/10 p-3">
-                                <div className="text-xs font-semibold text-black/60 mb-2">
-                                  画像（クリックして選択）
-                                </div>
-
-                                {/* ✅ “未設定”が押せない問題の修正：
-                                    画像枠をlabelにして input[type=file] に紐付ける */}
-                                <label
-                                  htmlFor="genre-icon-file"
-                                  className="block cursor-pointer select-none"
-                                  title="クリックして画像を選択"
-                                >
-                                  <div className="h-44 w-full rounded-2xl border border-black/10 bg-black/[.02] overflow-hidden flex items-center justify-center">
-                                    {pendingPreview ? (
-                                      <img src={pendingPreview} alt="" className="h-full w-full object-cover" />
-                                    ) : genreKeyToImage.get(selectedGenre.genreKey)?.image_url ? (
-                                      <img
-                                        src={genreKeyToImage.get(selectedGenre.genreKey)!.image_url}
-                                        alt=""
-                                        className="h-full w-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="text-sm text-black/40">未設定（クリックで選択）</div>
-                                    )}
-                                  </div>
-                                </label>
-
-                                <input
-                                  id="genre-icon-file"
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  disabled={savingGenreIcon}
-                                  onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
-                                />
-
-                                <div className="mt-2 text-[11px] text-black/45">
-                                  目安: 1:1〜4:3（正方形が一番綺麗）
-                                </div>
-                              </div>
-
-                              {/* actions */}
-                              <div className="rounded-2xl border border-black/10 p-3">
-                                <div className="text-xs font-semibold text-black/60 mb-2">操作</div>
-
-                                <button
-                                  type="button"
-                                  onClick={uploadGenreIcon}
-                                  disabled={savingGenreIcon || !pendingFile}
-                                  className="w-full rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
-                                >
-                                  保存
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={removeGenreIcon}
-                                  disabled={savingGenreIcon || !genreKeyToImage.get(selectedGenre.genreKey)}
-                                  className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5 disabled:opacity-60"
-                                >
-                                  画像を削除（未設定に戻す）
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => setPendingFile(null)}
-                                  disabled={savingGenreIcon || !pendingFile}
-                                  className="mt-2 w-full rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5 disabled:opacity-60"
-                                >
-                                  選択を取り消す
-                                </button>
-
-                                <div className="mt-3 text-[11px] text-black/45">
-                                  ※ 「写真」モード時に、このジャンルのアイコンとして優先表示されます（投稿画像より優先）
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="py-10 text-center text-sm text-black/50">左のジャンルを選択してください</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* footer */}
-              <div className="sticky bottom-0 z-10 bg-white border-t border-black/10 px-4 py-3">
-                <button
-                  type="button"
-                  onClick={closeSettings}
-                  className="w-full rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5"
-                >
-                  閉じる
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========= 詳細フィルター（元のまま） ========= */}
-      {filterOpen && (
-        <div className="fixed inset-0 z-[350] bg-black/40 backdrop-blur-sm">
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default"
-            aria-label="close-overlay"
-            onClick={() => setFilterOpen(false)}
-          />
-
-          <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
-            <div className="relative w-full sm:max-w-6xl sm:h-[86vh] rounded-t-3xl sm:rounded-2xl bg-white shadow-xl overflow-hidden">
-              {/* header (sticky) */}
-              <div className="sticky top-0 z-10 bg-white border-b border-black/10 px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">詳細フィルター</div>
-                    <div className="mt-0.5 text-[12px] text-black/45 truncate">
-                      現在：{activeCollectionName} / 予算: {activeBudgetName}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setFilterOpen(false)}
-                    className="shrink-0 rounded-full p-2 text-black/50 hover:bg-black/5"
-                    aria-label="閉じる"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4">
-                {/* Desktop */}
-                <div className="hidden sm:grid grid-cols-12 gap-4 h-[calc(86vh-56px-76px)]">
-                  {/* collections */}
-                  <div className="col-span-6 rounded-2xl border border-black/10 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-black/10 bg-white">
-                      <div className="text-xs font-semibold text-black/60">コレクション</div>
-                    </div>
-                    <div className="p-3 overflow-y-auto h-full">
-                      <div className="space-y-2">
-                        <button
-                          type="button"
-                          onClick={() => setTmpCollectionId(null)}
-                          className={[
-                            "w-full rounded-2xl border px-3 py-3 text-left transition",
-                            !tmpCollectionId ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                          ].join(" ")}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold">すべて</div>
-                            {!tmpCollectionId && (
-                              <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                                <Check className="h-4 w-4" /> 選択中
-                              </span>
-                            )}
-                          </div>
-                        </button>
-
-                        {collections.map((c) => {
-                          const active = tmpCollectionId === c.id;
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => setTmpCollectionId(c.id)}
-                              className={[
-                                "w-full rounded-2xl border px-3 py-3 text-left transition",
-                                active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                              ].join(" ")}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="text-sm font-semibold truncate">{c.name}</div>
-                                {active && (
-                                  <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                                    <Check className="h-4 w-4" /> 選択中
-                                  </span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* budget */}
-                  <div className="col-span-6 rounded-2xl border border-black/10 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-black/10 bg-white">
-                      <div className="text-xs font-semibold text-black/60">予算</div>
-                      <div className="mt-1 text-[11px] text-black/45">
-                        ※ 投稿者入力が前提なので、判定は±1段階ゆるめ（目安）
-                      </div>
-                    </div>
-                    <div className="p-3 overflow-y-auto h-full">
-                      <div className="space-y-2">
-                        {BUDGETS.map((b) => {
-                          const active = tmpBudgetKey === b.key;
-                          return (
-                            <button
-                              key={b.key}
-                              type="button"
-                              onClick={() => setTmpBudgetKey(b.key)}
-                              className={[
-                                "w-full rounded-2xl border px-3 py-3 text-left transition",
-                                active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                              ].join(" ")}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="text-sm font-semibold">{b.label}</div>
-                                {active && (
-                                  <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                                    <Check className="h-4 w-4" /> 選択中
-                                  </span>
-                                )}
-                              </div>
-                              <div className="mt-1 text-[11px] text-black/45">
-                                ※ 予算未登録の店は予算フィルタ時は除外
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Mobile */}
-                <div className="sm:hidden space-y-4 max-h-[68vh] overflow-y-auto pr-1">
-                  <div>
-                    <div className="text-xs font-semibold text-black/60 mb-2">コレクション</div>
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => setTmpCollectionId(null)}
-                        className={[
-                          "w-full rounded-2xl border px-3 py-3 text-left transition",
-                          !tmpCollectionId ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm font-semibold">すべて</div>
-                          {!tmpCollectionId && (
-                            <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                              <Check className="h-4 w-4" /> 選択中
-                            </span>
-                          )}
-                        </div>
-                      </button>
-
-                      {collections.map((c) => {
-                        const active = tmpCollectionId === c.id;
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => setTmpCollectionId(c.id)}
-                            className={[
-                              "w-full rounded-2xl border px-3 py-3 text-left transition",
-                              active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                            ].join(" ")}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="text-sm font-semibold truncate">{c.name}</div>
-                              {active && (
-                                <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                                  <Check className="h-4 w-4" /> 選択中
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs font-semibold text-black/60 mb-1">予算</div>
-                    <div className="text-[11px] text-black/45 mb-2">
-                      ※ 投稿者入力が前提なので、判定は±1段階ゆるめ（目安）
-                    </div>
-                    <div className="space-y-2">
-                      {BUDGETS.map((b) => {
-                        const active = tmpBudgetKey === b.key;
-                        return (
-                          <button
-                            key={b.key}
-                            type="button"
-                            onClick={() => setTmpBudgetKey(b.key)}
-                            className={[
-                              "w-full rounded-2xl border px-3 py-3 text-left transition",
-                              active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                            ].join(" ")}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="text-sm font-semibold">{b.label}</div>
-                              {active && (
-                                <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                                  <Check className="h-4 w-4" /> 選択中
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-1 text-[11px] text-black/45">
-                              ※ 予算未登録の店は予算フィルタ時は除外
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* footer (sticky) */}
-              <div className="sticky bottom-0 z-10 bg-white border-t border-black/10 px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={resetFilter}
-                    className="rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5"
-                  >
-                    リセット
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={applyFilter}
-                    className="rounded-xl bg-orange-600 px-5 py-3 text-sm font-semibold text-white hover:bg-orange-700"
-                  >
-                    適用
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========= Emoji Picker（元のまま） ========= */}
-      {emojiPicker.open && (
-        <div className="fixed inset-0 z-[320] bg-black/40 backdrop-blur-sm">
-          <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
-            <div className="w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white shadow-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-black/10">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold">ジャンルを変更</div>
-                  <div className="mt-0.5 text-[12px] text-black/50 truncate">
-                    {emojiPicker.placeName ?? "この場所"} / 現在：{" "}
-                    <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5">
-                      <span className="text-base">{emojiPicker.currentEmoji || "📍"}</span>
-                      <span>{labelForEmoji(emojiPicker.currentEmoji) || "未設定"}</span>
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeEmojiPicker}
-                  className="rounded-full p-2 text-black/50 hover:bg-black/5"
-                  aria-label="閉じる"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="p-4">
-                <div className="space-y-2 max-h-[48vh] overflow-y-auto pr-1">
-                  {GENRES.map((g) => {
-                    const active = emojiPicker.currentEmoji === g.emoji;
-                    return (
-                      <button
-                        key={g.key}
-                        type="button"
-                        disabled={savingEmoji}
-                        onClick={() => emojiPicker.placeId && setEmojiForPlace(emojiPicker.placeId, g.emoji)}
-                        className={[
-                          "w-full rounded-2xl border px-3 py-3 text-left transition",
-                          active ? "border-orange-400 bg-orange-50" : "border-black/10 hover:bg-black/5",
-                          savingEmoji ? "opacity-60 cursor-not-allowed" : "",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="h-10 w-10 rounded-2xl border border-black/10 bg-white flex items-center justify-center text-2xl">
-                              {g.emoji}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold truncate">{g.label}</div>
-                            </div>
-                          </div>
-
-                          {active ? (
-                            <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
-                              <Check className="h-4 w-4" /> 選択中
-                            </span>
-                          ) : (
-                            <span className="text-xs text-black/35">選ぶ</span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-black/10 p-3">
-                  <div className="text-xs font-semibold text-black/60">カスタム</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={customEmoji}
-                      onChange={(e) => setCustomEmoji(e.target.value)}
-                      placeholder="絵文字を貼り付け（例: 🥶）"
-                      className="w-full rounded-xl border border-black/20 px-3 py-3 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                      disabled={savingEmoji}
-                    />
-                    <button
-                      type="button"
-                      onClick={commitCustomEmoji}
-                      disabled={savingEmoji || !customEmoji.trim()}
-                      className="shrink-0 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
-                    >
-                      適用
-                    </button>
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => emojiPicker.placeId && resetEmojiForPlace(emojiPicker.placeId)}
-                      disabled={savingEmoji}
-                      className="text-xs text-red-600 hover:underline disabled:opacity-60"
-                    >
-                      ユーザー設定を消す（サジェストに戻す/無ければ📍）
-                    </button>
-
-                    <button type="button" onClick={closeEmojiPicker} className="text-xs text-black/50 hover:underline">
-                      閉じる
-                    </button>
-                  </div>
-                </div>
-
-                {savingEmoji && <div className="mt-3 text-center text-xs text-black/50">保存中...</div>}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========= Delete modal（元のまま） ========= */}
-      {confirm.open && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-lg">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm font-semibold">保存を削除</div>
-              <button
-                type="button"
-                onClick={() => setConfirm({ open: false, placeId: null, placeName: null })}
-                className="rounded-full p-1 text-black/50 hover:bg-black/5"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="text-sm text-black/70">
-              <div className="font-medium text-black">{confirm.placeName ?? "この場所"}</div>
-              <div className="mt-1 text-xs text-black/50">どう削除しますか？</div>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {activeCollectionId && (
-                <button
-                  type="button"
-                  onClick={() => doRemove("this")}
-                  className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5"
-                >
-                  このコレクションから外す
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => doRemove("all")}
-                className="w-full rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
-              >
-                すべてのコレクションから削除（ピンも消える）
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setConfirm({ open: false, placeId: null, placeName: null })}
-                className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5"
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+      {/* footer hint */}
+      <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
+        pins: {filteredPins.length} / total: {pins.length}
+      </div>
+    </div>
   );
 }
