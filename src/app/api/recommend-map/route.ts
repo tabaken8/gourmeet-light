@@ -75,26 +75,17 @@ function normalizeCandidates(raw: unknown): Candidate[] {
   return out;
 }
 
-/** LLMが返したテキストから、最初のJSONオブジェクト部分を抜く（Structured Outputs不要版） */
-function extractFirstJsonObject(text: string): any | null {
-  const s = text || "";
-  const start = s.indexOf("{");
-  if (start < 0) return null;
-  let depth = 0;
-  for (let i = start; i < s.length; i++) {
-    const ch = s[i];
-    if (ch === "{") depth++;
-    if (ch === "}") depth--;
-    if (depth === 0) {
-      const chunk = s.slice(start, i + 1);
-      try {
-        return JSON.parse(chunk);
-      } catch {
-        return null;
-      }
-    }
+/** JSON.parse を安全にやる（失敗したら null） */
+function tryParseJsonObject(text: string): any | null {
+  const s = (text || "").trim();
+  if (!s) return null;
+  try {
+    const obj = JSON.parse(s);
+    if (obj && typeof obj === "object") return obj;
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 type Geo = {
@@ -170,29 +161,42 @@ async function inferLocationText(openai: OpenAI, userQuery: string) {
 }
 `;
 
+  const model = process.env.OPENAI_MODEL_RECOMMEND_MAP || "gpt-4.1-mini";
+
   try {
     const resp = await openai.responses.create({
-      model: process.env.OPENAI_MODEL_RECOMMEND_MAP || "gpt-4.1-mini",
+      model,
       instructions,
       input: `ユーザー文:\n${userQuery}\n\n${formatHint}`,
+      // ✅ JSONだけ返させる（混ざり物でパース失敗→既定文、を潰す）
+      text: { format: { type: "json_object" } },
     });
 
-    const obj = extractFirstJsonObject(resp.output_text || "");
+    const obj = tryParseJsonObject(resp.output_text || "") || {};
     const location_query =
       typeof obj?.location_query === "string" && obj.location_query.trim()
         ? obj.location_query.trim()
         : null;
     const reason_short = safeStr(obj?.reason_short, "");
-    return { location_query, reason_short };
+    return {
+      location_query,
+      reason_short,
+      _debug: {
+        llm_model: model,
+        parsed: !!obj && typeof obj === "object" && Object.keys(obj).length > 0,
+      },
+    };
   } catch {
-    return { location_query: null as string | null, reason_short: "" };
+    return {
+      location_query: null as string | null,
+      reason_short: "",
+      _debug: { llm_model: model, parsed: false },
+    };
   }
 }
 
 /**
  * viewport + types から「hard max radius（禁忌制約）」を決める
- * - viewport対角(km)が小さいほど半径は小さく（本郷=数km）
- * - 県/地方/国は大きく
  */
 function decideHardMaxRadiusKm(args: {
   userQuery: string;
@@ -201,24 +205,17 @@ function decideHardMaxRadiusKm(args: {
   const q = args.userQuery || "";
   const geo = args.geo;
 
-  // 文脈ヒント（今すぐ/徒歩→より厳しく、旅行/遠出→少し緩く）
   const wantsNear =
     q.includes("近く") || q.includes("徒歩") || q.includes("今から") || q.includes("すぐ");
   const wantsFar =
     q.includes("旅行") || q.includes("遠出") || q.includes("出張") || q.includes("ドライブ");
 
-  // 1) viewportが取れるなら、まずそこから“自然なスコープ”を作る
   if (geo?.viewport) {
     const diagKm = haversineKm(geo.viewport.sw, geo.viewport.ne);
 
-    // viewportの対角に応じて半径を決める（経験則）
-    // - 近隣: diag 1〜5km → radius 2〜6km
-    // - 区/市: diag 10〜30km → radius 8〜25km
-    // - 県: diag 80〜200km → radius 60〜160km
-    let hardMaxKm = diagKm * 0.65; // 基本はviewport対角の6〜7割を半径に
-    hardMaxKm = clamp(hardMaxKm, 3, 450); // 最低3km、上限450km（日本国内想定）
+    let hardMaxKm = diagKm * 0.65;
+    hardMaxKm = clamp(hardMaxKm, 3, 450);
 
-    // typesベースで微調整（より常識に寄せる）
     const types = new Set((geo.types || []).map((t) => String(t)));
     if (types.has("neighborhood") || types.has("sublocality") || types.has("sublocality_level_1")) {
       hardMaxKm = Math.min(hardMaxKm, 8);
@@ -239,14 +236,12 @@ function decideHardMaxRadiusKm(args: {
     return { hardMaxKm, basis: `viewport(types=${Array.from(types).slice(0, 4).join(",")})` };
   }
 
-  // 2) viewport無し→クエリ語から最低限の推定（超一般語だけ）
   const coarse = normalizeScopeTerms(q);
   if (coarse === "東京都") return { hardMaxKm: wantsNear ? 25 : 60, basis: "keyword:都内/東京" };
   if (coarse === "東京都23区") return { hardMaxKm: wantsNear ? 18 : 45, basis: "keyword:23区" };
   if (coarse === "関東地方") return { hardMaxKm: wantsNear ? 120 : 350, basis: "keyword:関東" };
   if (coarse === "日本") return { hardMaxKm: 2000, basis: "keyword:全国/日本" };
 
-  // 3) 最後のfallback（候補平均中心を使うとき）→厳しめに
   return { hardMaxKm: wantsFar ? 200 : 50, basis: "fallback" };
 }
 
@@ -296,27 +291,35 @@ async function rankWithLLM(args: {
     JSON.stringify(compact, null, 2) +
     `\n\n${formatHint}`;
 
+  const model = process.env.OPENAI_MODEL_RECOMMEND_MAP || "gpt-4.1-mini";
+
   const resp = await openai.responses.create({
-    model: process.env.OPENAI_MODEL_RECOMMEND_MAP || "gpt-4.1-mini",
+    model,
     instructions,
     input,
+    // ✅ JSONだけ返させる（混ざり物でパース失敗→既定文、を潰す）
+    text: { format: { type: "json_object" } },
   });
 
-  const obj = extractFirstJsonObject(resp.output_text || "") || {};
+  const obj = tryParseJsonObject(resp.output_text || "") || {};
   const understood = obj?.understood?.summary
     ? obj.understood
     : { summary: "ユーザーの希望に合うお店を候補から選びます。", extracted_tags: [] as string[] };
 
   let results = Array.isArray(obj?.results) ? obj.results : [];
 
-  // safety: 候補に無いplace_idを除外
   const poolSet = new Set(pool.map((p) => p.place_id));
   results = results.filter((r: any) => poolSet.has(safeStr(r?.place_id)));
-
-  // 上限
   results = results.slice(0, maxResults);
 
-  return { understood, results };
+  return {
+    understood,
+    results,
+    _debug: {
+      llm_model: model,
+      parsed: !!obj && typeof obj === "object" && Object.keys(obj).length > 0,
+    },
+  };
 }
 
 export async function POST(req: Request) {
@@ -390,20 +393,7 @@ export async function POST(req: Request) {
   withDist.sort((a, b) => a.distance_km - b.distance_km);
 
   const inScope = withDist.filter((x) => x.distance_km <= hardMaxKm);
-    const debug = {
-    has_openai_key: !!openaiKey,
-    has_google_key: !!googleKey,
-    coarse,
-    inferred_location_query: inferred.location_query,
-    locationText,
-    geo_ok: !!geo,
-    centerLabel,
-    hardMaxKm,
-    candidates_count: candidates.length,
-    nearest_km: withDist[0]?.distance_km ?? null,
-    farthest_km: withDist[withDist.length - 1]?.distance_km ?? null,
-    };
-  // ✅ 禁忌：スコープ内が0なら、遠方を混ぜない（正直に0件）
+
   if (inScope.length === 0) {
     return NextResponse.json({
       ok: true,
@@ -411,7 +401,7 @@ export async function POST(req: Request) {
         summary:
           `「${locationText ?? "指定エリア"}」周辺として解釈しましたが、` +
           `候補の中にスコープ内（〜${hardMaxKm.toFixed(1)}km）のお店がありませんでした。`,
-        extracted_tags: [],debug
+        extracted_tags: [],
       },
       location: {
         location_text: locationText,
@@ -425,6 +415,8 @@ export async function POST(req: Request) {
         candidates_count: candidates.length,
         pool_count: 0,
         ms: Date.now() - startedAt,
+        llm_location_model: inferred._debug?.llm_model,
+        llm_location_parsed: inferred._debug?.parsed ?? false,
       },
     });
   }
@@ -437,10 +429,13 @@ export async function POST(req: Request) {
   let understood = { summary: "ユーザーの希望に合うお店を候補から選びます。", extracted_tags: [] as string[] };
   let picked: Array<{ place_id: string; headline: string; subline: string; reason: string; match_score: number }> = [];
 
+  let llmRankDebug: any = null;
+
   try {
     const llm = await rankWithLLM({ openai, userQuery: query, centerLabel, maxResults, pool });
     understood = llm.understood;
     picked = llm.results;
+    llmRankDebug = llm._debug;
   } catch {
     picked = pool.slice(0, maxResults).map((p) => ({
       place_id: p.place_id,
@@ -449,6 +444,7 @@ export async function POST(req: Request) {
       reason: "距離が近い候補から表示しています（LLM失敗fallback）。",
       match_score: 50,
     }));
+    llmRankDebug = { failed: true };
   }
 
   // G) 結果に結合（place_idはpool内に限定される）
@@ -501,11 +497,9 @@ export async function POST(req: Request) {
     }
   }
 
-  // おまけ：最終出力は “距離で禁忌を守りつつ”、同点なら近い順に整列
   results.sort((a, b) => {
-    // match_scoreが同程度なら距離を優先
     const ds = (b.match_score ?? 0) - (a.match_score ?? 0);
-    if (Math.abs(ds) >= 8) return ds; // 点差が大きいときは意味を尊重
+    if (Math.abs(ds) >= 8) return ds;
     return (a.distance_km ?? 0) - (b.distance_km ?? 0);
   });
 
@@ -524,10 +518,13 @@ export async function POST(req: Request) {
       candidates_count: candidates.length,
       pool_count: pool.length,
       ms: Date.now() - startedAt,
+      llm_location_model: inferred._debug?.llm_model,
+      llm_location_parsed: inferred._debug?.parsed ?? false,
+      llm_rank_model: llmRankDebug?.llm_model,
+      llm_rank_parsed: llmRankDebug?.parsed ?? false,
+      llm_rank_failed: !!llmRankDebug?.failed,
     },
   });
-
-
 }
 
 export function GET() {
