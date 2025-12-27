@@ -501,6 +501,47 @@ export default function NewPostPage() {
     });
   };
 
+  // ✅ places に最低限データを upsert（place_id/lat/lng/types/photo_url など）
+  async function upsertPlaceIfNeeded(placeId: string) {
+    try {
+      const res = await fetch(`/api/place-details?place_id=${encodeURIComponent(placeId)}`, {
+        method: "GET",
+      });
+      if (!res.ok) throw new Error(`place-details failed: ${res.status}`);
+
+      const d = await res.json();
+      const nowIso = new Date().toISOString();
+
+      // null を入れて既存値を潰さないように「ある値だけ」詰める
+      const row: any = {
+        place_id: d.place_id,
+        updated_at: nowIso,
+        types_fetched_at: nowIso,
+      };
+
+      if (typeof d.name === "string" && d.name) row.name = d.name;
+      if (typeof d.address === "string" && d.address) row.address = d.address;
+      if (Number.isFinite(d.lat)) row.lat = d.lat;
+      if (Number.isFinite(d.lng)) row.lng = d.lng;
+      if (typeof d.photo_url === "string" && d.photo_url) row.photo_url = d.photo_url;
+      if (Array.isArray(d.place_types) && d.place_types.length) row.place_types = d.place_types;
+      if (typeof d.primary_type === "string" && d.primary_type) row.primary_type = d.primary_type;
+
+      const { error } = await supabase.from("places").upsert(row, { onConflict: "place_id" });
+      if (error) throw error;
+
+      // 投稿側も “できれば” 正規化された値を使いたい時用に返す
+      return {
+        name: typeof d.name === "string" && d.name ? d.name : null,
+        address: typeof d.address === "string" && d.address ? d.address : null,
+      };
+    } catch (e) {
+      // places が失敗しても投稿自体は通す（体験優先）
+      console.warn("upsertPlaceIfNeeded failed:", e);
+      return { name: null, address: null };
+    }
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uid) return setMsg("ログインしてください。");
@@ -516,11 +557,11 @@ export default function NewPostPage() {
     setBusy(true);
     setMsg(null);
 
-    // 付与演出のため、投稿前ポイントを取得（環境によっては列/テーブルが違うので失敗したら演出なしで進む）
+    // 付与演出のため、投稿前ポイントを取得（失敗したら演出なしで進む）
     const beforePoints = await fetchPointBalance(supabase, uid);
 
     try {
-      const CACHE = "31536000"; // 1年（調整中は短くするのもおすすめ）
+      const CACHE = "31536000"; // 1年
       const variants: Array<{ full: string; thumb: string }> = [];
       const compatFullUrls: string[] = [];
 
@@ -554,14 +595,27 @@ export default function NewPostPage() {
         compatFullUrls.push(pubFull.publicUrl);
       }
 
+      // ✅ ここで places を upsert（lat/lng 等を埋める）
+      let normalizedPlaceName: string | null = null;
+      let normalizedPlaceAddress: string | null = null;
+
+      if (selectedPlace?.place_id) {
+        const norm = await upsertPlaceIfNeeded(selectedPlace.place_id);
+        normalizedPlaceName = norm.name;
+        normalizedPlaceAddress = norm.address;
+      }
+
       const { error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
         content,
         image_variants: variants,
         image_urls: compatFullUrls,
+
         place_id: selectedPlace?.place_id ?? null,
-        place_name: selectedPlace?.name ?? null,
-        place_address: selectedPlace?.formatted_address ?? null,
+        // ✅ details が取れたらそっち優先（取れなければ選択時の値）
+        place_name: normalizedPlaceName ?? selectedPlace?.name ?? null,
+        place_address: normalizedPlaceAddress ?? selectedPlace?.formatted_address ?? null,
+
         recommend_score: recommendScore,
         price_yen,
         price_range,
@@ -821,7 +875,7 @@ export default function NewPostPage() {
             </div>
             <RailDot done={isPriceComplete} label="価格" />
 
-            {/* 本文（スマホでデカすぎ対策：高さを下げ、mdで戻す） */}
+            {/* 本文 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">本文</span>
@@ -929,7 +983,7 @@ export default function NewPostPage() {
             </div>
             <RailDot done={isPlaceComplete} label="お店" optional />
 
-            {/* エラーメッセージ（列を崩さないため col-span） */}
+            {/* エラーメッセージ */}
             {msg && <p className="col-span-2 text-xs text-red-600">{msg}</p>}
           </form>
         </div>
