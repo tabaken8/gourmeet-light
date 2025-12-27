@@ -390,7 +390,19 @@ export async function POST(req: Request) {
   withDist.sort((a, b) => a.distance_km - b.distance_km);
 
   const inScope = withDist.filter((x) => x.distance_km <= hardMaxKm);
-
+    const debug = {
+    has_openai_key: !!openaiKey,
+    has_google_key: !!googleKey,
+    coarse,
+    inferred_location_query: inferred.location_query,
+    locationText,
+    geo_ok: !!geo,
+    centerLabel,
+    hardMaxKm,
+    candidates_count: candidates.length,
+    nearest_km: withDist[0]?.distance_km ?? null,
+    farthest_km: withDist[withDist.length - 1]?.distance_km ?? null,
+    };
   // ✅ 禁忌：スコープ内が0なら、遠方を混ぜない（正直に0件）
   if (inScope.length === 0) {
     return NextResponse.json({
@@ -399,7 +411,7 @@ export async function POST(req: Request) {
         summary:
           `「${locationText ?? "指定エリア"}」周辺として解釈しましたが、` +
           `候補の中にスコープ内（〜${hardMaxKm.toFixed(1)}km）のお店がありませんでした。`,
-        extracted_tags: [],
+        extracted_tags: [],debug
       },
       location: {
         location_text: locationText,
@@ -514,6 +526,8 @@ export async function POST(req: Request) {
       ms: Date.now() - startedAt,
     },
   });
+
+
 }
 
 export function GET() {
