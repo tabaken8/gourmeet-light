@@ -230,10 +230,18 @@ export default function MapRecommendPanel({
     return "自然言語で探せる（例：静かでデート向き、ワイン）";
   }, [loading, understoodSummary]);
 
+  // ✅ Enterで実行（フォーム送信）
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    if (query.trim().length === 0) return;
+    onRun();
+  };
+
   return (
     <div className="w-full">
       {/* search bar */}
-      <div className="flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2">
         <div className="relative flex-1">
           <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
@@ -263,8 +271,7 @@ export default function MapRecommendPanel({
         </select>
 
         <button
-          type="button"
-          onClick={onRun}
+          type="submit"
           disabled={loading || query.trim().length === 0}
           className="
             inline-flex items-center gap-2 rounded-2xl bg-orange-600 px-4 py-2
@@ -275,7 +282,7 @@ export default function MapRecommendPanel({
           {loading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
           結果を生成
         </button>
-      </div>
+      </form>
 
       {/* summary */}
       <div className="mt-2 text-[12px] text-slate-600">{headerText}</div>
@@ -312,8 +319,6 @@ export default function MapRecommendPanel({
               // 各投稿タイルで使うthumb（placeThumbと被らないものを優先）
               const postTiles = postSamples.map((p) => {
                 const thumb = pickPostThumb(p, avoid);
-                // ここで avoid に追加しない：同じ店で同じ写真が複数投稿に使われてても
-                // “投稿の存在” が価値なので、完全排除はしない（ただ placeThumb だけは避ける）
                 return { p, thumb };
               });
 
@@ -329,7 +334,20 @@ export default function MapRecommendPanel({
                   "
                 >
                   {/* header / focus */}
-                  <button type="button" onClick={() => onFocusPlace(it.place_id)} className="w-full text-left">
+                  {/* ✅ 外側を button から div role=button に変更（button の入れ子を根絶） */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onFocusPlace(it.place_id)}
+                    onKeyDown={(e) => {
+                      // Enter / Space でクリック相当
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onFocusPlace(it.place_id);
+                      }
+                    }}
+                    className="w-full text-left cursor-pointer"
+                  >
                     <div className="flex gap-3">
                       <div className="relative shrink-0">
                         <Thumb url={placeThumb} fallback={it.genre_emoji ?? "📍"} />
@@ -380,6 +398,7 @@ export default function MapRecommendPanel({
                           <div className="mt-2 text-[12px] leading-relaxed text-slate-700">
                             <span className={expanded ? "" : "line-clamp-2"}>{it.reason}</span>
                             <div className="mt-1">
+                              {/* ✅ ここは button のままでOK（外側が button じゃなくなったので合法） */}
                               <button
                                 type="button"
                                 className="text-[11px] font-semibold text-orange-700 hover:underline"
@@ -409,7 +428,7 @@ export default function MapRecommendPanel({
                         )}
                       </div>
                     </div>
-                  </button>
+                  </div>
 
                   {/* footer actions */}
                   <div className="mt-3 flex items-center justify-between gap-2">
@@ -431,9 +450,7 @@ export default function MapRecommendPanel({
                     )}
 
                     {postTiles.length > 0 ? (
-                      <span className="text-[11px] font-semibold text-slate-500">
-                        関連投稿 {postTiles.length}件
-                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">関連投稿 {postTiles.length}件</span>
                     ) : (
                       <span className="text-[11px] text-slate-400">関連投稿なし</span>
                     )}
