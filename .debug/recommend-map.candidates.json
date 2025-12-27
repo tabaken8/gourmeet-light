@@ -1,0 +1,310 @@
+{
+  "dumped_at": "2025-12-27T07:51:39.663Z",
+  "note": "received from client",
+  "query": "名古屋の近くのうまい店",
+  "candidates_count": 15,
+  "candidates_sample_20": [
+    {
+      "place_id": "ChIJFTEztAH1GGARSlKjnV5UKcU",
+      "name": "ニクアザブ 二子玉川店",
+      "address": "日本、〒158-0094 東京都世田谷区玉川３丁目９−２ 土屋ビル 202",
+      "lat": 35.6128451,
+      "lng": 139.6257444,
+      "genre_emoji": "🥩",
+      "budget_mid_yen": 4000,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJ84McqUSLGGAR8KhSukUSKIs",
+      "name": "入鹿TOKYO 六本木",
+      "address": "日本、〒106-0032 東京都港区六本木４丁目１２−１２",
+      "lat": 35.6648012,
+      "lng": 139.7316413,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": 2500,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJ9fNVJP6NGGARrUe8lCTGb24",
+      "name": "モルゲン 池袋西口店",
+      "address": "日本、〒171-0014 東京都豊島区池袋２丁目４１−２ 8F",
+      "lat": 35.7331625,
+      "lng": 139.709768,
+      "genre_emoji": "🍢",
+      "budget_mid_yen": 2500,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJ1cXzIcGOGGARxrYldgjJ4Z8",
+      "name": "浅草メンチ",
+      "address": "日本、〒111-0032 東京都台東区浅草２丁目３−３",
+      "lat": 35.7129114,
+      "lng": 139.7960553,
+      "genre_emoji": "📍",
+      "budget_mid_yen": 350,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJZXPDhR2MGGARfx90xI6_ja0",
+      "name": "新宿 すずや 秋葉原店",
+      "address": "日本、〒101-0021 東京都千代田区外神田４丁目１４−１ 秋葉原UDX3F",
+      "lat": 35.700803,
+      "lng": 139.7728326,
+      "genre_emoji": "📍",
+      "budget_mid_yen": 1000,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJNz-zSluMGGARzr4g_japWhk",
+      "name": "神楽坂焼肉 Kintan",
+      "address": "日本、〒162-0825 東京都新宿区神楽坂１丁目１０−２",
+      "lat": 35.7003155,
+      "lng": 139.741999,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJJzi2a1iSGGARw9kCQ4yoiLw",
+      "name": "ラーメン富士丸 神谷本店",
+      "address": "日本、〒115-0043 東京都北区神谷３丁目２９−１１",
+      "lat": 35.7722931,
+      "lng": 139.7331108,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJgbLxgdLnAGAR04m5CqUca1M",
+      "name": "善 laboratory",
+      "address": "日本、〒530-0012 大阪府大阪市北区芝田１丁目１１−５",
+      "lat": 34.7075309,
+      "lng": 135.49762,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJeZ55287nAGARB2KcfQPIF2s",
+      "name": "黒毛和牛 ステーキハウス もり川",
+      "address": "日本、〒530-0002 大阪府大阪市北区曽根崎新地１丁目７−４ 4F",
+      "lat": 34.6969158,
+      "lng": 135.500539,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJuyjs15DmAGARCaSnIeY-sos",
+      "name": "うどん屋 きすけ",
+      "address": "日本、〒530-0014 大阪府大阪市北区鶴野町４−１",
+      "lat": 34.7093633,
+      "lng": 135.5014799,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJM4zsavNcGGARg7rCmyEOjiY",
+      "name": "ラーメン二郎 横浜関内店",
+      "address": "日本、〒231-0033 神奈川県横浜市中区長者町６丁目９４−９４ オムニビル 2階",
+      "lat": 35.4419694,
+      "lng": 139.6307693,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJD3fzDhSMGGAR-AJRIU0bV-s",
+      "name": "用心棒",
+      "address": "日本、〒101-0051 東京都千代田区神田神保町２丁目２−２１ 土田ビル",
+      "lat": 35.6964105,
+      "lng": 139.7566646,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJXa8XSQmHGGARC8-dOghXrY4",
+      "name": "Hi-Fat Noodle BUTCHER’S",
+      "address": "日本、〒124-0023 東京都葛飾区東新小岩３丁目１−５",
+      "lat": 35.7200514,
+      "lng": 139.8578151,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJf2cIZAKNGGARaz9qx8iEDTs",
+      "name": "麺屋鈴春",
+      "address": "日本、〒113-0033 東京都文京区本郷２丁目２６−１ 福重ビル 1F",
+      "lat": 35.7048757,
+      "lng": 139.7608154,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJGzryttJwA2ARhyGlvQzj_wQ",
+      "name": "SAROS.Night Marche",
+      "address": "日本、〒460-0008 愛知県名古屋市中区栄３丁目２２−７",
+      "lat": 35.1642738,
+      "lng": 136.9032128,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    }
+  ],
+  "candidates": [
+    {
+      "place_id": "ChIJFTEztAH1GGARSlKjnV5UKcU",
+      "name": "ニクアザブ 二子玉川店",
+      "address": "日本、〒158-0094 東京都世田谷区玉川３丁目９−２ 土屋ビル 202",
+      "lat": 35.6128451,
+      "lng": 139.6257444,
+      "genre_emoji": "🥩",
+      "budget_mid_yen": 4000,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJ84McqUSLGGAR8KhSukUSKIs",
+      "name": "入鹿TOKYO 六本木",
+      "address": "日本、〒106-0032 東京都港区六本木４丁目１２−１２",
+      "lat": 35.6648012,
+      "lng": 139.7316413,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": 2500,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJ9fNVJP6NGGARrUe8lCTGb24",
+      "name": "モルゲン 池袋西口店",
+      "address": "日本、〒171-0014 東京都豊島区池袋２丁目４１−２ 8F",
+      "lat": 35.7331625,
+      "lng": 139.709768,
+      "genre_emoji": "🍢",
+      "budget_mid_yen": 2500,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJ1cXzIcGOGGARxrYldgjJ4Z8",
+      "name": "浅草メンチ",
+      "address": "日本、〒111-0032 東京都台東区浅草２丁目３−３",
+      "lat": 35.7129114,
+      "lng": 139.7960553,
+      "genre_emoji": "📍",
+      "budget_mid_yen": 350,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJZXPDhR2MGGARfx90xI6_ja0",
+      "name": "新宿 すずや 秋葉原店",
+      "address": "日本、〒101-0021 東京都千代田区外神田４丁目１４−１ 秋葉原UDX3F",
+      "lat": 35.700803,
+      "lng": 139.7728326,
+      "genre_emoji": "📍",
+      "budget_mid_yen": 1000,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJNz-zSluMGGARzr4g_japWhk",
+      "name": "神楽坂焼肉 Kintan",
+      "address": "日本、〒162-0825 東京都新宿区神楽坂１丁目１０−２",
+      "lat": 35.7003155,
+      "lng": 139.741999,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJJzi2a1iSGGARw9kCQ4yoiLw",
+      "name": "ラーメン富士丸 神谷本店",
+      "address": "日本、〒115-0043 東京都北区神谷３丁目２９−１１",
+      "lat": 35.7722931,
+      "lng": 139.7331108,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJgbLxgdLnAGAR04m5CqUca1M",
+      "name": "善 laboratory",
+      "address": "日本、〒530-0012 大阪府大阪市北区芝田１丁目１１−５",
+      "lat": 34.7075309,
+      "lng": 135.49762,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJeZ55287nAGARB2KcfQPIF2s",
+      "name": "黒毛和牛 ステーキハウス もり川",
+      "address": "日本、〒530-0002 大阪府大阪市北区曽根崎新地１丁目７−４ 4F",
+      "lat": 34.6969158,
+      "lng": 135.500539,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJuyjs15DmAGARCaSnIeY-sos",
+      "name": "うどん屋 きすけ",
+      "address": "日本、〒530-0014 大阪府大阪市北区鶴野町４−１",
+      "lat": 34.7093633,
+      "lng": 135.5014799,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJM4zsavNcGGARg7rCmyEOjiY",
+      "name": "ラーメン二郎 横浜関内店",
+      "address": "日本、〒231-0033 神奈川県横浜市中区長者町６丁目９４−９４ オムニビル 2階",
+      "lat": 35.4419694,
+      "lng": 139.6307693,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJD3fzDhSMGGAR-AJRIU0bV-s",
+      "name": "用心棒",
+      "address": "日本、〒101-0051 東京都千代田区神田神保町２丁目２−２１ 土田ビル",
+      "lat": 35.6964105,
+      "lng": 139.7566646,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJXa8XSQmHGGARC8-dOghXrY4",
+      "name": "Hi-Fat Noodle BUTCHER’S",
+      "address": "日本、〒124-0023 東京都葛飾区東新小岩３丁目１−５",
+      "lat": 35.7200514,
+      "lng": 139.8578151,
+      "genre_emoji": "🍜",
+      "budget_mid_yen": null,
+      "is_saved": true
+    },
+    {
+      "place_id": "ChIJf2cIZAKNGGARaz9qx8iEDTs",
+      "name": "麺屋鈴春",
+      "address": "日本、〒113-0033 東京都文京区本郷２丁目２６−１ 福重ビル 1F",
+      "lat": 35.7048757,
+      "lng": 139.7608154,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    },
+    {
+      "place_id": "ChIJGzryttJwA2ARhyGlvQzj_wQ",
+      "name": "SAROS.Night Marche",
+      "address": "日本、〒460-0008 愛知県名古屋市中区栄３丁目２２−７",
+      "lat": 35.1642738,
+      "lng": 136.9032128,
+      "genre_emoji": "📍",
+      "budget_mid_yen": null,
+      "is_saved": false
+    }
+  ]
+}

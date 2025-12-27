@@ -10,6 +10,8 @@ import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
 
+import GenreVoteInline from "@/components/GenreVoteInline";
+
 import { MapPin } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -157,10 +159,7 @@ export default async function PostPage({
     .eq("id", params.id)
     .maybeSingle();
 
-  if (postErr) {
-    // ここは notFound に寄せた方が安全（RLS等も含め）
-    return notFound();
-  }
+  if (postErr) return notFound();
 
   const post = data as PostRow | null;
   if (!post) return notFound();
@@ -224,12 +223,9 @@ export default async function PostPage({
   const imageUrls = getAllImageUrls(post);
 
   // ---- 「もっと見つける」用：非フォロー中心で取得 -------------------
-  // 1) フォローしてるID一覧（取れれば除外）
   let followingIds: string[] = [];
   if (user) {
     try {
-      // 典型的な follows テーブル想定（違っても落ちないように握る）
-      // follower_id = 自分, following_id = 相手
       const { data: fData, error: fErr } = await supabase
         .from("follows")
         .select("following_id")
@@ -245,11 +241,6 @@ export default async function PostPage({
     }
   }
 
-  // 2) おすすめ投稿（主役=このpostを壊さないため、カードは小さく・控えめ）
-  //   - 自分の投稿は除外
-  //   - この投稿自体も除外
-  //   - できれば「フォローしてない人」中心
-  //   - 画像あり優先はDB設計に依存するので、ここでは軽く
   const recLimit = 9;
 
   let recPosts: PostRow[] = [];
@@ -282,20 +273,13 @@ export default async function PostPage({
       .order("created_at", { ascending: false })
       .limit(recLimit);
 
-    // 自分の投稿は外す（ログイン時）
     if (user) q = q.neq("user_id", user.id);
 
-    // できれば「フォロー中は外す」
-    // ※ Supabase の .not('user_id','in',...) は配列を文字列化する必要あり
-if (user && followingIds.length > 0) {
-  const csv = `(${followingIds.map((x) => `"${x}"`).join(",")})`;
-
-  // Supabaseの型定義が `not(..., 'in', string)` をうまく推論できないことがあるので
-  // ここだけクエリビルダを any に落として型エラーとlint回避（実行時挙動は同じ）
-  const qa: any = q;
-  q = qa.not("user_id", "in", csv);
-}
-
+    if (user && followingIds.length > 0) {
+      const csv = `(${followingIds.map((x) => `"${x}"`).join(",")})`;
+      const qa: any = q;
+      q = qa.not("user_id", "in", csv);
+    }
 
     const { data: rData } = await q;
     recPosts = (rData as any[])?.filter(Boolean) as PostRow[];
@@ -378,6 +362,16 @@ if (user && followingIds.length > 0) {
               {formatJST(post.created_at)}
             </span>
           </div>
+
+          {/* ✅ 投稿詳細ページ内で完結：ここにジャンル投票を常時表示 */}
+          {post.place_id ? (
+            <div className="mt-3 rounded-2xl border border-black/[.06] bg-white/70 p-3">
+              <div className="mb-1 text-[11px] font-semibold text-slate-700">
+                このお店のジャンル（みんなで決める）
+              </div>
+              <GenreVoteInline placeId={post.place_id} />
+            </div>
+          ) : null}
         </div>
 
         {/* Media */}
@@ -409,8 +403,7 @@ if (user && followingIds.length > 0) {
             {post.place_id ? (
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between">
-                  <div className="text-xs font-medium text-slate-700">
-                  </div>
+                  <div className="text-xs font-medium text-slate-700"></div>
                   {mapUrl ? (
                     <a
                       href={mapUrl}
@@ -464,9 +457,7 @@ if (user && followingIds.length > 0) {
         <div className="mb-3 flex items-end justify-between">
           <div>
             <div className="text-sm font-semibold text-slate-900">もっと見つける</div>
-            <div className="text-[11px] text-slate-500">
-              テイストが似ているお店
-            </div>
+            <div className="text-[11px] text-slate-500">テイストが似ているお店</div>
           </div>
           <Link
             href="/timeline?tab=discover"
