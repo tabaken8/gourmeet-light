@@ -1,3 +1,4 @@
+// src/app/api/recommend-map/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
@@ -75,17 +76,66 @@ function normalizeCandidates(raw: unknown): Candidate[] {
   return out;
 }
 
-/** JSON.parse を安全にやる（失敗したら null） */
+/** LLMが返したテキストから、最初のJSONオブジェクト部分を抜く（保険） */
+function extractFirstJsonObject(text: string): any | null {
+  const s = text || "";
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+    if (depth === 0) {
+      const chunk = s.slice(start, i + 1);
+      try {
+        return JSON.parse(chunk);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
 function tryParseJsonObject(text: string): any | null {
   const s = (text || "").trim();
   if (!s) return null;
   try {
     const obj = JSON.parse(s);
     if (obj && typeof obj === "object") return obj;
-    return null;
   } catch {
-    return null;
+    // ignore
   }
+  return extractFirstJsonObject(s);
+}
+
+/** OpenAI SDK エラーを“表示用に安全”に抽出 */
+function pickOpenAIError(e: any) {
+  return {
+    name: safeStr(e?.name, ""),
+    status: safeNum(e?.status, 0),
+    code: safeStr(e?.code, ""),
+    type: safeStr(e?.type, ""),
+    message: safeStr(e?.message, ""),
+  };
+}
+
+/** 429/5xx/ネットワーク系だけ軽くリトライ */
+async function withRetry<T>(fn: () => Promise<T>, tries = 2): Promise<T> {
+  let last: any = null;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      last = e;
+      const st = safeNum(e?.status, 0);
+      const retryable = st === 429 || (st >= 500 && st <= 599) || st === 0;
+      if (!retryable || i === tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+    }
+  }
+  throw last;
 }
 
 type Geo = {
@@ -145,6 +195,15 @@ function normalizeScopeTerms(q: string) {
   return null;
 }
 
+function pickModelName() {
+  const m =
+    process.env.OPENAI_MODEL_RECOMMEND_MAP ||
+    process.env.OPENAI_MODEL ||
+    process.env.OPENAI_DEFAULT_MODEL ||
+    "gpt-4.1-mini";
+  return (m || "gpt-4.1-mini").toString().trim() || "gpt-4.1-mini";
+}
+
 async function inferLocationText(openai: OpenAI, userQuery: string) {
   const instructions =
     "あなたは地名推定器です。" +
@@ -154,23 +213,29 @@ async function inferLocationText(openai: OpenAI, userQuery: string) {
     "必ずJSONだけを返す。";
 
   const formatHint = `
-出力JSONの形（厳守）:
+出力JSON（厳守）:
 {
   "location_query": string|null,
   "reason_short": string
 }
 `;
 
-  const model = process.env.OPENAI_MODEL_RECOMMEND_MAP || "gpt-4.1-mini";
+  let inferError: any = null;
 
   try {
-    const resp = await openai.responses.create({
-      model,
-      instructions,
-      input: `ユーザー文:\n${userQuery}\n\n${formatHint}`,
-      // ✅ JSONだけ返させる（混ざり物でパース失敗→既定文、を潰す）
-      text: { format: { type: "json_object" } },
-    });
+    const model = pickModelName();
+
+    const resp = await withRetry(
+      () =>
+        openai.responses.create({
+          model,
+          instructions,
+          input: `ユーザー文:\n${userQuery}\n\n${formatHint}`,
+          // JSON強制（これが効くと“文章混入”が激減）
+          text: { format: { type: "json_object" } },
+        }),
+      2
+    );
 
     const obj = tryParseJsonObject(resp.output_text || "") || {};
     const location_query =
@@ -178,25 +243,18 @@ async function inferLocationText(openai: OpenAI, userQuery: string) {
         ? obj.location_query.trim()
         : null;
     const reason_short = safeStr(obj?.reason_short, "");
-    return {
-      location_query,
-      reason_short,
-      _debug: {
-        llm_model: model,
-        parsed: !!obj && typeof obj === "object" && Object.keys(obj).length > 0,
-      },
-    };
-  } catch {
-    return {
-      location_query: null as string | null,
-      reason_short: "",
-      _debug: { llm_model: model, parsed: false },
-    };
+
+    return { location_query, reason_short, inferError };
+  } catch (e: any) {
+    inferError = pickOpenAIError(e);
+    return { location_query: null as string | null, reason_short: "", inferError };
   }
 }
 
 /**
  * viewport + types から「hard max radius（禁忌制約）」を決める
+ * - viewport対角(km)が小さいほど半径は小さく（本郷=数km）
+ * - 県/地方/国は大きく
  */
 function decideHardMaxRadiusKm(args: {
   userQuery: string;
@@ -205,11 +263,13 @@ function decideHardMaxRadiusKm(args: {
   const q = args.userQuery || "";
   const geo = args.geo;
 
+  // 文脈ヒント（今すぐ/徒歩→より厳しく、旅行/遠出→少し緩く）
   const wantsNear =
     q.includes("近く") || q.includes("徒歩") || q.includes("今から") || q.includes("すぐ");
   const wantsFar =
     q.includes("旅行") || q.includes("遠出") || q.includes("出張") || q.includes("ドライブ");
 
+  // 1) viewportが取れるなら、まずそこから“自然なスコープ”を作る
   if (geo?.viewport) {
     const diagKm = haversineKm(geo.viewport.sw, geo.viewport.ne);
 
@@ -217,7 +277,11 @@ function decideHardMaxRadiusKm(args: {
     hardMaxKm = clamp(hardMaxKm, 3, 450);
 
     const types = new Set((geo.types || []).map((t) => String(t)));
-    if (types.has("neighborhood") || types.has("sublocality") || types.has("sublocality_level_1")) {
+    if (
+      types.has("neighborhood") ||
+      types.has("sublocality") ||
+      types.has("sublocality_level_1")
+    ) {
       hardMaxKm = Math.min(hardMaxKm, 8);
     }
     if (types.has("locality")) {
@@ -233,15 +297,20 @@ function decideHardMaxRadiusKm(args: {
     if (wantsNear) hardMaxKm = Math.max(3, hardMaxKm * 0.7);
     if (wantsFar) hardMaxKm = Math.min(2000, hardMaxKm * 1.25);
 
-    return { hardMaxKm, basis: `viewport(types=${Array.from(types).slice(0, 4).join(",")})` };
+    return {
+      hardMaxKm,
+      basis: `viewport(types=${Array.from(types).slice(0, 4).join(",")})`,
+    };
   }
 
+  // 2) viewport無し→クエリ語から最低限の推定（超一般語だけ）
   const coarse = normalizeScopeTerms(q);
   if (coarse === "東京都") return { hardMaxKm: wantsNear ? 25 : 60, basis: "keyword:都内/東京" };
   if (coarse === "東京都23区") return { hardMaxKm: wantsNear ? 18 : 45, basis: "keyword:23区" };
   if (coarse === "関東地方") return { hardMaxKm: wantsNear ? 120 : 350, basis: "keyword:関東" };
   if (coarse === "日本") return { hardMaxKm: 2000, basis: "keyword:全国/日本" };
 
+  // 3) fallback（候補平均中心を使うとき）
   return { hardMaxKm: wantsFar ? 200 : 50, basis: "fallback" };
 }
 
@@ -291,15 +360,18 @@ async function rankWithLLM(args: {
     JSON.stringify(compact, null, 2) +
     `\n\n${formatHint}`;
 
-  const model = process.env.OPENAI_MODEL_RECOMMEND_MAP || "gpt-4.1-mini";
+  const model = pickModelName();
 
-  const resp = await openai.responses.create({
-    model,
-    instructions,
-    input,
-    // ✅ JSONだけ返させる（混ざり物でパース失敗→既定文、を潰す）
-    text: { format: { type: "json_object" } },
-  });
+  const resp = await withRetry(
+    () =>
+      openai.responses.create({
+        model,
+        instructions,
+        input,
+        text: { format: { type: "json_object" } },
+      }),
+    2
+  );
 
   const obj = tryParseJsonObject(resp.output_text || "") || {};
   const understood = obj?.understood?.summary
@@ -308,18 +380,14 @@ async function rankWithLLM(args: {
 
   let results = Array.isArray(obj?.results) ? obj.results : [];
 
+  // safety: 候補に無いplace_idを除外
   const poolSet = new Set(pool.map((p) => p.place_id));
   results = results.filter((r: any) => poolSet.has(safeStr(r?.place_id)));
+
+  // 上限
   results = results.slice(0, maxResults);
 
-  return {
-    understood,
-    results,
-    _debug: {
-      llm_model: model,
-      parsed: !!obj && typeof obj === "object" && Object.keys(obj).length > 0,
-    },
-  };
+  return { understood, results, modelUsed: model };
 }
 
 export async function POST(req: Request) {
@@ -344,8 +412,12 @@ export async function POST(req: Request) {
 
   const openaiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_APIKEY || "";
   if (!openaiKey) {
-    return NextResponse.json({ ok: false, error: "OPENAI_API_KEY is missing" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "OPENAI_API_KEY is missing", meta: { ms: Date.now() - startedAt } },
+      { status: 500 }
+    );
   }
+
   const openai = new OpenAI({ apiKey: openaiKey });
 
   const googleKey =
@@ -364,8 +436,10 @@ export async function POST(req: Request) {
 
   // B) geocode → 中心座標確定
   let geo: Geo | null = null;
+  let geocodeOk = false;
   if (googleKey && locationText) {
     geo = await geocode(locationText, googleKey);
+    geocodeOk = !!geo;
   }
 
   // center fallback（geo無しなら候補平均）
@@ -394,6 +468,7 @@ export async function POST(req: Request) {
 
   const inScope = withDist.filter((x) => x.distance_km <= hardMaxKm);
 
+  // ✅ 禁忌：スコープ内が0なら、遠方を混ぜない
   if (inScope.length === 0) {
     return NextResponse.json({
       ok: true,
@@ -415,8 +490,12 @@ export async function POST(req: Request) {
         candidates_count: candidates.length,
         pool_count: 0,
         ms: Date.now() - startedAt,
-        llm_location_model: inferred._debug?.llm_model,
-        llm_location_parsed: inferred._debug?.parsed ?? false,
+        debug: {
+          model_hint: pickModelName(),
+          google_key_present: !!googleKey,
+          geocode_ok: geocodeOk,
+          infer_error: inferred.inferError ?? null,
+        },
       },
     });
   }
@@ -425,18 +504,26 @@ export async function POST(req: Request) {
   const POOL_CAP = 80;
   const pool = inScope.slice(0, POOL_CAP);
 
-  // F) LLMで文章＋選抜
+  // F) LLMで文章＋選抜（失敗したらフォールバック）
   let understood = { summary: "ユーザーの希望に合うお店を候補から選びます。", extracted_tags: [] as string[] };
-  let picked: Array<{ place_id: string; headline: string; subline: string; reason: string; match_score: number }> = [];
+  let picked: Array<{
+    place_id: string;
+    headline: string;
+    subline: string;
+    reason: string;
+    match_score: number;
+  }> = [];
 
-  let llmRankDebug: any = null;
+  let llmError: any = null;
+  let modelUsed = pickModelName();
 
   try {
     const llm = await rankWithLLM({ openai, userQuery: query, centerLabel, maxResults, pool });
     understood = llm.understood;
     picked = llm.results;
-    llmRankDebug = llm._debug;
-  } catch {
+    modelUsed = llm.modelUsed;
+  } catch (e: any) {
+    llmError = pickOpenAIError(e);
     picked = pool.slice(0, maxResults).map((p) => ({
       place_id: p.place_id,
       headline: p.name,
@@ -444,10 +531,9 @@ export async function POST(req: Request) {
       reason: "距離が近い候補から表示しています（LLM失敗fallback）。",
       match_score: 50,
     }));
-    llmRankDebug = { failed: true };
   }
 
-  // G) 結果に結合（place_idはpool内に限定される）
+  // G) 結果に結合（place_idはpool内に限定）
   const byId = new Map(pool.map((p) => [p.place_id, p]));
   const results = picked
     .map((r) => {
@@ -472,7 +558,7 @@ export async function POST(req: Request) {
     })
     .filter(Boolean) as any[];
 
-  // H) 足りない分はスコープ内の近い順で埋める（遠方は絶対に混ぜない）
+  // H) 足りない分はスコープ内の近い順で補完（遠方は混ぜない）
   if (results.length < maxResults) {
     const already = new Set(results.map((x) => x.place_id));
     for (const p of pool) {
@@ -497,6 +583,7 @@ export async function POST(req: Request) {
     }
   }
 
+  // 仕上げ：点差が僅差なら距離優先
   results.sort((a, b) => {
     const ds = (b.match_score ?? 0) - (a.match_score ?? 0);
     if (Math.abs(ds) >= 8) return ds;
@@ -518,11 +605,15 @@ export async function POST(req: Request) {
       candidates_count: candidates.length,
       pool_count: pool.length,
       ms: Date.now() - startedAt,
-      llm_location_model: inferred._debug?.llm_model,
-      llm_location_parsed: inferred._debug?.parsed ?? false,
-      llm_rank_model: llmRankDebug?.llm_model,
-      llm_rank_parsed: llmRankDebug?.parsed ?? false,
-      llm_rank_failed: !!llmRankDebug?.failed,
+      debug: {
+        model_used: modelUsed,
+        llm_error: llmError,
+        infer_error: inferred.inferError ?? null,
+        google_key_present: !!googleKey,
+        geocode_ok: geocodeOk,
+        // これが true で llm_error が 401/403/404 なら「キー/権限/モデル」問題が濃厚
+        openai_key_present: !!openaiKey,
+      },
     },
   });
 }
