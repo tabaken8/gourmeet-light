@@ -1,12 +1,10 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
-import MapRecommendPanel, {
-  RecommendItem,
-  Poster,
-} from "@/components/map/MapRecommendPanel";
+import MapRecommendPanel, { RecommendItem, Poster, Turn } from "@/components/map/MapRecommendPanel";
 
 type FollowRow = { follower_id: string; followee_id: string; status: string };
 type PostRow = {
@@ -19,10 +17,9 @@ type PostRow = {
   image_urls?: string[] | null;
   price_yen?: number | null;
   price_range?: string | null;
-
-  // ✅ 追加
   recommend_score?: number | null;
 };
+
 type PlaceRow = {
   place_id: string;
   lat: number | null;
@@ -30,55 +27,25 @@ type PlaceRow = {
   name: string | null;
   address: string | null;
   photo_url: string | null;
+  primary_genre: string | null;
+  genre_tags: string[];
 };
+
 type ProfileRow = {
   id: string;
   avatar_url: string | null;
   display_name?: string | null;
 };
+
 type UserPlacePinRow = { place_id: string; emoji: string | null };
 type UserPlaceRow = { place_id: string };
 
 type IconMode = "avatar" | "photo";
 
-/** ---- Genre (emoji) options ---- */
-type GenreOption = { key: string; emoji: string; label: string };
-const GENRES: GenreOption[] = [
-  { key: "ramen", emoji: "🍜", label: "ラーメン" },
-  { key: "sushi", emoji: "🍣", label: "寿司" },
-  { key: "yakiniku", emoji: "🥩", label: "焼肉" },
-  { key: "yakitori_izakaya", emoji: "🍺", label: "焼き鳥/居酒屋" },
-  { key: "chinese", emoji: "🥟", label: "中華" },
-  { key: "curry", emoji: "🍛", label: "カレー" },
-  { key: "italian", emoji: "🍝", label: "イタリアン" },
-  { key: "pizza", emoji: "🍕", label: "ピザ" },
-  { key: "burger", emoji: "🍔", label: "バーガー" },
-  { key: "cafe", emoji: "☕️", label: "カフェ" },
-  { key: "sweets", emoji: "🍰", label: "スイーツ" },
-  { key: "bar", emoji: "🍷", label: "バー/酒" },
-  { key: "other", emoji: "📍", label: "その他" },
-];
-
-function labelForEmoji(emoji: string | null | undefined) {
-  if (!emoji) return "";
-  return GENRES.find((g) => g.emoji === emoji)?.label ?? "";
-}
-
 /** ---- Budget helpers (loose range) ---- */
-type BudgetKey =
-  | "any"
-  | "0_2000"
-  | "2000_5000"
-  | "5000_10000"
-  | "10000_20000"
-  | "20000_plus";
+type BudgetKey = "any" | "0_2000" | "2000_5000" | "5000_10000" | "10000_20000" | "20000_plus";
 
-const BUDGETS: Array<{
-  key: BudgetKey;
-  label: string;
-  min: number | null;
-  max: number | null;
-}> = [
+const BUDGETS: Array<{ key: BudgetKey; label: string; min: number | null; max: number | null }> = [
   { key: "any", label: "指定なし", min: null, max: null },
   { key: "0_2000", label: "〜 ¥2,000", min: 0, max: 2000 },
   { key: "2000_5000", label: "¥2,000〜¥5,000", min: 2000, max: 5000 },
@@ -120,8 +87,7 @@ function expandedBudgetFromYen(y: number) {
   const hi = Math.min(BUDGETS.length - 1, i + 1);
   const min = BUDGETS[lo].min ?? 0;
   const max = BUDGETS[hi].max;
-  const label =
-    max == null ? `${formatYen(min)}〜` : `${formatYen(min)}〜${formatYen(max)}`;
+  const label = max == null ? `${formatYen(min)}〜` : `${formatYen(min)}〜${formatYen(max)}`;
   return { min, max, label };
 }
 
@@ -140,12 +106,7 @@ function passesBudgetFilterLoose(midYen: number | null, budgetKey: BudgetKey) {
 
   const left = Math.max(aMin, selMin);
   const right =
-    aMax == null && selMax == null
-      ? Infinity
-      : Math.min(
-          aMax == null ? Infinity : aMax,
-          selMax == null ? Infinity : selMax
-        );
+    aMax == null && selMax == null ? Infinity : Math.min(aMax == null ? Infinity : aMax, selMax == null ? Infinity : selMax);
 
   return left <= right;
 }
@@ -158,30 +119,30 @@ type PlacePin = {
   place_name: string;
   place_address: string;
 
+  primary_genre: string | null;
+  genre_tags: string[];
+
   users: Map<
     string,
     {
       avatar_url: string | null;
       display_name: string | null;
-      latest_created_at: number; // ms
+      latest_created_at: number;
     }
   >;
 
-  latest_post_at: number; // ms
+  latest_post_at: number;
   latest_user_id: string;
 
   latest_post_id: string;
   latest_image_url: string | null;
 
-  // ✅ 追加：カード表示用
   images_sample: string[];
   latest_price_yen: number | null;
   latest_price_range: string | null;
 
-  // ✅ 追加：おすすめ度（最新投稿のスコア）
   latest_recommend_score: number | null;
 
-  // ✅ 追加：同じ店の複数投稿（カード内横スクロールに使う）
   posts_sample: Array<{
     post_id: string;
     user_id: string;
@@ -241,12 +202,7 @@ function attachBadge(wrap: HTMLDivElement, badge: number) {
   }
 }
 
-function makeAvatarPinContent(args: {
-  avatarUrl: string | null;
-  badge?: number;
-  fallbackText: string;
-  highlight?: boolean;
-}) {
+function makeAvatarPinContent(args: { avatarUrl: string | null; badge?: number; fallbackText: string; highlight?: boolean }) {
   const wrap = document.createElement("div");
   wrap.style.position = "relative";
   wrap.style.width = "44px";
@@ -254,9 +210,7 @@ function makeAvatarPinContent(args: {
   wrap.style.borderRadius = "9999px";
   wrap.style.overflow = "hidden";
   wrap.style.boxShadow = "0 6px 18px rgba(0,0,0,0.22)";
-  wrap.style.border = args.highlight
-    ? "3px solid rgba(249,115,22,0.95)"
-    : "2px solid rgba(255,255,255,0.95)";
+  wrap.style.border = args.highlight ? "3px solid rgba(249,115,22,0.95)" : "2px solid rgba(255,255,255,0.95)";
   wrap.style.background = "white";
   wrap.style.cursor = "pointer";
   wrap.style.transform = "translateZ(0)";
@@ -289,12 +243,7 @@ function makeAvatarPinContent(args: {
   return wrap;
 }
 
-function makePhotoPinContent(args: {
-  imageUrl: string | null;
-  badge?: number;
-  fallbackText: string;
-  highlight?: boolean;
-}) {
+function makePhotoPinContent(args: { imageUrl: string | null; badge?: number; fallbackText: string; highlight?: boolean }) {
   const wrap = document.createElement("div");
   wrap.style.position = "relative";
   wrap.style.width = "44px";
@@ -302,9 +251,7 @@ function makePhotoPinContent(args: {
   wrap.style.borderRadius = "9999px";
   wrap.style.overflow = "hidden";
   wrap.style.boxShadow = "0 6px 18px rgba(0,0,0,0.22)";
-  wrap.style.border = args.highlight
-    ? "3px solid rgba(249,115,22,0.95)"
-    : "2px solid rgba(255,255,255,0.95)";
+  wrap.style.border = args.highlight ? "3px solid rgba(249,115,22,0.95)" : "2px solid rgba(255,255,255,0.95)";
   wrap.style.background = "white";
   wrap.style.cursor = "pointer";
   wrap.style.transform = "translateZ(0)";
@@ -337,36 +284,6 @@ function makePhotoPinContent(args: {
   return wrap;
 }
 
-function Chip({
-  active,
-  children,
-  onClick,
-}: {
-  active?: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flexShrink: 0,
-        borderRadius: 9999,
-        padding: "6px 10px",
-        fontSize: 12,
-        fontWeight: 700,
-        border: "1px solid rgba(0,0,0,0.08)",
-        background: active ? "#ea580c" : "rgba(0,0,0,0.04)",
-        color: active ? "white" : "rgba(0,0,0,0.65)",
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 function escapeHtml(s: string) {
   return (s || "")
     .replaceAll("&", "&amp;")
@@ -393,32 +310,36 @@ function uniqLimit(arr: string[], limit: number) {
 export default function SavedPlacesMapAI() {
   const supabase = createClientComponentClient();
 
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  const [threadId, setThreadId] = useState<string | null>(null);
+
+  // ✅ 履歴UI復元用
+  const [hydratedTurns, setHydratedTurns] = useState<Turn[] | null>(null);
+  const [hydrateKey, setHydrateKey] = useState<string | null>(null);
+
+  // ✅ debug trace（MapRecommendPanelの per-turn に入れる）
+  const [aiTrace, setAiTrace] = useState<string | null>(null);
+
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const markerByPlaceIdRef = useRef<Map<string, any>>(new Map());
   const infoRef = useRef<any>(null);
 
-  const gmapsRef = useRef<{
-    GMap: any;
-    AdvancedMarkerElement: any;
-    InfoWindow: any;
-  } | null>(null);
+  const gmapsRef = useRef<{ GMap: any; AdvancedMarkerElement: any; InfoWindow: any } | null>(null);
 
   const [gmapsReady, setGmapsReady] = useState(false);
 
-  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">(
-    "idle"
-  );
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [errorText, setErrorText] = useState<string>("");
 
-  // filters & view modes
   const [savedOnly, setSavedOnly] = useState(false);
-  const [activeGenreEmoji, setActiveGenreEmoji] = useState<string | null>(null);
+  const [activePrimaryGenre, setActivePrimaryGenre] = useState<string | null>(null);
   const [activeBudgetKey, setActiveBudgetKey] = useState<BudgetKey>("any");
   const [iconMode, setIconMode] = useState<IconMode>("photo");
 
-  // loaded pins
   const [pins, setPins] = useState<PlacePin[]>([]);
 
   // ✅ AI UI
@@ -426,48 +347,40 @@ export default function SavedPlacesMapAI() {
   const [aiMaxResults, setAiMaxResults] = useState(4);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiUnderstood, setAiUnderstood] = useState<string | null>(null);
-  const [aiResults, setAiResults] = useState<
-    Array<{ place_id: string; reason?: string; match_score?: number }>
-  >([]);
+  const [aiResults, setAiResults] = useState<Array<{ place_id: string; reason?: string; match_score?: number }>>([]);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  const apiKey =
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
-    process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY ||
-    "";
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY || "";
   const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || "";
 
-  const genreCounts = useMemo(() => {
+  useEffect(() => {
+    const t = sp.get("thread");
+    if (t && t.trim()) setThreadId(t.trim());
+  }, [sp]);
+
+  const primaryGenreCounts = useMemo(() => {
     const m = new Map<string, number>();
     pins.forEach((p) => {
-      const e = p.genre_emoji || "📍";
-      m.set(e, (m.get(e) ?? 0) + 1);
+      const g = (p.primary_genre ?? "").trim();
+      if (!g) return;
+      m.set(g, (m.get(g) ?? 0) + 1);
     });
     return m;
   }, [pins]);
 
-  const availableGenres = useMemo(() => {
-    const res: Array<{ emoji: string; label: string; count: number }> = [];
-    GENRES.forEach((g) => {
-      const c = genreCounts.get(g.emoji) ?? 0;
-      if (c > 0) res.push({ emoji: g.emoji, label: g.label, count: c });
-    });
-    genreCounts.forEach((count, emoji) => {
-      if (count <= 0) return;
-      const known = GENRES.some((g) => g.emoji === emoji);
-      if (!known) res.push({ emoji, label: labelForEmoji(emoji) || "その他", count });
-    });
-    return res;
-  }, [genreCounts]);
+  const availablePrimaryGenres = useMemo(() => {
+    return Array.from(primaryGenreCounts.entries())
+      .map(([genre, count]) => ({ genre, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [primaryGenreCounts]);
 
   const filteredPins = useMemo(() => {
     let base = pins;
     if (savedOnly) base = base.filter((p) => p.is_saved);
-    if (activeGenreEmoji) base = base.filter((p) => p.genre_emoji === activeGenreEmoji);
-    if (activeBudgetKey !== "any")
-      base = base.filter((p) => passesBudgetFilterLoose(p.budget_mid_yen, activeBudgetKey));
+    if (activePrimaryGenre) base = base.filter((p) => (p.primary_genre ?? "") === activePrimaryGenre);
+    if (activeBudgetKey !== "any") base = base.filter((p) => passesBudgetFilterLoose(p.budget_mid_yen, activeBudgetKey));
     return base;
-  }, [pins, savedOnly, activeGenreEmoji, activeBudgetKey]);
+  }, [pins, savedOnly, activePrimaryGenre, activeBudgetKey]);
 
   const pinById = useMemo(() => {
     const m = new Map<string, PlacePin>();
@@ -475,9 +388,7 @@ export default function SavedPlacesMapAI() {
     return m;
   }, [pins]);
 
-  const recommendedIdSet = useMemo(() => {
-    return new Set(aiResults.map((r) => r.place_id));
-  }, [aiResults]);
+  const recommendedIdSet = useMemo(() => new Set(aiResults.map((r) => r.place_id)), [aiResults]);
 
   const recommendItems: RecommendItem[] = useMemo(() => {
     const out: RecommendItem[] = [];
@@ -511,7 +422,6 @@ export default function SavedPlacesMapAI() {
         price_yen: pin.latest_price_yen ?? null,
         price_range: pin.latest_price_range ?? null,
 
-        // ✅ 追加（Panel側で表示）
         recommend_score: pin.latest_recommend_score ?? null,
         latest_post_id: pin.latest_post_id ?? null,
         posts_sample: (pin.posts_sample ?? []).map((x) => ({
@@ -526,7 +436,7 @@ export default function SavedPlacesMapAI() {
           price_range: x.price_range ?? null,
         })),
 
-        genre_emoji: pin.genre_emoji ?? "📍",
+        genre_emoji: pin.genre_emoji ?? "",
         is_saved: pin.is_saved,
         posters,
       });
@@ -535,19 +445,18 @@ export default function SavedPlacesMapAI() {
   }, [aiResults, pinById]);
 
   function makeInfoHtml(pin: PlacePin) {
-    const budgetLabel =
-      pin.budget_mid_yen != null ? expandedBudgetFromYen(pin.budget_mid_yen).label : "—";
-    const genreLabel =
-      labelForEmoji(pin.genre_emoji) || (pin.genre_emoji === "📍" ? "未設定" : "その他");
+    const budgetLabel = pin.budget_mid_yen != null ? expandedBudgetFromYen(pin.budget_mid_yen).label : "—";
+
+    const primary = (pin.primary_genre ?? "").trim() || "未設定";
+    const tags = Array.isArray(pin.genre_tags) ? pin.genre_tags.filter(Boolean) : [];
+    const tagsLine = tags.length ? tags.slice(0, 6).join(" / ") : "";
 
     const rs =
-      typeof pin.latest_recommend_score === "number" &&
-      pin.latest_recommend_score >= 1 &&
-      pin.latest_recommend_score <= 10
+      typeof pin.latest_recommend_score === "number" && pin.latest_recommend_score >= 1 && pin.latest_recommend_score <= 10
         ? pin.latest_recommend_score
         : null;
 
-    const html = `
+    return `
       <div style="min-width:240px">
         <div style="font-weight:800;font-size:14px;margin-bottom:6px;">${escapeHtml(pin.place_name)}</div>
         ${
@@ -557,7 +466,7 @@ export default function SavedPlacesMapAI() {
         }
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
           <span style="font-size:12px; padding:4px 8px; border-radius:9999px; border:1px solid rgba(0,0,0,0.08); background:rgba(0,0,0,0.03);">
-            ジャンル: ${escapeHtml(pin.genre_emoji)} ${escapeHtml(genreLabel)}
+            ジャンル: ${escapeHtml(primary)}
           </span>
           <span style="font-size:12px; padding:4px 8px; border-radius:9999px; border:1px solid rgba(0,0,0,0.08); background:rgba(0,0,0,0.03);">
             予算(目安): ${escapeHtml(budgetLabel)}
@@ -575,10 +484,10 @@ export default function SavedPlacesMapAI() {
               : ""
           }
         </div>
+        ${tagsLine ? `<div style="font-size:12px;color:#374151;margin-bottom:6px;">タグ: ${escapeHtml(tagsLine)}</div>` : ""}
         <div style="font-size:12px;color:#111827;">投稿者: ${pin.users.size}人</div>
       </div>
     `;
-    return html;
   }
 
   async function runAI() {
@@ -589,24 +498,25 @@ export default function SavedPlacesMapAI() {
     setAiError(null);
     setAiUnderstood(null);
     setAiResults([]);
+    setAiTrace(null);
 
-    // ✅ 候補は「いま地図に出せるもの」だけ（フィルタ反映）
     const candidates = filteredPins.map((p) => ({
       place_id: p.place_id,
       name: p.place_name,
       address: p.place_address,
       lat: p.lat,
       lng: p.lng,
-      genre_emoji: p.genre_emoji,
+
+      primary_genre: p.primary_genre ?? null,
+      genre_tags: Array.isArray(p.genre_tags) ? p.genre_tags : [],
+
       budget_mid_yen: p.budget_mid_yen,
       is_saved: p.is_saved,
 
-      // backendが使わなくてもOK：将来拡張用
       images_sample: p.images_sample ?? [],
       price_yen: p.latest_price_yen ?? null,
       price_range: p.latest_price_range ?? null,
 
-      // ✅ 追加：推薦カードで使うデータ（API側が無視してもOK）
       latest_post_id: p.latest_post_id ?? null,
       recommend_score: p.latest_recommend_score ?? null,
     }));
@@ -618,6 +528,7 @@ export default function SavedPlacesMapAI() {
         body: JSON.stringify({
           query: q,
           maxResults: Math.max(1, Math.min(5, aiMaxResults)),
+          threadId, // ✅ 送る
           candidates,
         }),
       });
@@ -625,11 +536,22 @@ export default function SavedPlacesMapAI() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
-      // 想定形： { understood: { summary }, results: [{ place_id, reason, match_score }] }
+      // ✅ thread_id を受け取ってURLに載せる（初回だけ）
+      const newThreadId = typeof payload?.thread_id === "string" ? payload.thread_id : null;
+      if (newThreadId && !threadId) {
+        setThreadId(newThreadId);
+        router.replace(`?thread=${encodeURIComponent(newThreadId)}`);
+      }
+
       const summary = payload?.understood?.summary ?? null;
       const results = Array.isArray(payload?.results) ? payload.results : [];
+      const assistant = typeof payload?.assistant_message === "string" ? payload.assistant_message : null;
 
-      setAiUnderstood(summary);
+      // trace
+      const trace = typeof payload?.meta?.trace === "string" ? payload.meta.trace : null;
+      setAiTrace(trace);
+
+      setAiUnderstood(assistant ? `${summary ?? ""}\n\n${assistant}`.trim() : summary);
 
       setAiResults(
         results
@@ -646,6 +568,122 @@ export default function SavedPlacesMapAI() {
       setAiLoading(false);
     }
   }
+
+  function buildItemsFromMinimalResults(minResults: Array<{ place_id: string; reason?: string; match_score?: number }>) {
+    const out: RecommendItem[] = [];
+    for (const r of minResults) {
+      const pin = pinById.get(r.place_id);
+      if (!pin) continue;
+
+      const posters: Poster[] = Array.from(pin.users.entries())
+        .map(([user_id, u]) => ({
+          user_id,
+          display_name: u.display_name ?? null,
+          avatar_url: u.avatar_url ?? null,
+        }))
+        .sort((a, b) => {
+          const ua = pin.users.get(a.user_id)?.latest_created_at ?? 0;
+          const ub = pin.users.get(b.user_id)?.latest_created_at ?? 0;
+          return ub - ua;
+        });
+
+      out.push({
+        place_id: pin.place_id,
+        name: pin.place_name,
+        address: pin.place_address,
+        lat: pin.lat,
+        lng: pin.lng,
+        reason: r.reason ?? null,
+        match_score: typeof r.match_score === "number" ? r.match_score : null,
+        images: pin.images_sample ?? [],
+        price_yen: pin.latest_price_yen ?? null,
+        price_range: pin.latest_price_range ?? null,
+        recommend_score: pin.latest_recommend_score ?? null,
+        latest_post_id: pin.latest_post_id ?? null,
+        posts_sample: (pin.posts_sample ?? []).map((x) => ({
+          post_id: x.post_id,
+          user_id: x.user_id,
+          display_name: x.display_name ?? null,
+          avatar_url: x.avatar_url ?? null,
+          created_at_ms: x.created_at_ms,
+          image_urls: x.image_urls ?? [],
+          recommend_score: x.recommend_score ?? null,
+          price_yen: x.price_yen ?? null,
+          price_range: x.price_range ?? null,
+        })),
+        genre_emoji: pin.genre_emoji ?? "",
+        is_saved: pin.is_saved,
+        posters,
+      });
+    }
+    return out;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadThreadHistory(tid: string) {
+      // pinsが揃ってからじゃないと items 変換できない
+      if (status !== "ready") return;
+
+      const res = await fetch(`/api/recommend-map?thread_id=${encodeURIComponent(tid)}`, { method: "GET" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+
+      const msgs = Array.isArray(payload?.messages) ? payload.messages : [];
+
+      const turns: Turn[] = [];
+      let pendingUser: { id: string; text: string } | null = null;
+
+      for (const m of msgs) {
+        const role = String(m?.role ?? "");
+        const content = String(m?.content ?? "");
+        const id = String(m?.id ?? "");
+
+        if (role === "user") {
+          pendingUser = { id, text: content };
+          continue;
+        }
+
+        if (role === "assistant" && pendingUser) {
+          const meta = m?.meta ?? null;
+          const rawResults = Array.isArray(meta?.results) ? meta.results : [];
+          const minResults = rawResults
+            .map((r: any) => ({
+              place_id: String(r?.place_id ?? ""),
+              reason: typeof r?.reason === "string" ? r.reason : "",
+              match_score: typeof r?.match_score === "number" ? r.match_score : undefined,
+            }))
+            .filter((x: any) => !!x.place_id);
+
+          const items = buildItemsFromMinimalResults(minResults);
+          const traceText = typeof meta?.trace === "string" ? meta.trace : null;
+
+          turns.push({
+            id: pendingUser.id, // user message id を turn id に
+            userText: pendingUser.text,
+            assistantText: content,
+            items,
+            traceText,
+          });
+
+          pendingUser = null;
+        }
+      }
+
+      if (cancelled) return;
+      setHydratedTurns(turns.length ? turns : null);
+      setHydrateKey(tid);
+    }
+
+    if (threadId && threadId.trim()) {
+      loadThreadHistory(threadId.trim()).catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [threadId, status, pinById]);
 
   function focusPlace(placeId: string) {
     const pin = pinById.get(placeId);
@@ -689,7 +727,6 @@ export default function SavedPlacesMapAI() {
       }
       const myUid = userRes.user.id;
 
-      // 1) followees
       const { data: follows, error: fErr } = await supabase
         .from("follows")
         .select("followee_id, status")
@@ -709,7 +746,6 @@ export default function SavedPlacesMapAI() {
         return;
       }
 
-      // 2) profiles avatars (+display_name)
       const { data: profiles, error: prErr } = await supabase
         .from("profiles")
         .select("id, avatar_url, display_name")
@@ -717,10 +753,7 @@ export default function SavedPlacesMapAI() {
 
       if (prErr) console.warn("profiles fetch error:", prErr.message);
 
-      const profileByUser = new Map<
-        string,
-        { avatar_url: string | null; display_name: string | null }
-      >();
+      const profileByUser = new Map<string, { avatar_url: string | null; display_name: string | null }>();
       (profiles as ProfileRow[] | null)?.forEach((p) =>
         profileByUser.set(p.id, {
           avatar_url: p.avatar_url ?? null,
@@ -728,12 +761,9 @@ export default function SavedPlacesMapAI() {
         })
       );
 
-      // 3) posts (include images/budget + recommend_score)
       const { data: posts, error: poErr } = await supabase
         .from("posts")
-        .select(
-          "id, user_id, place_id, place_name, place_address, created_at, image_urls, price_yen, price_range, recommend_score"
-        )
+        .select("id, user_id, place_id, place_name, place_address, created_at, image_urls, price_yen, price_range, recommend_score")
         .in("user_id", followeeIds)
         .not("place_id", "is", null)
         .order("created_at", { ascending: false })
@@ -754,10 +784,9 @@ export default function SavedPlacesMapAI() {
         return;
       }
 
-      // 4) places lat/lng
       const { data: places, error: plErr } = await supabase
         .from("places")
-        .select("place_id, lat, lng, name, address, photo_url")
+        .select("place_id, lat, lng, name, address, photo_url, primary_genre, genre_tags")
         .in("place_id", placeIds);
 
       if (plErr) {
@@ -767,20 +796,25 @@ export default function SavedPlacesMapAI() {
       }
 
       const placeById = new Map<string, PlaceRow>();
-      ((places as PlaceRow[] | null) ?? []).forEach((p) => placeById.set(p.place_id, p));
+      ((places as PlaceRow[] | null) ?? []).forEach((p: any) => {
+        placeById.set(p.place_id, {
+          place_id: p.place_id,
+          lat: p.lat ?? null,
+          lng: p.lng ?? null,
+          name: p.name ?? null,
+          address: p.address ?? null,
+          photo_url: p.photo_url ?? null,
+          primary_genre: p.primary_genre ?? null,
+          genre_tags: Array.isArray(p.genre_tags) ? p.genre_tags : [],
+        });
+      });
 
-      // 5) my saved set (user_places)
       const savedSet = new Set<string>();
       try {
         const CHUNK = 200;
         for (let i = 0; i < placeIds.length; i += CHUNK) {
           const chunk = placeIds.slice(i, i + CHUNK);
-          const { data: up, error } = await supabase
-            .from("user_places")
-            .select("place_id")
-            .eq("user_id", myUid)
-            .in("place_id", chunk);
-
+          const { data: up, error } = await supabase.from("user_places").select("place_id").eq("user_id", myUid).in("place_id", chunk);
           if (error) {
             console.warn("[user_places] fetch failed:", error.message);
             continue;
@@ -793,7 +827,6 @@ export default function SavedPlacesMapAI() {
         console.warn("[user_places] exception:", e);
       }
 
-      // 6) my genre pins (user_place_pins)
       const emojiByPlace = new Map<string, string>();
       try {
         const CHUNK = 200;
@@ -819,7 +852,6 @@ export default function SavedPlacesMapAI() {
         console.warn("[user_place_pins] exception:", e);
       }
 
-      // 7) aggregate by place_id
       const pinByPlace = new Map<string, PlacePin>();
 
       for (const p of postRows) {
@@ -836,26 +868,17 @@ export default function SavedPlacesMapAI() {
         const avatarUrl = prof?.avatar_url ?? null;
         const displayName = prof?.display_name ?? null;
 
-        const img0 =
-          Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
+        const img0 = Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
 
         const mid =
-          typeof p.price_yen === "number" && Number.isFinite(p.price_yen)
-            ? p.price_yen
-            : parsePriceRangeToYen(p.price_range ?? null);
+          typeof p.price_yen === "number" && Number.isFinite(p.price_yen) ? p.price_yen : parsePriceRangeToYen(p.price_range ?? null);
 
-        const rec =
-          typeof p.recommend_score === "number" && Number.isFinite(p.recommend_score)
-            ? p.recommend_score
-            : null;
+        const rec = typeof p.recommend_score === "number" && Number.isFinite(p.recommend_score) ? p.recommend_score : null;
 
         const existing = pinByPlace.get(p.place_id);
 
         if (!existing) {
-          const users = new Map<
-            string,
-            { avatar_url: string | null; display_name: string | null; latest_created_at: number }
-          >();
+          const users = new Map<string, { avatar_url: string | null; display_name: string | null; latest_created_at: number }>();
           users.set(uid, { avatar_url: avatarUrl, display_name: displayName, latest_created_at: createdMs });
 
           const firstMini = {
@@ -876,6 +899,10 @@ export default function SavedPlacesMapAI() {
             lng: plc.lng,
             place_name: placeName,
             place_address: placeAddr,
+
+            primary_genre: plc.primary_genre ?? null,
+            genre_tags: Array.isArray(plc.genre_tags) ? plc.genre_tags : [],
+
             users,
             latest_post_at: createdMs,
             latest_user_id: uid,
@@ -893,22 +920,17 @@ export default function SavedPlacesMapAI() {
 
             budget_mid_yen: mid ?? null,
 
-            genre_emoji: emojiByPlace.get(p.place_id) ?? "📍",
+            genre_emoji: emojiByPlace.get(p.place_id) ?? "",
             is_saved: savedSet.has(p.place_id),
           });
         } else {
-          // user latest
           const u = existing.users.get(uid);
           if (!u || createdMs > u.latest_created_at) {
             existing.users.set(uid, { avatar_url: avatarUrl, display_name: displayName, latest_created_at: createdMs });
           }
 
-          // images sample（各postの先頭画像だけ集める）
-          if (img0) {
-            existing.images_sample = uniqLimit([...(existing.images_sample ?? []), img0], 5);
-          }
+          if (img0) existing.images_sample = uniqLimit([...(existing.images_sample ?? []), img0], 5);
 
-          // ✅ posts_sample 追加（重複防止 + 最新順 + 上限8）
           const existed = existing.posts_sample?.some((x) => x.post_id === p.id) ?? false;
           if (!existed) {
             const mini = {
@@ -923,12 +945,9 @@ export default function SavedPlacesMapAI() {
               price_range: p.price_range ?? null,
             };
 
-            existing.posts_sample = [mini, ...(existing.posts_sample ?? [])]
-              .sort((a, b) => b.created_at_ms - a.created_at_ms)
-              .slice(0, 8);
+            existing.posts_sample = [mini, ...(existing.posts_sample ?? [])].sort((a, b) => b.created_at_ms - a.created_at_ms).slice(0, 8);
           }
 
-          // latest post info
           if (createdMs > existing.latest_post_at) {
             existing.latest_post_at = createdMs;
             existing.latest_user_id = uid;
@@ -942,16 +961,12 @@ export default function SavedPlacesMapAI() {
             existing.latest_price_range = p.price_range ?? existing.latest_price_range;
 
             existing.budget_mid_yen = (mid ?? null) ?? existing.budget_mid_yen;
-
-            // ✅ 最新投稿のおすすめ度
             existing.latest_recommend_score = rec ?? existing.latest_recommend_score;
           }
         }
       }
 
-      const pinsSorted = Array.from(pinByPlace.values()).sort(
-        (a, b) => b.latest_post_at - a.latest_post_at
-      );
+      const pinsSorted = Array.from(pinByPlace.values()).sort((a, b) => b.latest_post_at - a.latest_post_at);
 
       if (cancelled) return;
       setPins(pinsSorted);
@@ -976,12 +991,7 @@ export default function SavedPlacesMapAI() {
     async function load() {
       if (!apiKey || !mapId) return;
 
-      ensureGmapsOptionsOnce({
-        key: apiKey,
-        v: "weekly",
-        language: "ja",
-        region: "JP",
-      });
+      ensureGmapsOptionsOnce({ key: apiKey, v: "weekly", language: "ja", region: "JP" });
 
       const [{ Map: GMap, InfoWindow }, { AdvancedMarkerElement }] = await Promise.all([
         importLibrary("maps") as Promise<any>,
@@ -1028,7 +1038,6 @@ export default function SavedPlacesMapAI() {
     const libs = gmapsRef.current;
     if (!map || !libs) return;
 
-    // cleanup markers
     for (const m of markersRef.current) {
       try {
         m.map = null;
@@ -1054,18 +1063,8 @@ export default function SavedPlacesMapAI() {
 
       const content =
         iconMode === "photo"
-          ? makePhotoPinContent({
-              imageUrl: pin.latest_image_url,
-              badge: badgeCount,
-              fallbackText: "📷",
-              highlight,
-            })
-          : makeAvatarPinContent({
-              avatarUrl: latestAvatar,
-              badge: badgeCount,
-              fallbackText: fallbackInitial(latestUid),
-              highlight,
-            });
+          ? makePhotoPinContent({ imageUrl: pin.latest_image_url, badge: badgeCount, fallbackText: "📷", highlight })
+          : makeAvatarPinContent({ avatarUrl: latestAvatar, badge: badgeCount, fallbackText: fallbackInitial(latestUid), highlight });
 
       const marker = new libs.AdvancedMarkerElement({
         map,
@@ -1089,52 +1088,18 @@ export default function SavedPlacesMapAI() {
   return (
     <div style={{ width: "100%" }}>
       {/* header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 10,
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <div style={{ fontWeight: 900 }}>マップ</div>
 
-        {status === "loading" && (
-          <div style={{ fontSize: 12, color: "#6b7280" }}>読み込み中…</div>
-        )}
-        {status === "error" && (
-          <div style={{ fontSize: 12, color: "#ef4444" }}>{errorText}</div>
-        )}
+        {status === "loading" && <div style={{ fontSize: 12, color: "#6b7280" }}>読み込み中…</div>}
+        {status === "error" && <div style={{ fontSize: 12, color: "#ef4444" }}>{errorText}</div>}
 
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          {/* saved only */}
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 12,
-              color: "#374151",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={savedOnly}
-              onChange={(e) => setSavedOnly(e.target.checked)}
-            />
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#374151" }}>
+            <input type="checkbox" checked={savedOnly} onChange={(e) => setSavedOnly(e.target.checked)} />
             保存済みのみ
           </label>
 
-          {/* icon mode */}
           <button
             type="button"
             onClick={() => setIconMode((m) => (m === "avatar" ? "photo" : "avatar"))}
@@ -1152,7 +1117,6 @@ export default function SavedPlacesMapAI() {
             {iconMode === "avatar" ? "👤 アイコン" : "🖼️ 写真"}
           </button>
 
-          {/* budget */}
           <select
             value={activeBudgetKey}
             onChange={(e) => setActiveBudgetKey(e.target.value as BudgetKey)}
@@ -1173,11 +1137,32 @@ export default function SavedPlacesMapAI() {
             ))}
           </select>
 
+          <select
+            value={activePrimaryGenre ?? ""}
+            onChange={(e) => setActivePrimaryGenre(e.target.value || null)}
+            style={{
+              borderRadius: 12,
+              padding: "8px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              border: "1px solid rgba(0,0,0,0.10)",
+              background: "white",
+            }}
+            title="ジャンル（primary_genre）"
+          >
+            <option value="">ジャンル: すべて</option>
+            {availablePrimaryGenres.map((g) => (
+              <option key={g.genre} value={g.genre}>
+                {g.genre} ({g.count})
+              </option>
+            ))}
+          </select>
+
           <button
             type="button"
             onClick={() => {
               setSavedOnly(false);
-              setActiveGenreEmoji(null);
+              setActivePrimaryGenre(null);
               setActiveBudgetKey("any");
             }}
             style={{
@@ -1196,30 +1181,6 @@ export default function SavedPlacesMapAI() {
         </div>
       </div>
 
-      {/* genre chips */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          overflowX: "auto",
-          paddingBottom: 8,
-          marginBottom: 10,
-        }}
-      >
-        <Chip active={!activeGenreEmoji} onClick={() => setActiveGenreEmoji(null)}>
-          すべて
-        </Chip>
-        {availableGenres.map((g) => (
-          <Chip
-            key={`${g.emoji}-${g.label}`}
-            active={activeGenreEmoji === g.emoji}
-            onClick={() => setActiveGenreEmoji(g.emoji)}
-          >
-            {g.emoji} {g.label} ({g.count})
-          </Chip>
-        ))}
-      </div>
-
       {/* AI search panel */}
       <div className="mb-3 rounded-2xl border border-black/10 bg-white p-3 shadow-sm">
         <MapRecommendPanel
@@ -1232,6 +1193,9 @@ export default function SavedPlacesMapAI() {
           understoodSummary={aiError ? `エラー: ${aiError}` : aiUnderstood}
           items={recommendItems}
           onFocusPlace={focusPlace}
+          traceText={aiTrace} // ✅追加
+          hydratedTurns={hydratedTurns} // ✅追加
+          hydrateKey={hydrateKey} // ✅追加
         />
       </div>
 
@@ -1249,7 +1213,6 @@ export default function SavedPlacesMapAI() {
         />
       </div>
 
-      {/* footer hint */}
       <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
         pins: {filteredPins.length} / total: {pins.length}
       </div>

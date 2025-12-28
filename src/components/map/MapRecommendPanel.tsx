@@ -29,11 +29,9 @@ export type RecommendItem = {
   lat: number;
   lng: number;
 
-  // ai
   reason?: string | null;
   match_score?: number | null;
 
-  // place aggregation
   images?: string[];
   price_yen?: number | null;
   price_range?: string | null;
@@ -46,6 +44,14 @@ export type RecommendItem = {
 
   latest_post_id?: string | null;
   posts_sample?: PostMini[];
+};
+
+export type Turn = {
+  id: string;
+  userText: string;
+  assistantText?: string | null;
+  items?: RecommendItem[];
+  traceText?: string | null;
 };
 
 function formatYen(n: number) {
@@ -148,13 +154,7 @@ function Avatar({ p }: { p: Poster }) {
   );
 }
 
-function Chip({
-  children,
-  tone = "slate",
-}: {
-  children: React.ReactNode;
-  tone?: "slate" | "orange";
-}) {
+function Chip({ children, tone = "slate" }: { children: React.ReactNode; tone?: "slate" | "orange" }) {
   const cls =
     tone === "orange"
       ? "border-orange-200 bg-orange-50 text-orange-800"
@@ -185,14 +185,6 @@ function MiniIdentity({ displayName, avatarUrl }: { displayName: string | null; 
   );
 }
 
-type Turn = {
-  id: string;
-  userText: string;
-  assistantText?: string | null;
-  items?: RecommendItem[];
-  traceText?: string | null;
-};
-
 function makeTurnId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -208,11 +200,6 @@ function signature(summary?: string | null, items?: RecommendItem[]) {
   return `${s}__${ids}`;
 }
 
-/**
- * ChatログUI版
- * - 送信ごとに1ターン積む
- * - 結果が返ってきたらそのターンに紐づける
- */
 export default function MapRecommendPanel({
   query,
   onChangeQuery,
@@ -223,7 +210,11 @@ export default function MapRecommendPanel({
   understoodSummary,
   items,
   onFocusPlace,
-  traceText, // ✅追加: meta.trace を親から渡す
+  traceText,
+
+  // ✅ hydration
+  hydratedTurns,
+  hydrateKey,
 }: {
   query: string;
   onChangeQuery: (s: string) => void;
@@ -235,13 +226,30 @@ export default function MapRecommendPanel({
   items: RecommendItem[];
   onFocusPlace: (placeId: string) => void;
   traceText?: string | null;
+
+  hydratedTurns?: Turn[] | null;
+  hydrateKey?: string | null;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // ✅ chat log
   const [turns, setTurns] = useState<Turn[]>([]);
   const pendingTurnIdRef = useRef<string | null>(null);
   const lastAppliedSigRef = useRef<string>("");
+
+  // ✅ hydration apply once per hydrateKey
+  const lastHydrateKeyRef = useRef<string>("");
+  useEffect(() => {
+    const key = (hydrateKey ?? "").trim();
+    if (!key) return;
+    if (!hydratedTurns) return;
+    if (key === lastHydrateKeyRef.current) return;
+
+    lastHydrateKeyRef.current = key;
+    pendingTurnIdRef.current = null;
+    lastAppliedSigRef.current = "";
+    setExpandedId(null);
+    setTurns(hydratedTurns);
+  }, [hydratedTurns, hydrateKey]);
 
   // scroll
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -255,7 +263,6 @@ export default function MapRecommendPanel({
     return "文章で探せる（例：静かでデート向き、ワイン）";
   }, [loading, understoodSummary]);
 
-  // ✅ Enterで実行（フォーム送信）
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -276,13 +283,10 @@ export default function MapRecommendPanel({
       },
     ]);
 
-    // 親がqueryをクリアする設計でもOKだし、残す設計でもOK
     onRun();
     onChangeQuery("");
   };
-  
 
-  // ✅ 返答が「確定」したら、pendingターンに結果を注入
   useEffect(() => {
     if (loading) return;
     const pendingId = pendingTurnIdRef.current;
@@ -310,7 +314,6 @@ export default function MapRecommendPanel({
     );
   }, [loading, understoodSummary, items, traceText, headerText]);
 
-  // まだ一度も送ってないときは “擬似ターン” を表示（空UIを防ぐ）
   const displayTurns: Turn[] = turns.length
     ? turns
     : [
@@ -325,13 +328,11 @@ export default function MapRecommendPanel({
 
   return (
     <div className="w-full">
-      {/* chat area */}
       <div className="rounded-2xl border border-black/10 bg-white shadow-sm">
         <div className="max-h-[420px] overflow-y-auto p-3">
           <div className="space-y-3">
             {displayTurns.map((turn) => (
               <div key={turn.id} className="space-y-2">
-                {/* user bubble */}
                 {turn.userText ? (
                   <div className="flex justify-end">
                     <div className="max-w-[85%] rounded-2xl bg-slate-900 px-3 py-2 text-sm text-white">
@@ -340,13 +341,12 @@ export default function MapRecommendPanel({
                   </div>
                 ) : null}
 
-                {/* assistant bubble */}
                 {turn.assistantText ? (
                   <div className="flex justify-start">
                     <div className="w-full max-w-[90%] rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-800 border border-black/5">
                       <div className="flex items-center gap-2">
                         <Sparkles size={16} className="text-orange-600" />
-                        <div className="font-semibold">{turn.assistantText}</div>
+                        <div className="font-semibold whitespace-pre-wrap">{turn.assistantText}</div>
                         {turn.id !== "welcome" && (
                           <div className="ml-auto text-[11px] font-semibold text-slate-500">
                             {Array.isArray(turn.items) ? `${turn.items.length}件` : ""}
@@ -354,7 +354,6 @@ export default function MapRecommendPanel({
                         )}
                       </div>
 
-                      {/* results inside the assistant turn */}
                       {turn.items && turn.items.length > 0 ? (
                         <div className="mt-3">
                           <div className="flex gap-3 overflow-x-auto pb-2">
@@ -389,7 +388,6 @@ export default function MapRecommendPanel({
                                   key={it.place_id}
                                   className="shrink-0 w-[360px] rounded-2xl bg-white border border-black/10 shadow-sm p-3"
                                 >
-                                  {/* header / focus */}
                                   <div
                                     role="button"
                                     tabIndex={0}
@@ -548,7 +546,6 @@ export default function MapRecommendPanel({
                         </div>
                       ) : null}
 
-                      {/* debug trace per-turn */}
                       {turn.traceText ? (
                         <details className="mt-3 rounded-xl border border-black/10 bg-white">
                           <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-slate-700 flex items-center gap-2">
@@ -570,7 +567,6 @@ export default function MapRecommendPanel({
           <div ref={bottomRef} />
         </div>
 
-        {/* input area */}
         <div className="border-t border-black/10 p-3">
           <form onSubmit={handleSubmit} className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -615,8 +611,7 @@ export default function MapRecommendPanel({
             </button>
           </form>
 
-          {/* hint line */}
-          <div className="mt-2 text-[12px] text-slate-600">{headerText}</div>
+          <div className="mt-2 text-[12px] text-slate-600 whitespace-pre-wrap">{headerText}</div>
         </div>
       </div>
     </div>
