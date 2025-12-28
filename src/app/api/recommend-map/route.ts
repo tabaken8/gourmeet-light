@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { Annotation, StateGraph } from "@langchain/langgraph";
 
 export const runtime = "nodejs";
 
@@ -23,23 +24,18 @@ type ApiBody = {
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
 }
-
 function toRad(x: number) {
   return (x * Math.PI) / 180;
 }
-
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
   const lat1 = toRad(a.lat);
   const lat2 = toRad(b.lat);
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
-
 function safeStr(x: unknown, fallback = ""): string {
   return typeof x === "string" ? x : fallback;
 }
@@ -47,7 +43,6 @@ function safeNum(x: unknown, fallback = 0): number {
   const n = typeof x === "number" ? x : Number(x);
   return Number.isFinite(n) ? n : fallback;
 }
-
 function normalizeCandidates(raw: unknown): Candidate[] {
   if (!Array.isArray(raw)) return [];
   const out: Candidate[] = [];
@@ -75,7 +70,6 @@ function normalizeCandidates(raw: unknown): Candidate[] {
   return out;
 }
 
-/** LLMが返したテキストから、最初のJSONオブジェクト部分を抜く（Structured Outputs不要版） */
 function extractFirstJsonObject(text: string): any | null {
   const s = text || "";
   const start = s.indexOf("{");
@@ -144,7 +138,6 @@ async function geocode(address: string, apiKey: string): Promise<Geo | null> {
   };
 }
 
-/** クエリ中の “超一般スコープ語” だけ軽く補正（列挙地名は増やさない） */
 function normalizeScopeTerms(q: string) {
   const s = q || "";
   if (s.includes("都内")) return "東京都";
@@ -158,7 +151,8 @@ async function inferLocationText(openai: OpenAI, userQuery: string) {
   const instructions =
     "あなたは地名推定器です。" +
     "ユーザー文から『検索の中心地』としてジオコーディング可能な地名文字列を1つ推定して返してください。" +
-    "明示の地名が無い場合も、常識的推論で一意に定まるなら返してよい（例：織田信長の出身県→愛知県）。" +
+    "ただし料理ジャンル（例: イタリアン/フレンチ/中華/寿司/焼肉/ラーメン/カフェ）や国名形容（例: イタリア料理）は地名ではありません。" +
+    "それらを地名として返してはいけません。" +
     "不明なら null。" +
     "必ずJSONだけを返す。";
 
@@ -189,11 +183,6 @@ async function inferLocationText(openai: OpenAI, userQuery: string) {
   }
 }
 
-/**
- * viewport + types から「hard max radius（禁忌制約）」を決める
- * - viewport対角(km)が小さいほど半径は小さく（本郷=数km）
- * - 県/地方/国は大きく
- */
 function decideHardMaxRadiusKm(args: {
   userQuery: string;
   geo: Geo | null;
@@ -201,24 +190,15 @@ function decideHardMaxRadiusKm(args: {
   const q = args.userQuery || "";
   const geo = args.geo;
 
-  // 文脈ヒント（今すぐ/徒歩→より厳しく、旅行/遠出→少し緩く）
-  const wantsNear =
-    q.includes("近く") || q.includes("徒歩") || q.includes("今から") || q.includes("すぐ");
-  const wantsFar =
-    q.includes("旅行") || q.includes("遠出") || q.includes("出張") || q.includes("ドライブ");
+  const wantsNear = q.includes("近く") || q.includes("徒歩") || q.includes("今から") || q.includes("すぐ");
+  const wantsFar = q.includes("旅行") || q.includes("遠出") || q.includes("出張") || q.includes("ドライブ");
 
-  // 1) viewportが取れるなら、まずそこから“自然なスコープ”を作る
   if (geo?.viewport) {
     const diagKm = haversineKm(geo.viewport.sw, geo.viewport.ne);
 
-    // viewportの対角に応じて半径を決める（経験則）
-    // - 近隣: diag 1〜5km → radius 2〜6km
-    // - 区/市: diag 10〜30km → radius 8〜25km
-    // - 県: diag 80〜200km → radius 60〜160km
-    let hardMaxKm = diagKm * 0.65; // 基本はviewport対角の6〜7割を半径に
-    hardMaxKm = clamp(hardMaxKm, 3, 450); // 最低3km、上限450km（日本国内想定）
+    let hardMaxKm = diagKm * 0.65;
+    hardMaxKm = clamp(hardMaxKm, 3, 450);
 
-    // typesベースで微調整（より常識に寄せる）
     const types = new Set((geo.types || []).map((t) => String(t)));
     if (types.has("neighborhood") || types.has("sublocality") || types.has("sublocality_level_1")) {
       hardMaxKm = Math.min(hardMaxKm, 8);
@@ -239,16 +219,24 @@ function decideHardMaxRadiusKm(args: {
     return { hardMaxKm, basis: `viewport(types=${Array.from(types).slice(0, 4).join(",")})` };
   }
 
-  // 2) viewport無し→クエリ語から最低限の推定（超一般語だけ）
   const coarse = normalizeScopeTerms(q);
   if (coarse === "東京都") return { hardMaxKm: wantsNear ? 25 : 60, basis: "keyword:都内/東京" };
   if (coarse === "東京都23区") return { hardMaxKm: wantsNear ? 18 : 45, basis: "keyword:23区" };
   if (coarse === "関東地方") return { hardMaxKm: wantsNear ? 120 : 350, basis: "keyword:関東" };
   if (coarse === "日本") return { hardMaxKm: 2000, basis: "keyword:全国/日本" };
 
-  // 3) 最後のfallback（候補平均中心を使うとき）→厳しめに
   return { hardMaxKm: wantsFar ? 200 : 50, basis: "fallback" };
 }
+
+type Picked = {
+  place_id: string;
+  headline: string;
+  subline: string;
+  reason: string;
+  match_score: number;
+};
+
+type Understood = { summary: string; extracted_tags: string[] };
 
 async function rankWithLLM(args: {
   openai: OpenAI;
@@ -303,21 +291,376 @@ async function rankWithLLM(args: {
   });
 
   const obj = extractFirstJsonObject(resp.output_text || "") || {};
-  const understood = obj?.understood?.summary
+  const understood: Understood = obj?.understood?.summary
     ? obj.understood
     : { summary: "ユーザーの希望に合うお店を候補から選びます。", extracted_tags: [] as string[] };
 
   let results = Array.isArray(obj?.results) ? obj.results : [];
-
-  // safety: 候補に無いplace_idを除外
   const poolSet = new Set(pool.map((p) => p.place_id));
   results = results.filter((r: any) => poolSet.has(safeStr(r?.place_id)));
-
-  // 上限
   results = results.slice(0, maxResults);
 
-  return { understood, results };
+  return { understood, results: results as Picked[] };
 }
+
+/**
+ * ✅ あなたの環境の型定義に合わせて
+ * Annotation は必ず { value, default } を渡す
+ */
+const GraphState = Annotation.Root({
+  startedAt: Annotation<number>({
+    value: (_a, b) => b,
+    default: () => 0,
+  }),
+  userQuery: Annotation<string>({
+    value: (_a, b) => b,
+    default: () => "",
+  }),
+  maxResults: Annotation<number>({
+    value: (_a, b) => b,
+    default: () => 4,
+  }),
+  candidates: Annotation<Candidate[]>({
+    value: (_a, b) => b,
+    default: () => [],
+  }),
+
+  googleKey: Annotation<string>({
+    value: (_a, b) => b,
+    default: () => "",
+  }),
+  openai: Annotation<OpenAI | null>({
+    value: (_a, b) => b,
+    default: () => null,
+  }),
+
+  locationText: Annotation<string | null>({
+    value: (_a, b) => b,
+    default: () => null,
+  }),
+  locationReason: Annotation<string>({
+    value: (_a, b) => b,
+    default: () => "",
+  }),
+
+  geo: Annotation<Geo | null>({
+    value: (_a, b) => b,
+    default: () => null,
+  }),
+  center: Annotation<{ lat: number; lng: number } | null>({
+    value: (_a, b) => b,
+    default: () => null,
+  }),
+  centerLabel: Annotation<string>({
+    value: (_a, b) => b,
+    default: () => "",
+  }),
+
+  hardMaxKm: Annotation<number>({
+    value: (_a, b) => b,
+    default: () => 0,
+  }),
+  hardBasis: Annotation<string>({
+    value: (_a, b) => b,
+    default: () => "",
+  }),
+
+  inScope: Annotation<Array<Candidate & { distance_km: number }>>({
+    value: (_a, b) => b,
+    default: () => [],
+  }),
+  pool: Annotation<Array<Candidate & { distance_km: number }>>({
+    value: (_a, b) => b,
+    default: () => [],
+  }),
+
+  understood: Annotation<Understood>({
+    value: (_a, b) => b,
+    default: () => ({ summary: "ユーザーの希望に合うお店を候補から選びます。", extracted_tags: [] }),
+  }),
+  picked: Annotation<Picked[]>({
+    value: (_a, b) => b,
+    default: () => [],
+  }),
+  results: Annotation<any[]>({
+    value: (_a, b) => b,
+    default: () => [],
+  }),
+
+  trace: Annotation<string[]>({
+    // trace は concat したいので value を concat にする
+    value: (a, b) => (a || []).concat(b || []),
+    default: () => [],
+  }),
+
+  response: Annotation<any | null>({
+    value: (_a, b) => b,
+    default: () => null,
+  }),
+});
+
+type S = typeof GraphState.State;
+
+// ✅ chain-style で node union を更新し続ける
+const graph = new StateGraph(GraphState)
+  // ------- infer_location -------
+  .addNode("infer_location", async (state: S) => {
+    const q = state.userQuery || "";
+    const coarse = normalizeScopeTerms(q);
+    const openai = state.openai;
+
+    const inferred = openai ? await inferLocationText(openai, q) : { location_query: null, reason_short: "" };
+
+    const locationText = coarse || inferred.location_query;
+    const locationReason = inferred.reason_short || "";
+
+    return {
+      locationText,
+      locationReason,
+      trace: [
+        [
+          "------- infer_location -------",
+          `query: ${q}`,
+          `coarse: ${coarse ?? "null"}`,
+          `inferred: ${inferred.location_query ?? "null"}`,
+          `locationText: ${locationText ?? "null"}`,
+        ].join("\n"),
+      ],
+    };
+  })
+  // ------- geocode_center -------
+  .addNode("geocode_center", async (state: S) => {
+    const googleKey = state.googleKey || "";
+    const locationText = state.locationText;
+    const candidates = state.candidates;
+
+    let geo: Geo | null = null;
+    if (googleKey && locationText) geo = await geocode(locationText, googleKey);
+
+    let center: { lat: number; lng: number } | null = null;
+    let centerLabel = "";
+    if (geo) {
+      center = { lat: geo.lat, lng: geo.lng };
+      centerLabel = geo.formatted_address || locationText || "geocode";
+    } else {
+      const avgLat = candidates.reduce((s, c) => s + c.lat, 0) / candidates.length;
+      const avgLng = candidates.reduce((s, c) => s + c.lng, 0) / candidates.length;
+      center = { lat: avgLat, lng: avgLng };
+      centerLabel = "候補の中心（fallback）";
+    }
+
+    return {
+      geo,
+      center,
+      centerLabel,
+      trace: [
+        [
+          "------- geocode_center -------",
+          `locationText: ${locationText ?? "null"}`,
+          `geo: ${geo ? geo.formatted_address : "null"}`,
+          `centerLabel: ${centerLabel}`,
+        ].join("\n"),
+      ],
+    };
+  })
+  // ------- decide_radius -------
+  .addNode("decide_radius", async (state: S) => {
+    const { hardMaxKm, basis } = decideHardMaxRadiusKm({ userQuery: state.userQuery, geo: state.geo });
+    return {
+      hardMaxKm,
+      hardBasis: basis,
+      trace: [["------- decide_radius -------", `hardMaxKm: ${hardMaxKm.toFixed(3)}`, `basis: ${basis}`].join("\n")],
+    };
+  })
+  // ------- compute_scope -------
+  .addNode("compute_scope", async (state: S) => {
+    const center = state.center!;
+    const withDist = state.candidates
+      .map((c) => ({ ...c, distance_km: haversineKm(center, { lat: c.lat, lng: c.lng }) }))
+      .sort((a, b) => a.distance_km - b.distance_km);
+
+    const inScope = withDist.filter((x) => x.distance_km <= state.hardMaxKm);
+    return {
+      inScope,
+      trace: [
+        [
+          "------- compute_scope -------",
+          `candidates: ${state.candidates.length}`,
+          `hardMaxKm: ${state.hardMaxKm.toFixed(3)}`,
+          `inScope: ${inScope.length}`,
+        ].join("\n"),
+      ],
+    };
+  })
+  // ------- no_results -------
+  .addNode("no_results", async (state: S) => {
+    const response = {
+      ok: true,
+      understood: {
+        summary:
+          `「${state.locationText ?? "指定エリア"}」周辺として解釈しましたが、` +
+          `候補の中にスコープ内（〜${state.hardMaxKm.toFixed(1)}km）のお店がありませんでした。`,
+        extracted_tags: [],
+      },
+      location: {
+        location_text: state.locationText,
+        location_reason: state.locationReason,
+        center: { ...state.center!, label: state.centerLabel },
+        hard_max_km: Number(state.hardMaxKm.toFixed(3)),
+        hard_basis: state.hardBasis,
+      },
+      results: [],
+      meta: {
+        candidates_count: state.candidates.length,
+        pool_count: 0,
+        ms: Date.now() - state.startedAt,
+        trace: state.trace.concat(["------- no_results -------"]).join("\n"),
+      },
+    };
+
+    return {
+      response,
+      trace: [["------- no_results -------", "short-circuit to __end__"].join("\n")],
+    };
+  })
+  // ------- build_pool -------
+  .addNode("build_pool", async (state: S) => {
+    const POOL_CAP = 80;
+    const pool = state.inScope.slice(0, POOL_CAP);
+    return {
+      pool,
+      trace: [["------- build_pool -------", `pool: ${pool.length}`].join("\n")],
+    };
+  })
+  // ------- rank_llm -------
+  .addNode("rank_llm", async (state: S) => {
+    const openai = state.openai!;
+    try {
+      const llm = await rankWithLLM({
+        openai,
+        userQuery: state.userQuery,
+        centerLabel: state.centerLabel,
+        maxResults: state.maxResults,
+        pool: state.pool,
+      });
+      return {
+        understood: llm.understood,
+        picked: llm.results,
+        trace: [["------- rank_llm -------", `picked: ${llm.results.length}`].join("\n")],
+      };
+    } catch {
+      const fallbackPicked: Picked[] = state.pool.slice(0, state.maxResults).map((p) => ({
+        place_id: p.place_id,
+        headline: p.name,
+        subline: p.address,
+        reason: "距離が近い候補から表示しています（LLM失敗fallback）。",
+        match_score: 50,
+      }));
+      return {
+        picked: fallbackPicked,
+        trace: [["------- rank_llm -------", "LLM failed -> fallback"].join("\n")],
+      };
+    }
+  })
+  // ------- merge_fill_sort -------
+  .addNode("merge_fill_sort", async (state: S) => {
+    const byId = new Map(state.pool.map((p) => [p.place_id, p]));
+    let results = state.picked
+      .map((r) => {
+        const p = byId.get(r.place_id);
+        if (!p) return null;
+        return {
+          id: r.place_id,
+          place_id: r.place_id,
+          headline: r.headline || p.name,
+          subline: r.subline || p.address,
+          reason: r.reason || "",
+          match_score: safeNum(r.match_score, 50),
+          lat: p.lat,
+          lng: p.lng,
+          name: p.name,
+          address: p.address,
+          genre_emoji: p.genre_emoji ?? "📍",
+          budget_mid_yen: p.budget_mid_yen ?? null,
+          is_saved: !!p.is_saved,
+          distance_km: Number(p.distance_km.toFixed(3)),
+        };
+      })
+      .filter(Boolean) as any[];
+
+    if (results.length < state.maxResults) {
+      const already = new Set(results.map((x) => x.place_id));
+      for (const p of state.pool) {
+        if (results.length >= state.maxResults) break;
+        if (already.has(p.place_id)) continue;
+        results.push({
+          id: p.place_id,
+          place_id: p.place_id,
+          headline: p.name,
+          subline: p.address,
+          reason: "スコープ内の近い候補から補完しています。",
+          match_score: 40,
+          lat: p.lat,
+          lng: p.lng,
+          name: p.name,
+          address: p.address,
+          genre_emoji: p.genre_emoji ?? "📍",
+          budget_mid_yen: p.budget_mid_yen ?? null,
+          is_saved: !!p.is_saved,
+          distance_km: Number(p.distance_km.toFixed(3)),
+        });
+      }
+    }
+
+    results.sort((a, b) => {
+      const ds = (b.match_score ?? 0) - (a.match_score ?? 0);
+      if (Math.abs(ds) >= 8) return ds;
+      return (a.distance_km ?? 0) - (b.distance_km ?? 0);
+    });
+
+    return {
+      results: results.slice(0, state.maxResults),
+      trace: [["------- merge_fill_sort -------", `results: ${Math.min(results.length, state.maxResults)}`].join("\n")],
+    };
+  })
+  // ------- finalize -------
+  .addNode("finalize", async (state: S) => {
+    const response = {
+      ok: true,
+      understood: state.understood,
+      location: {
+        location_text: state.locationText,
+        location_reason: state.locationReason,
+        center: { ...state.center!, label: state.centerLabel },
+        hard_max_km: Number(state.hardMaxKm.toFixed(3)),
+        hard_basis: state.hardBasis,
+      },
+      results: state.results,
+      meta: {
+        candidates_count: state.candidates.length,
+        pool_count: state.pool.length,
+        ms: Date.now() - state.startedAt,
+        trace: state.trace.join("\n"),
+      },
+    };
+    return { response, trace: [["------- finalize -------", "done"].join("\n")] };
+  })
+  // edges
+  .addEdge("__start__", "infer_location")
+  .addEdge("infer_location", "geocode_center")
+  .addEdge("geocode_center", "decide_radius")
+  .addEdge("decide_radius", "compute_scope")
+  .addConditionalEdges(
+    "compute_scope",
+    (state: S) => (state.inScope.length === 0 ? "no_results" : "build_pool"),
+    { no_results: "no_results", build_pool: "build_pool" }
+  )
+  .addEdge("no_results", "__end__")
+  .addEdge("build_pool", "rank_llm")
+  .addEdge("rank_llm", "merge_fill_sort")
+  .addEdge("merge_fill_sort", "finalize")
+  .addEdge("finalize", "__end__")
+  .compile();
 
 export async function POST(req: Request) {
   const startedAt = Date.now();
@@ -335,7 +678,7 @@ export async function POST(req: Request) {
       understood: { summary: "候補がありません（まだお店データがありません）。", extracted_tags: [] },
       location: null,
       results: [],
-      meta: { candidates_count: 0, pool_count: 0, ms: Date.now() - startedAt },
+      meta: { candidates_count: 0, pool_count: 0, ms: Date.now() - startedAt, trace: "------- empty_candidates -------" },
     });
   }
 
@@ -352,168 +695,20 @@ export async function POST(req: Request) {
     process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY ||
     "";
 
-  // A) LLMで地名推定（+ “都内/関東/全国”の超一般語は軽く補正）
-  const coarse = normalizeScopeTerms(query);
-  const inferred = await inferLocationText(openai, query);
-
-  const locationText = coarse || inferred.location_query;
-  const locationReason = inferred.reason_short || "";
-
-  // B) geocode → 中心座標確定
-  let geo: Geo | null = null;
-  if (googleKey && locationText) {
-    geo = await geocode(locationText, googleKey);
-  }
-
-  // center fallback（geo無しなら候補平均）
-  let center = null as null | { lat: number; lng: number };
-  let centerLabel = "";
-  if (geo) {
-    center = { lat: geo.lat, lng: geo.lng };
-    centerLabel = geo.formatted_address || locationText || "geocode";
-  } else {
-    const avgLat = candidates.reduce((s, c) => s + c.lat, 0) / candidates.length;
-    const avgLng = candidates.reduce((s, c) => s + c.lng, 0) / candidates.length;
-    center = { lat: avgLat, lng: avgLng };
-    centerLabel = "候補の中心（fallback）";
-  }
-
-  // C) hard max radius（禁忌）を決める
-  const radiusDec = decideHardMaxRadiusKm({ userQuery: query, geo });
-  const hardMaxKm = radiusDec.hardMaxKm;
-
-  // D) 全候補の距離を計算し、hardMaxで “物理的に除外”
-  const withDist = candidates.map((c) => ({
-    ...c,
-    distance_km: haversineKm(center!, { lat: c.lat, lng: c.lng }),
-  }));
-  withDist.sort((a, b) => a.distance_km - b.distance_km);
-
-  const inScope = withDist.filter((x) => x.distance_km <= hardMaxKm);
-
-  // ✅ 禁忌：スコープ内が0なら、遠方を混ぜない（正直に0件）
-  if (inScope.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      understood: {
-        summary:
-          `「${locationText ?? "指定エリア"}」周辺として解釈しましたが、` +
-          `候補の中にスコープ内（〜${hardMaxKm.toFixed(1)}km）のお店がありませんでした。`,
-        extracted_tags: [],
-      },
-      location: {
-        location_text: locationText,
-        location_reason: locationReason,
-        center: { ...center!, label: centerLabel },
-        hard_max_km: Number(hardMaxKm.toFixed(3)),
-        hard_basis: radiusDec.basis,
-      },
-      results: [],
-      meta: {
-        candidates_count: candidates.length,
-        pool_count: 0,
-        ms: Date.now() - startedAt,
-      },
-    });
-  }
-
-  // E) LLMに渡すpool（スコープ内のみ、近い順から）
-  const POOL_CAP = 80;
-  const pool = inScope.slice(0, POOL_CAP);
-
-  // F) LLMで文章＋選抜
-  let understood = { summary: "ユーザーの希望に合うお店を候補から選びます。", extracted_tags: [] as string[] };
-  let picked: Array<{ place_id: string; headline: string; subline: string; reason: string; match_score: number }> = [];
-
-  try {
-    const llm = await rankWithLLM({ openai, userQuery: query, centerLabel, maxResults, pool });
-    understood = llm.understood;
-    picked = llm.results;
-  } catch {
-    picked = pool.slice(0, maxResults).map((p) => ({
-      place_id: p.place_id,
-      headline: p.name,
-      subline: p.address,
-      reason: "距離が近い候補から表示しています（LLM失敗fallback）。",
-      match_score: 50,
-    }));
-  }
-
-  // G) 結果に結合（place_idはpool内に限定される）
-  const byId = new Map(pool.map((p) => [p.place_id, p]));
-  const results = picked
-    .map((r) => {
-      const p = byId.get(r.place_id);
-      if (!p) return null;
-      return {
-        id: r.place_id,
-        place_id: r.place_id,
-        headline: r.headline || p.name,
-        subline: r.subline || p.address,
-        reason: r.reason || "",
-        match_score: safeNum(r.match_score, 50),
-        lat: p.lat,
-        lng: p.lng,
-        name: p.name,
-        address: p.address,
-        genre_emoji: p.genre_emoji ?? "📍",
-        budget_mid_yen: p.budget_mid_yen ?? null,
-        is_saved: !!p.is_saved,
-        distance_km: Number(p.distance_km.toFixed(3)),
-      };
-    })
-    .filter(Boolean) as any[];
-
-  // H) 足りない分はスコープ内の近い順で埋める（遠方は絶対に混ぜない）
-  if (results.length < maxResults) {
-    const already = new Set(results.map((x) => x.place_id));
-    for (const p of pool) {
-      if (results.length >= maxResults) break;
-      if (already.has(p.place_id)) continue;
-      results.push({
-        id: p.place_id,
-        place_id: p.place_id,
-        headline: p.name,
-        subline: p.address,
-        reason: "スコープ内の近い候補から補完しています。",
-        match_score: 40,
-        lat: p.lat,
-        lng: p.lng,
-        name: p.name,
-        address: p.address,
-        genre_emoji: p.genre_emoji ?? "📍",
-        budget_mid_yen: p.budget_mid_yen ?? null,
-        is_saved: !!p.is_saved,
-        distance_km: Number(p.distance_km.toFixed(3)),
-      });
-    }
-  }
-
-  // おまけ：最終出力は “距離で禁忌を守りつつ”、同点なら近い順に整列
-  results.sort((a, b) => {
-    // match_scoreが同程度なら距離を優先
-    const ds = (b.match_score ?? 0) - (a.match_score ?? 0);
-    if (Math.abs(ds) >= 8) return ds; // 点差が大きいときは意味を尊重
-    return (a.distance_km ?? 0) - (b.distance_km ?? 0);
+  const out = await graph.invoke({
+    startedAt,
+    userQuery: query,
+    maxResults,
+    candidates,
+    googleKey,
+    openai,
+    trace: ["------- __start__ -------"],
   });
 
-  return NextResponse.json({
-    ok: true,
-    understood,
-    location: {
-      location_text: locationText,
-      location_reason: locationReason,
-      center: { ...center!, label: centerLabel },
-      hard_max_km: Number(hardMaxKm.toFixed(3)),
-      hard_basis: radiusDec.basis,
-    },
-    results: results.slice(0, maxResults),
-    meta: {
-      candidates_count: candidates.length,
-      pool_count: pool.length,
-      ms: Date.now() - startedAt,
-    },
-  });
+  if (!out.response) {
+    return NextResponse.json({ ok: false, error: "Graph failed to produce response" }, { status: 500 });
+  }
+  return NextResponse.json(out.response);
 }
 
 export function GET() {
