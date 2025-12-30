@@ -15,10 +15,25 @@ import {
   MapPin,
   CircleDollarSign,
   Settings,
+  MessagesSquare,
+  Sparkles,
 } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import { useNavBadges } from "@/hooks/useNavBadges";
+
+function AIChatIcon({ size = 22, className = "" }: { size?: number; className?: string }) {
+  // “相談してる”= 吹き出し / “AIっぽい”= キラッ
+  return (
+    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <MessagesSquare size={size} className={className} />
+      <Sparkles
+        size={Math.max(12, Math.floor(size * 0.58))}
+        className="absolute -right-1 -top-1 text-orange-600"
+      />
+    </span>
+  );
+}
 
 function NavItem({
   href,
@@ -133,7 +148,6 @@ export default function Sidebar({ name }: { name?: string }) {
   } = useNavBadges(name);
 
   const supabase = createClientComponentClient();
-
   const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
 
   const gate = (href: string, allowGuest = false) => {
@@ -286,6 +300,14 @@ export default function Sidebar({ name }: { name?: string }) {
           label="マップ"
           icon={MapPin}
           iconClassName="text-emerald-700"
+        />
+
+        {/* ✅ AI Chat 追加 */}
+        <NavItem
+          href={gate("/ai-chat")}
+          label="AI相談"
+          icon={(props: any) => <AIChatIcon {...props} />}
+          iconClassName="text-slate-700"
         />
 
         <NavItem

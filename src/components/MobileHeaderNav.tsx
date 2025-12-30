@@ -13,7 +13,8 @@ import {
   Plus,
   MapPin,
   CircleDollarSign,
-  Settings,
+  MessagesSquare,
+  Sparkles,
 } from "lucide-react";
 import { useNavBadges } from "@/hooks/useNavBadges";
 
@@ -35,6 +36,18 @@ function Badge({ count }: { count?: number }) {
 function Dot({ on }: { on?: boolean }) {
   if (!on) return null;
   return <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />;
+}
+
+function AIChatIcon({ size = 20 }: { size?: number }) {
+  return (
+    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <MessagesSquare size={size} className="text-orange-700" />
+      <Sparkles
+        size={Math.max(12, Math.floor(size * 0.58))}
+        className="absolute -right-1 -top-1 text-orange-600"
+      />
+    </span>
+  );
 }
 
 function IconButton({
@@ -99,14 +112,8 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
   const pathname = usePathname();
   const supabase = createClientComponentClient();
 
-  const {
-    isAuthed,
-    avatarUrl,
-    notifCount,
-    followReqCount,
-    timelineDot,
-    displayNameSafe,
-  } = useNavBadges(name);
+  const { isAuthed, avatarUrl, notifCount, followReqCount, timelineDot, displayNameSafe } =
+    useNavBadges(name);
 
   const isActive = (p: string) => pathname === p || pathname.startsWith(p + "/");
 
@@ -288,7 +295,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </div>
         </div>
 
-        {/* 2段目：メインnav */}
+        {/* 2段目：メインnav（Settings → AI相談に差し替え） */}
         <div className="px-2 pb-2">
           <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
             {/* Home */}
@@ -318,13 +325,10 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               className={[
                 "relative inline-flex h-11 w-11 items-center justify-center rounded-full",
                 "bg-orange-700 text-white active:scale-[0.99] transition",
-                showPromo
-                  ? "shadow-lg shadow-orange-200/70 ring-2 ring-orange-300 animate-pulse"
-                  : "",
+                showPromo ? "shadow-lg shadow-orange-200/70 ring-2 ring-orange-300 animate-pulse" : "",
               ].join(" ")}
               aria-label="投稿"
             >
-              {/* ふわっと光る外側 */}
               {showPromo && (
                 <span
                   className="pointer-events-none absolute -inset-2 rounded-full bg-orange-300/20 blur-md"
@@ -334,8 +338,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <span className="relative">
                 <Plus size={20} />
               </span>
-
-              {/* 右上に +pt バッジ（さりげなく） */}
               {showPromo && (
                 <span className="absolute -right-1 -top-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-orange-700 shadow-sm">
                   +{promoPoints}
@@ -353,14 +355,14 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <MapPin size={20} className="text-emerald-700" />
             </IconButton>
 
-            {/* Settings */}
+            {/* ✅ AI相談（Settingsと入れ替え） */}
             <IconButton
-              href={gate("/settings")}
-              active={isActive("/settings")}
-              ariaLabel="設定"
-              activeClassName="bg-fuchsia-100/70"
+              href={gate("/ai-chat")}
+              active={isActive("/ai-chat")}
+              ariaLabel="AI相談"
+              activeClassName="bg-orange-100/70"
             >
-              <Settings size={20} className="text-fuchsia-700" />
+              <AIChatIcon size={20} />
             </IconButton>
           </div>
 
@@ -368,9 +370,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           {showPromo && (
             <div className="mt-2 flex items-start justify-between gap-2 px-1">
               <div className="min-w-0">
-                <div className="truncate text-[11px] font-semibold text-slate-900">
-                  🎁 {promoText}
-                </div>
+                <div className="truncate text-[11px] font-semibold text-slate-900">🎁 {promoText}</div>
                 <div className="truncate text-[10px] text-slate-500">{promoSub}</div>
               </div>
 
