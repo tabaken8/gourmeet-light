@@ -2,413 +2,690 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-type Thread = {
+type ThreadRow = {
   id: string;
   title: string | null;
   created_at: string | null;
 };
 
-type MsgRow = {
+type ChatMsg = {
   id: string;
-  role: "system" | "user" | "assistant";
+  role: "user" | "assistant";
   content: string;
-  meta: any | null;
-  created_at: string;
+  meta?: any;
+  created_at?: string | null;
+  isTyping?: boolean;
 };
 
-type EvidencePost = {
-  post_id: string;
-  post_url: string;
-  created_at: string | null;
-  content: string | null;
-  recommend_score: number | null;
-  price_yen: number | null;
-  price_range: string | null;
-  image_thumb_url: string | null;
+function uid() {
+  return Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
 
-  author_display_name: string | null;
-  author_username: string | null;
-  author_avatar_url: string | null;
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-  is_following_author: boolean;
-};
+function formatJST(iso: string) {
+  const dt = new Date(iso);
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(dt);
+}
 
-type ApiResult = {
-  place_id: string;
-  headline: string;
-  subline: string;
-  reason: string;
-  match_score: number;
+async function typeText(args: {
+  text: string;
+  speedMs?: number;
+  onUpdate: (partial: string) => void;
+  shouldStop: () => boolean;
+}) {
+  const { text, speedMs = 14, onUpdate, shouldStop } = args;
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    if (shouldStop()) return;
+    out += text[i];
+    onUpdate(out);
 
-  primary_genre: string | null;
-  genre_tags: string[] | null;
-  distance_km: number | null;
+    const ch = text[i];
+    const extra =
+      ch === "。" || ch === "！" || ch === "？" || ch === "\n"
+        ? 120
+        : ch === "、"
+        ? 60
+        : 0;
 
-  evidence_posts: EvidencePost[];
-};
-
-function fmtTime(ts?: string | null) {
-  if (!ts) return "";
-  try {
-    const d = new Date(ts);
-    return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
+    await sleep(speedMs + extra);
   }
 }
 
-function clip(s: string, n = 140) {
-  const t = (s ?? "").trim();
-  if (t.length <= n) return t;
-  return t.slice(0, n) + "…";
+function ThinkingDots() {
+  return (
+    <span className="inline-flex items-center gap-1 text-slate-500">
+      考え中
+      <span className="inline-block w-2 animate-pulse">.</span>
+      <span className="inline-block w-2 animate-pulse [animation-delay:120ms]">.</span>
+      <span className="inline-block w-2 animate-pulse [animation-delay:240ms]">.</span>
+    </span>
+  );
+}
+
+function EmptyStateCard() {
+  return (
+    <div className="gm-card p-5">
+      <div className="text-sm font-semibold text-slate-900">こんにちは！</div>
+      <div className="mt-2 text-xs text-slate-600">
+        自然な言葉でOKです。場所や好み（雰囲気・予算など）を入れると、より精度が上がります。
+      </div>
+      <div className="mt-3 inline-flex flex-wrap gap-2">
+        <span className="gm-chip px-3 py-1 text-[11px] text-slate-700">
+          例：渋谷で落ち着いた居酒屋
+        </span>
+        <span className="gm-chip px-3 py-1 text-[11px] text-slate-700">
+          例：名古屋で中華そば
+        </span>
+        <span className="gm-chip px-3 py-1 text-[11px] text-slate-700">
+          例：吉祥寺でカフェ、作業しやすい
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function IconHamburger({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        d="M4 6.5h16M4 12h16M4 17.5h16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconClose({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        d="M6.5 6.5l11 11M17.5 6.5l-11 11"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function AvatarBot({ size = 28 }: { size?: number }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/favicon.ico"
+      alt="Gourmeet"
+      width={size}
+      height={size}
+      className="rounded-full bg-white border border-black/[.08] shadow-sm"
+    />
+  );
+}
+
+function AvatarYou({ size = 28 }: { size?: number }) {
+  return (
+    <div
+      className="rounded-full bg-black text-white border border-black/10 shadow-sm flex items-center justify-center"
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      <span className="text-[11px] font-semibold">You</span>
+    </div>
+  );
 }
 
 export default function ChatShell() {
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const router = useRouter();
+  const sp = useSearchParams();
 
-  const [messages, setMessages] = useState<MsgRow[]>([]);
-  const [loadingThreads, setLoadingThreads] = useState(false);
-  const [loadingMessages, setLoadingMessages] = useState(false);
+  const initialThreadFromUrl = (sp.get("thread_id") ?? "").trim() || null;
+
+  const [threadId, setThreadId] = useState<string | null>(initialThreadFromUrl);
+  const [threads, setThreads] = useState<ThreadRow[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
+  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
+  const [isSending, setIsSending] = useState(false);
 
+  const runTokenRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  function scrollToBottom() {
-    requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
-  }
+  const scrollToBottom = (smooth = true) => {
+    const el = bottomRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "end" });
+  };
 
   async function loadThreads() {
-    setLoadingThreads(true);
+    setThreadsLoading(true);
     try {
       const res = await fetch("/api/ai/threads", { method: "GET" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
-      setThreads(json.threads ?? []);
-      if (!activeThreadId && (json.threads?.[0]?.id ?? null)) {
-        setActiveThreadId(json.threads[0].id);
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "スレッドの取得に失敗しました。");
+      setThreads(Array.isArray(data.threads) ? data.threads : []);
     } catch {
-      // noop
+      setThreads([]);
     } finally {
-      setLoadingThreads(false);
+      setThreadsLoading(false);
     }
   }
 
-  async function createNewThread() {
-    try {
-      const res = await fetch("/api/ai/threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: null }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+  async function loadThreadMessages(tid: string) {
+    if (!tid) return;
+    const res = await fetch(`/api/ai/chat?thread_id=${encodeURIComponent(tid)}`, {
+      method: "GET",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) throw new Error(data?.error || "チャット履歴の取得に失敗しました。");
 
-      const t: Thread = json.thread;
-      setThreads((prev) => [t, ...prev]);
-      setActiveThreadId(t.id);
-      setMessages([]);
-      setInput("");
-    } catch {
-      // noop
-    }
-  }
+    const rows = Array.isArray(data.messages) ? data.messages : [];
+    const restored: ChatMsg[] = rows
+      .filter((r: any) => r?.role === "user" || r?.role === "assistant")
+      .map((r: any) => ({
+        id: String(r.id ?? uid()),
+        role: r.role,
+        content: typeof r.content === "string" ? r.content : "",
+        meta: r.meta ?? null,
+        created_at: r.created_at ?? null,
+        isTyping: false,
+      }));
 
-  async function loadMessages(threadId: string) {
-    setLoadingMessages(true);
-    try {
-      const res = await fetch(`/api/ai/chat?thread_id=${encodeURIComponent(threadId)}`, { method: "GET" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
-      setMessages(json.messages ?? []);
-      requestAnimationFrame(scrollToBottom);
-    } catch {
-      setMessages([]);
-    } finally {
-      setLoadingMessages(false);
-    }
+    setMsgs(restored);
+    requestAnimationFrame(() => scrollToBottom(false));
   }
 
   useEffect(() => {
     loadThreads();
+
+    if (initialThreadFromUrl) {
+      loadThreadMessages(initialThreadFromUrl).catch(() => {
+        setThreadId(null);
+        router.replace("/ai-chat");
+        setMsgs([]);
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!activeThreadId) return;
-    loadMessages(activeThreadId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeThreadId]);
+    const tid = (sp.get("thread_id") ?? "").trim() || null;
+    if (tid === threadId) return;
+    if (isSending) return;
 
-  const activeTitle = useMemo(() => {
-    const t = threads.find((x) => x.id === activeThreadId);
-    return t?.title?.trim() || "新しいチャット";
-  }, [threads, activeThreadId]);
-
-  async function sendMessage() {
-    const text = input.trim();
-    if (!text || sending) return;
-
-    if (!activeThreadId) {
-      await createNewThread();
-      // createNewThread が setActiveThreadId するので、次レンダで送るより “今” 送る方が楽：
-      // ただ race を避けたいので、ここはワンテンポ遅らせる
-      setTimeout(sendMessage, 0);
-      return;
+    setThreadId(tid);
+    if (tid) {
+      loadThreadMessages(tid).catch(() => {});
+    } else {
+      setMsgs([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp]);
 
-    setSending(true);
-
-    // optimistic user bubble
-    const tempId = `tmp_${Date.now()}`;
-    const optimistic: MsgRow = {
-      id: tempId,
-      role: "user",
-      content: text,
-      meta: null,
-      created_at: new Date().toISOString(),
+  // ドロワーが開いてる間は背景スクロールを止める（モバイル）
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
     };
-    setMessages((prev) => [...prev, optimistic]);
+  }, [drawerOpen]);
+
+  const activeThread = threads.find((t) => t.id === threadId) ?? null;
+  const activeTitle = (activeThread?.title ?? "").trim() || "新しいチャット";
+
+  async function selectThread(tid: string) {
+    if (!tid) return;
+    runTokenRef.current++;
+
+    setDrawerOpen(false);
+    setThreadId(tid);
+    router.replace(`/ai-chat?thread_id=${encodeURIComponent(tid)}`);
+    await loadThreadMessages(tid);
+  }
+
+  function startNewChat() {
+    runTokenRef.current++;
+    setDrawerOpen(false);
+    setThreadId(null);
+    setMsgs([]);
+    router.replace("/ai-chat");
+    requestAnimationFrame(() => scrollToBottom(false));
+  }
+
+  async function send() {
+    const text = input.trim();
+    if (!text || isSending) return;
+
     setInput("");
-    requestAnimationFrame(scrollToBottom);
+    setIsSending(true);
+
+    const myToken = ++runTokenRef.current;
+
+    const userMsg: ChatMsg = { id: uid(), role: "user", content: text };
+    const assistantMsgId = uid();
+
+    setMsgs((prev) => [
+      ...prev,
+      userMsg,
+      { id: assistantMsgId, role: "assistant", content: "", isTyping: true },
+    ]);
+
+    requestAnimationFrame(() => scrollToBottom(true));
 
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId: activeThreadId, message: text, maxResults: 4 }),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: text, threadId, maxResults: 4 }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
 
-      // 直後にGETで整合取る（DBのid/created_atが欲しいので）
-      await loadThreads();
-      await loadMessages(json.thread_id);
-    } catch {
-      // rollback-ish: keep optimistic but add error assistant
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `err_${Date.now()}`,
-          role: "assistant",
-          content: "ごめん、いま回答が作れなかった。もう一回送ってみて。",
-          meta: null,
-          created_at: new Date().toISOString(),
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "AIの応答取得に失敗しました。");
+
+      if (!threadId && data.thread_id) {
+        setThreadId(data.thread_id);
+        router.replace(`/ai-chat?thread_id=${encodeURIComponent(data.thread_id)}`);
+      }
+
+      const assistantText = [
+        data?.understood?.summary ? String(data.understood.summary).trim() : "",
+        typeof data?.assistant_message === "string" ? data.assistant_message.trim() : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      setMsgs((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId ? { ...m, meta: data, isTyping: true, content: "" } : m
+        )
+      );
+
+      requestAnimationFrame(() => scrollToBottom(true));
+
+      await typeText({
+        text: assistantText || "おすすめをまとめました！",
+        onUpdate: (partial) => {
+          if (runTokenRef.current !== myToken) return;
+          setMsgs((prev) =>
+            prev.map((m) => (m.id === assistantMsgId ? { ...m, content: partial } : m))
+          );
+          requestAnimationFrame(() => scrollToBottom(false));
         },
-      ]);
-      requestAnimationFrame(scrollToBottom);
+        shouldStop: () => runTokenRef.current !== myToken,
+      });
+
+      setMsgs((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, isTyping: false } : m)));
+
+      if (!threadsLoading) loadThreads();
+    } catch (e: any) {
+      const errText = e?.message || "エラーが発生しました。";
+      setMsgs((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId
+            ? { ...m, isTyping: false, content: `申し訳ありません。${errText}` }
+            : m
+        )
+      );
     } finally {
-      setSending(false);
+      setIsSending(false);
+      requestAnimationFrame(() => scrollToBottom(true));
     }
   }
 
-  return (
-    <div className="h-[calc(100vh-0px)] w-full bg-white">
-      <div className="mx-auto flex h-full w-full max-w-6xl gap-0 border-x border-gray-100">
-        {/* Sidebar */}
-        <aside className="hidden w-[320px] shrink-0 border-r border-gray-100 bg-gray-50 md:flex md:flex-col">
-          <div className="flex items-center justify-between gap-2 p-4">
-            <div className="text-sm font-semibold">AIチャット</div>
-            <button
-              onClick={createNewThread}
-              className="rounded-full bg-black px-3 py-2 text-xs font-medium text-white"
-            >
-              + 新規
-            </button>
-          </div>
+  // ✅ ここが超重要：外枠を overflow-hidden にして「ページスクロール」を封じる
+  const frameCls =
+    "h-[calc(100dvh-140px)] md:h-[calc(100dvh-170px)] overflow-hidden overscroll-none";
 
-          <div className="px-4 pb-2 text-xs text-gray-500">
-            {loadingThreads ? "読み込み中…" : `${threads.length} 件`}
-          </div>
+  const ThreadList = useMemo(() => {
+    return (
+      <div className="mt-3 flex-1 min-h-0 overflow-y-auto pr-1">
+        <div className="text-[11px] font-medium text-slate-500 px-1">チャット</div>
 
-          <div className="flex-1 overflow-auto p-2">
+        {threadsLoading ? (
+          <div className="mt-3 text-xs text-slate-500 px-1">読み込み中...</div>
+        ) : threads.length === 0 ? (
+          <div className="mt-3 text-xs text-slate-500 px-1">まだスレッドがありません。</div>
+        ) : (
+          <div className="mt-2 space-y-2">
             {threads.map((t) => {
-              const active = t.id === activeThreadId;
+              const title = (t.title ?? "").trim() || "（無題）";
+              const when = t.created_at ? formatJST(t.created_at) : "";
+              const isActive = t.id === threadId;
+
               return (
                 <button
                   key={t.id}
-                  onClick={() => setActiveThreadId(t.id)}
+                  type="button"
+                  onClick={() => selectThread(t.id)}
                   className={[
-                    "w-full rounded-xl px-3 py-3 text-left",
-                    active ? "bg-white shadow-sm" : "hover:bg-white/70",
+                    "w-full text-left gm-press",
+                    "rounded-2xl border border-black/[.06]",
+                    isActive
+                      ? "bg-white/95 shadow-[0_6px_22px_rgba(0,0,0,0.06)]"
+                      : "bg-white/70 hover:bg-white/85",
+                    "px-3 py-2",
                   ].join(" ")}
                 >
-                  <div className="text-sm font-medium text-gray-900">
-                    {t.title?.trim() || "新しいチャット"}
+                  <div className="flex items-center gap-2">
+                    <AvatarBot size={18} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-slate-900">{title}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">{when}</div>
+                    </div>
                   </div>
-                  <div className="mt-1 text-[11px] text-gray-500">{fmtTime(t.created_at)}</div>
                 </button>
               );
             })}
-
-            {threads.length === 0 && !loadingThreads && (
-              <div className="p-4 text-sm text-gray-500">まだチャットがありません</div>
-            )}
-          </div>
-        </aside>
-
-        {/* Main */}
-        <main className="flex min-w-0 flex-1 flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{activeTitle}</div>
-              <div className="mt-0.5 text-xs text-gray-500">
-                {loadingMessages ? "履歴を読み込み中…" : "投稿を根拠におすすめを返します"}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 md:hidden">
-              <button
-                onClick={createNewThread}
-                className="rounded-full bg-black px-3 py-2 text-xs font-medium text-white"
-              >
-                + 新規
-              </button>
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-auto px-4 py-4">
-            <div className="mx-auto w-full max-w-2xl space-y-3">
-              {messages.map((m) => (
-                <MessageBubble key={m.id} msg={m} />
-              ))}
-              <div ref={bottomRef} />
-            </div>
-          </div>
-
-          {/* Input */}
-          <div className="border-t border-gray-100 bg-white px-4 py-3">
-            <div className="mx-auto flex w-full max-w-2xl gap-2">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                placeholder="例：静かでデート向き、渋谷か恵比寿。ワインあると嬉しい。"
-                className="w-full rounded-full border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
-              />
-              <button
-                onClick={sendMessage}
-                disabled={sending || !input.trim()}
-                className="shrink-0 rounded-full bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {sending ? "…" : "送信"}
-              </button>
-            </div>
-          </div>
-        </main>
-      </div>
-    </div>
-  );
-}
-
-function MessageBubble({ msg }: { msg: MsgRow }) {
-  const isUser = msg.role === "user";
-  const meta = msg.meta ?? null;
-
-  const results: ApiResult[] | null = Array.isArray(meta?.results) ? (meta.results as ApiResult[]) : null;
-  const understoodSummary = typeof meta?.understood?.summary === "string" ? meta.understood.summary : null;
-  const assistantMessage = typeof meta?.assistant_message === "string" ? meta.assistant_message : null;
-
-  return (
-    <div className={isUser ? "flex justify-end" : "flex justify-start"}>
-      <div
-        className={[
-          "max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-          isUser ? "bg-black text-white" : "bg-gray-100 text-gray-900",
-        ].join(" ")}
-      >
-        {/* plain text */}
-        {msg.content?.trim() ? <div className="whitespace-pre-wrap">{msg.content}</div> : null}
-
-        {/* assistant meta rendering */}
-        {!isUser && (understoodSummary || assistantMessage || results) && (
-          <div className="mt-3 space-y-3">
-            {understoodSummary && (
-              <div className="rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-800">
-                {understoodSummary}
-              </div>
-            )}
-
-            {assistantMessage && (
-              <div className="text-xs text-gray-700">{assistantMessage}</div>
-            )}
-
-            {Array.isArray(results) && results.length > 0 && (
-              <div className="space-y-3">
-                {results.map((r) => (
-                  <ResultCard key={r.place_id} r={r} />
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
+    );
+  }, [threads, threadsLoading, threadId]);
+
+  return (
+    <div className={["w-full", frameCls].join(" ")}>
+      <div className="h-full md:gm-surface md:p-3">
+        <div className="h-full min-h-0 grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] gap-3">
+          {/* ===== Desktop Sidebar ===== */}
+          <aside className="hidden md:block h-full min-h-0">
+            <div className="h-full min-h-0 gm-card p-3 flex flex-col">
+              <button
+                type="button"
+                onClick={startNewChat}
+                className="gm-chip gm-press w-full px-3 py-2 text-sm font-semibold text-slate-900 bg-white/80 hover:bg-white"
+              >
+                ＋ 新しいチャット
+              </button>
+
+              {ThreadList}
+
+              <div className="mt-3 pt-3 border-t border-black/[.06]">
+                <div className="text-[11px] text-slate-500">
+                  ヒント：場所（駅名/エリア）＋ジャンル＋雰囲気 で精度が上がります。
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* ===== Mobile Drawer ===== */}
+          <div
+            className={[
+              "md:hidden fixed inset-0 z-[60]",
+              drawerOpen ? "pointer-events-auto" : "pointer-events-none",
+            ].join(" ")}
+            aria-hidden={!drawerOpen}
+          >
+            {/* backdrop */}
+            <div
+              className={[
+                "absolute inset-0 bg-black/35 transition-opacity duration-200",
+                drawerOpen ? "opacity-100" : "opacity-0",
+              ].join(" ")}
+              onClick={() => setDrawerOpen(false)}
+            />
+
+            {/* panel */}
+            <div
+              className={[
+                "absolute inset-0",
+                "bg-[#fffaf5]",
+                "transition-transform duration-250 ease-out",
+                drawerOpen ? "translate-x-0" : "-translate-x-full",
+              ].join(" ")}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="h-full min-h-0 flex flex-col">
+                <div className="px-4 py-4 border-b border-black/[.06] bg-white/80 backdrop-blur flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerOpen(false)}
+                    className="gm-chip gm-press h-9 w-9 grid place-items-center bg-white/85"
+                    aria-label="閉じる"
+                  >
+                    <IconClose className="h-5 w-5 text-slate-800" />
+                  </button>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AvatarBot size={22} />
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-900">チャット履歴</div>
+                      <div className="text-[11px] text-slate-500 truncate">
+                        過去の会話にすぐ戻れます
+                      </div>
+                    </div>
+                  </div>
+
+                  <span className="flex-1" />
+
+                  <button
+                    type="button"
+                    onClick={startNewChat}
+                    className="gm-chip gm-press px-3 py-2 text-[11px] font-semibold text-slate-900 bg-white/85"
+                  >
+                    新規
+                  </button>
+                </div>
+
+                <div className="px-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={startNewChat}
+                    className="gm-card gm-press w-full px-4 py-3 text-sm font-semibold text-slate-900 text-left"
+                  >
+                    ＋ 新しいチャット
+                  </button>
+                </div>
+
+                <div className="px-3 pb-3 flex-1 min-h-0 overflow-y-auto">
+                  {/* list */}
+                  <div className="mt-3">{ThreadList}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ===== Main Chat ===== */}
+          <section className="h-full min-h-0 gm-card flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-black/[.06] bg-white/70 backdrop-blur">
+              <div className="flex items-center gap-3">
+                {/* Mobile hamburger */}
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  className="md:hidden gm-chip gm-press h-9 w-9 grid place-items-center bg-white/80"
+                  aria-label="チャット履歴を開く"
+                >
+                  <IconHamburger className="h-5 w-5 text-slate-800" />
+                </button>
+
+                {/* “相手”アイコン（favicon） */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <AvatarBot size={26} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-slate-900">{activeTitle}</div>
+                    <div className="mt-1 text-[11px] text-slate-500 truncate">
+                      Gourmeet AI と会話中
+                    </div>
+                  </div>
+                </div>
+
+                <span className="flex-1" />
+
+                <button
+                  type="button"
+                  onClick={startNewChat}
+                  className="gm-chip gm-press px-3 py-2 text-[11px] font-semibold text-slate-900 bg-white/80"
+                >
+                  新規
+                </button>
+              </div>
+            </div>
+
+            {/* Messages (ONLY scroll here) */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-3 md:px-4 py-4">
+              <div className="space-y-4">
+                {msgs.length === 0 ? <EmptyStateCard /> : null}
+
+                {msgs.map((m) => {
+                  const isUser = m.role === "user";
+                  return (
+                    <div key={m.id} className={isUser ? "flex justify-end" : "flex justify-start"}>
+                      {/* ChatGPT風：assistantは左にアイコン、userは右にアイコン */}
+                      {!isUser ? (
+                        <div className="mr-2 mt-1 shrink-0">
+                          <AvatarBot />
+                        </div>
+                      ) : null}
+
+                      <div
+                        className={[
+                          "max-w-[92%] md:max-w-[78%]",
+                          isUser
+                            ? "rounded-2xl bg-black text-white px-4 py-3 text-sm leading-relaxed"
+                            : "gm-card px-4 py-3 text-sm leading-relaxed text-slate-900",
+                        ].join(" ")}
+                      >
+                        {!isUser && m.isTyping && !m.content ? (
+                          <ThinkingDots />
+                        ) : (
+                          <div className="whitespace-pre-wrap">{m.content}</div>
+                        )}
+
+                        {!isUser && m.meta?.results?.length ? (
+                          <div className="mt-4 space-y-3">
+                            {m.meta.results.map((r: any) => (
+                              <ResultCard key={r.place_id} r={r} />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {isUser ? (
+                        <div className="ml-2 mt-1 shrink-0">
+                          <AvatarYou />
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+
+                <div ref={bottomRef} />
+              </div>
+            </div>
+
+            {/* Composer: bottom-fixed INSIDE the chat card (never scrolls) */}
+            <div className="shrink-0 border-t border-black/[.06] bg-white/80 backdrop-blur p-3">
+              <div className="gm-card px-3 py-3">
+                <div className="flex gap-2 items-end">
+                  <textarea
+                    className="min-h-[48px] max-h-[160px] flex-1 resize-none rounded-2xl border border-black/[.08] bg-white/85 px-4 py-3 text-sm text-slate-900 outline-none focus:border-orange-400"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="例：名古屋で中華そば。落ち着いた雰囲気で、できれば駅近。"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                      }
+                    }}
+                  />
+                  <button
+                    className="gm-press rounded-2xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                    onClick={send}
+                    disabled={isSending || !input.trim()}
+                  >
+                    送信
+                  </button>
+                </div>
+
+                <div className="mt-2 text-center text-[11px] text-slate-500">
+                  Enterで送信 / Shift+Enterで改行
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
-
-// app/ai-chat/ui/ChatShell.tsx
-// ※ファイル全体は前回版でOK。差分として ResultCard の作者表示部分だけ置き換えてください。
-
-// ...（中略）...
 
 function ResultCard({ r }: { r: any }) {
   const evidences = Array.isArray(r.evidence_posts) ? r.evidence_posts : [];
   const top = evidences[0] ?? null;
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+    <div className="gm-card p-4">
       <div className="min-w-0">
-        <div className="truncate text-sm font-semibold text-gray-900">{r.headline}</div>
-        <div className="mt-1 text-xs text-gray-500">{r.subline}</div>
-        <div className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{r.reason}</div>
+        <div className="truncate text-sm font-semibold text-slate-900">{r.headline}</div>
+        <div className="mt-1 text-xs text-slate-500">{r.subline}</div>
+        <div className="mt-2 text-sm text-slate-800 whitespace-pre-wrap">{r.reason}</div>
       </div>
 
       {top && (
-        <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-3">
+        <div className="mt-4 rounded-2xl border border-black/[.06] bg-white/70 p-3">
           <div className="flex gap-3">
             {top.image_thumb_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={top.image_thumb_url} alt="" className="h-16 w-16 rounded-xl object-cover" />
             ) : (
               <div className="h-16 w-16 rounded-xl bg-white" />
             )}
 
             <div className="min-w-0 flex-1">
-              {/* ✅ ここが変更点：フォロー関係に関係なく表示する（自分はAPI側で除外済み） */}
               {top.author_display_name ? (
                 <div className="flex items-center gap-2">
                   {top.author_avatar_url ? (
-                    <img src={top.author_avatar_url} alt="" className="h-5 w-5 rounded-full object-cover" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={top.author_avatar_url}
+                      alt=""
+                      className="h-5 w-5 rounded-full object-cover"
+                    />
                   ) : (
                     <div className="h-5 w-5 rounded-full bg-white" />
                   )}
-                  <div className="text-xs font-medium text-gray-900">{top.author_display_name}</div>
+                  <div className="text-xs font-semibold text-slate-900">{top.author_display_name}</div>
                 </div>
               ) : null}
 
-              <div className="mt-1 text-xs text-gray-700">
+              <div className="mt-1 text-xs text-slate-700">
                 {top.content && top.content.trim() ? top.content.trim() : "（コメントなし）"}
               </div>
 
               <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-gray-500">
+                <div className="text-[11px] text-slate-500">
                   {top.recommend_score != null ? `おすすめ ${top.recommend_score}/10` : null}
                   {top.price_yen != null ? ` / ¥${top.price_yen}` : null}
                   {top.price_range ? ` / ${top.price_range}` : null}
                 </div>
 
-                <a href={top.post_url} className="rounded-xl bg-black px-3 py-2 text-[11px] font-medium text-white">
+                <a
+                  href={top.post_url}
+                  className="gm-press rounded-xl bg-black px-3 py-2 text-[11px] font-semibold text-white"
+                >
                   投稿を見る
                 </a>
               </div>
@@ -421,7 +698,7 @@ function ResultCard({ r }: { r: any }) {
                 <a
                   key={p.post_id}
                   href={p.post_url}
-                  className="block rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 hover:bg-gray-50"
+                  className="block rounded-xl border border-black/[.06] bg-white/80 px-3 py-2 text-xs text-slate-800 hover:bg-white"
                 >
                   {p.author_display_name ? `${p.author_display_name}：` : ""}
                   {p.content && p.content.trim() ? p.content.trim() : "（コメントなし）"}
