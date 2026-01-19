@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Image as ImageIcon, MapPin, X, Check } from "lucide-react";
@@ -84,7 +84,6 @@ function getGourmeetDayKey(now = new Date()): string {
   const d = Number(parts.day);
   const h = Number(parts.hour);
 
-  // JSTのカレンダー日をUTC Dateで表現（中身のTZは気にしない。日付の演算だけに使う）
   let day = new Date(Date.UTC(y, m - 1, d));
   if (h < 4) day = new Date(day.getTime() - 24 * 60 * 60 * 1000);
 
@@ -173,8 +172,8 @@ async function resizeToFile(
 
 /**
  * 「タイムライン=thumb」でも不快にならない画質寄り
- * - thumb: 長辺1440px（Retinaでも粗が出にくい）
- * - full : 長辺3072px（拡大用に十分）
+ * - thumb: 長辺1440px
+ * - full : 長辺3072px
  * - 形式: AVIF > WebP > JPEG
  */
 async function prepareImage(file: File): Promise<PreparedImage> {
@@ -237,7 +236,7 @@ function formatYen(n: number) {
   }
 }
 
-/** points差分演出用：profiles.points を読む（列名が違うならここだけ直す） */
+/** points差分演出用：point_balances.balance を読む */
 async function fetchPointBalance(supabase: any, uid: string): Promise<number | null> {
   const { data, error } = await supabase.from("point_balances").select("balance").eq("user_id", uid).single();
   if (error) {
@@ -248,7 +247,7 @@ async function fetchPointBalance(supabase: any, uid: string): Promise<number | n
   return Number.isFinite(n) ? n : null;
 }
 
-/** 付与がトリガー等で遅れることがあるので、最大 ~10秒くらい差分が出るまで待つ */
+/** 付与が遅れることがあるので、最大 ~10秒くらい差分が出るまで待つ */
 async function waitForDelta(
   getAfter: () => Promise<number | null>,
   before: number | null,
@@ -271,14 +270,17 @@ function RailDot({
   done,
   label,
   optional,
+  dotRef,
 }: {
   done: boolean;
   label: string;
   optional?: boolean;
+  // ✅ DOM refは初期nullが普通なので null 許容にする
+  dotRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
     <div className="flex items-center justify-center pt-6">
-      <div className="relative">
+      <div ref={dotRef} className="relative z-10">
         <div
           className={[
             "grid h-6 w-6 place-items-center rounded-full transition",
@@ -329,15 +331,17 @@ export default function NewPostPage() {
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
   const [isSearchingPlace, setIsSearchingPlace] = useState(false);
 
-  // おすすめ度（1〜10）
-  const [recommendScore, setRecommendScore] = useState<number>(7);
+  // ✅ おすすめ度（0.1刻み）…未選択を作るため、選択フラグを別で持つ
+  const [recommendSelected, setRecommendSelected] = useState(false);
+  const [recommendScore, setRecommendScore] = useState<number>(7.0); // 値保持はするが、未選択扱いにできる
 
-  // 価格（実額 or レンジ）※デフォルト実額
+  // 価格（実額 or レンジ）
   const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
-  const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>(
-    "3000-3999"
-  );
+  const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
+
+  // ✅ 来店日（任意） visited_on
+  const [visitedOn, setVisitedOn] = useState<string>(""); // "YYYY-MM-DD" or ""
 
   // 付与演出モーダル
   const [award, setAward] = useState<{ points: number } | null>(null);
@@ -358,6 +362,10 @@ export default function NewPostPage() {
   const isContentComplete = content.trim().length > 0;
   const isPhotoComplete = imgs.length > 0;
   const isPlaceComplete = !!selectedPlace;
+  const isRecommendComplete = recommendSelected;
+
+  // ✅ 必須は4つ（写真/おすすめ度/価格/本文）
+  const isAllRequiredComplete = isPhotoComplete && isRecommendComplete && isPriceComplete && isContentComplete;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
@@ -501,7 +509,7 @@ export default function NewPostPage() {
     });
   };
 
-  // ✅ places に最低限データを upsert（place_id/lat/lng/types/photo_url など）
+  // ✅ places に最低限データを upsert
   async function upsertPlaceIfNeeded(placeId: string) {
     try {
       const res = await fetch(`/api/place-details?place_id=${encodeURIComponent(placeId)}`, {
@@ -512,7 +520,6 @@ export default function NewPostPage() {
       const d = await res.json();
       const nowIso = new Date().toISOString();
 
-      // null を入れて既存値を潰さないように「ある値だけ」詰める
       const row: any = {
         place_id: d.place_id,
         updated_at: nowIso,
@@ -530,22 +537,75 @@ export default function NewPostPage() {
       const { error } = await supabase.from("places").upsert(row, { onConflict: "place_id" });
       if (error) throw error;
 
-      // 投稿側も “できれば” 正規化された値を使いたい時用に返す
       return {
         name: typeof d.name === "string" && d.name ? d.name : null,
         address: typeof d.address === "string" && d.address ? d.address : null,
       };
     } catch (e) {
-      // places が失敗しても投稿自体は通す（体験優先）
       console.warn("upsertPlaceIfNeeded failed:", e);
       return { name: null, address: null };
     }
   }
 
+  // ✅ レール線アニメ（必須が全部埋まった瞬間に上から伸びる）
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const dotPhotoRef = useRef<HTMLDivElement | null>(null);
+  const dotRecRef = useRef<HTMLDivElement | null>(null);
+  const dotPriceRef = useRef<HTMLDivElement | null>(null);
+  const dotContentRef = useRef<HTMLDivElement | null>(null);
+  const dotPlaceRef = useRef<HTMLDivElement | null>(null);
+
+  const [railGeom, setRailGeom] = useState<{ top: number; height: number }>({ top: 0, height: 0 });
+  const [railOn, setRailOn] = useState(false);
+  const prevAllRef = useRef(false);
+
+  const computeRail = () => {
+    const formEl = formRef.current;
+    const firstEl = dotPhotoRef.current;
+    const lastEl = dotPlaceRef.current ?? dotContentRef.current;
+    if (!formEl || !firstEl || !lastEl) return;
+
+    const fr = formEl.getBoundingClientRect();
+    const r1 = firstEl.getBoundingClientRect();
+    const rN = lastEl.getBoundingClientRect();
+
+    const top = r1.top - fr.top + r1.height / 2;
+    const height = rN.top - fr.top + rN.height / 2 - top;
+
+    setRailGeom({ top, height: Math.max(0, height) });
+  };
+
+  useLayoutEffect(() => {
+    computeRail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imgs.length, recommendSelected, recommendScore, priceMode, priceYenText, priceRange, content, selectedPlace, visitedOn]);
+
+  useEffect(() => {
+    const onResize = () => computeRail();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const prev = prevAllRef.current;
+    if (!prev && isAllRequiredComplete) {
+      setRailOn(true); // 「全部埋まった瞬間」にだけ伸ばす
+    }
+    if (!isAllRequiredComplete) {
+      setRailOn(false); // 未達に戻ったら線は消す（好みで維持でもOK）
+    }
+    prevAllRef.current = isAllRequiredComplete;
+  }, [isAllRequiredComplete]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
+
+    if (!recommendSelected) {
+      return setMsg("おすすめ度を選んでください（スライダーを動かすと選択されます）。");
+    }
 
     const price_yen = priceMode === "exact" ? priceYenValue : null;
     const price_range = priceMode === "range" ? priceRange : null;
@@ -557,7 +617,6 @@ export default function NewPostPage() {
     setBusy(true);
     setMsg(null);
 
-    // 付与演出のため、投稿前ポイントを取得（失敗したら演出なしで進む）
     const beforePoints = await fetchPointBalance(supabase, uid);
 
     try {
@@ -595,7 +654,6 @@ export default function NewPostPage() {
         compatFullUrls.push(pubFull.publicUrl);
       }
 
-      // ✅ ここで places を upsert（lat/lng 等を埋める）
       let normalizedPlaceName: string | null = null;
       let normalizedPlaceAddress: string | null = null;
 
@@ -605,6 +663,8 @@ export default function NewPostPage() {
         normalizedPlaceAddress = norm.address;
       }
 
+      const visited_on = visitedOn ? visitedOn : null;
+
       const { error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
         content,
@@ -612,31 +672,26 @@ export default function NewPostPage() {
         image_urls: compatFullUrls,
 
         place_id: selectedPlace?.place_id ?? null,
-        // ✅ details が取れたらそっち優先（取れなければ選択時の値）
         place_name: normalizedPlaceName ?? selectedPlace?.name ?? null,
         place_address: normalizedPlaceAddress ?? selectedPlace?.formatted_address ?? null,
 
-        recommend_score: recommendScore,
+        recommend_score: Number(recommendScore.toFixed(1)),
         price_yen,
         price_range,
+
+        visited_on, // ✅ 任意
       });
       if (insErr) throw insErr;
 
-      // 付与はトリガー等で遅れることがあるので、最大 ~10秒程度差分を待つ
       const delta = await waitForDelta(() => fetchPointBalance(supabase, uid), beforePoints);
 
       if (delta && delta > 0) {
         setAward({ points: delta });
-
-        // クラッカー（軽めに2発）
         confetti({ particleCount: 90, spread: 70, origin: { y: 0.7 } });
         confetti({ particleCount: 60, spread: 120, origin: { y: 0.6 } });
-
-        // 演出を見せたいので、ここでは遷移しない
         return;
       }
 
-      // 演出なしはそのまま遷移
       router.push("/timeline");
       router.refresh();
     } catch (err: any) {
@@ -718,8 +773,25 @@ export default function NewPostPage() {
         )}
 
         <div className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-6">
-          <form onSubmit={submit} className="grid grid-cols-[1fr_28px] gap-x-3 gap-y-5">
-            {/* 画像追加 */}
+          <form
+            ref={formRef}
+            onSubmit={submit}
+            className="relative grid grid-cols-[1fr_28px] gap-x-3 gap-y-5"
+          >
+            {/* ✅ 全部埋まった瞬間に線が上から伸びる */}
+            <div className="pointer-events-none absolute right-0 top-0 h-full w-[28px]">
+              <div
+                className="absolute left-1/2 -translate-x-1/2 rounded-full bg-orange-500/90 transition-[height] duration-700 ease-out"
+                style={{
+                  top: `${railGeom.top}px`,
+                  width: "2px",
+                  height: railOn ? `${railGeom.height}px` : "0px",
+                  filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.08))",
+                }}
+              />
+            </div>
+
+            {/* 写真 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">写真</span>
@@ -753,7 +825,6 @@ export default function NewPostPage() {
                 </div>
               </div>
 
-              {/* 画像プレビュー */}
               {imgs.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs text-slate-500">
@@ -782,28 +853,51 @@ export default function NewPostPage() {
                 </div>
               )}
             </div>
-            <RailDot done={isPhotoComplete} label="写真" />
+            <RailDot done={isPhotoComplete} label="写真" dotRef={dotPhotoRef} />
 
-            {/* おすすめ度 */}
+            {/* おすすめ度（0.1刻み / 未選択デフォ） */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-medium text-slate-700">
-                  おすすめ度 <span className="text-orange-600">{recommendScore}</span>/10
+                  おすすめ度{" "}
+                  {recommendSelected ? (
+                    <span className="text-orange-600">{recommendScore.toFixed(1)}</span>
+                  ) : (
+                    <span className="text-slate-400">未選択</span>
+                  )}
+                  <span className="text-slate-400">/10</span>
                 </span>
+                {!recommendSelected && (
+                  <span className="text-[11px] text-slate-400">スライダーを動かして選択</span>
+                )}
               </div>
 
-              <input
-                type="range"
-                min={1}
-                max={10}
-                step={1}
-                value={recommendScore}
-                onChange={(e) => setRecommendScore(Number(e.target.value))}
-                className="w-full accent-orange-600"
-                aria-label="おすすめ度"
-              />
+              <div
+                className={[
+                  "rounded-2xl border px-4 py-3 transition",
+                  recommendSelected ? "border-orange-100 bg-orange-50/40" : "border-slate-200 bg-white",
+                ].join(" ")}
+              >
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={0.1}
+                  value={recommendScore}
+                  onChange={(e) => {
+                    setRecommendSelected(true);
+                    setRecommendScore(Number(e.target.value));
+                  }}
+                  className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
+                  aria-label="おすすめ度"
+                />
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>1.0</span>
+                  <span>10.0</span>
+                </div>
+              </div>
             </div>
-            <RailDot done={true} label="おすすめ度" />
+            <RailDot done={isRecommendComplete} label="おすすめ度" dotRef={dotRecRef} />
 
             {/* 価格 */}
             <div className="space-y-2">
@@ -824,9 +918,7 @@ export default function NewPostPage() {
                       onClick={() => setPriceMode(x.v as PriceMode)}
                       className={[
                         "h-8 rounded-full px-4 text-xs font-medium transition",
-                        active
-                          ? "bg-white shadow-sm text-slate-900"
-                          : "text-slate-600 hover:text-slate-800",
+                        active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
                       ].join(" ")}
                     >
                       {x.label}
@@ -873,7 +965,7 @@ export default function NewPostPage() {
                 <p className="text-[11px] text-slate-400">実額の場合は入力が必要です。</p>
               )}
             </div>
-            <RailDot done={isPriceComplete} label="価格" />
+            <RailDot done={isPriceComplete} label="価格" dotRef={dotPriceRef} />
 
             {/* 本文 */}
             <div className="space-y-2">
@@ -883,7 +975,7 @@ export default function NewPostPage() {
               </div>
 
               <textarea
-                className="h-24 md:h-32 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-0"
+                className="h-24 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-0 md:h-32"
                 placeholder="いま何食べてる？（ここに Command+V でも画像を貼り付けできます）"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
@@ -895,9 +987,38 @@ export default function NewPostPage() {
                 }}
               />
             </div>
-            <RailDot done={isContentComplete} label="本文" />
+            <RailDot done={isContentComplete} label="本文" dotRef={dotContentRef} />
 
-            {/* 店舗選択 */}
+            {/* 来店日（任意） */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-medium text-slate-700">いつ行った？</span>
+                <span className="text-[11px] text-slate-400">任意</span>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-full border border-orange-100 bg-white px-3 py-2">
+                <input
+                  type="date"
+                  value={visitedOn}
+                  onChange={(e) => setVisitedOn(e.target.value)}
+                  className="w-full bg-transparent text-xs outline-none"
+                  aria-label="来店日"
+                />
+                {visitedOn && (
+                  <button
+                    type="button"
+                    onClick={() => setVisitedOn("")}
+                    className="rounded-full bg-orange-50 px-3 py-1 text-[11px] font-semibold text-slate-700 hover:bg-orange-100"
+                  >
+                    クリア
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">※ 投稿した日と違う日にもできます</p>
+            </div>
+            <div />
+
+            {/* 店舗選択（任意） */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="flex items-center gap-1 font-medium text-slate-700">
@@ -959,9 +1080,7 @@ export default function NewPostPage() {
                                 </div>
                                 <div className="min-w-0">
                                   <div className="truncate font-medium text-slate-800">{p.name}</div>
-                                  <div className="truncate text-[11px] text-slate-500">
-                                    {p.formatted_address}
-                                  </div>
+                                  <div className="truncate text-[11px] text-slate-500">{p.formatted_address}</div>
                                 </div>
                               </div>
                             </li>
@@ -981,7 +1100,7 @@ export default function NewPostPage() {
 
               <p className="text-[11px] text-slate-400">※ お店は任意です（後で編集したい人向け）</p>
             </div>
-            <RailDot done={isPlaceComplete} label="お店" optional />
+            <RailDot done={isPlaceComplete} label="お店" optional dotRef={dotPlaceRef} />
 
             {/* エラーメッセージ */}
             {msg && <p className="col-span-2 text-xs text-red-600">{msg}</p>}

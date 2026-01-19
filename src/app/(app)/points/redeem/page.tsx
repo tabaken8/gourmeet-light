@@ -6,6 +6,9 @@ import RequestRedeemButton from "@/components/RequestRedeemButton";
 
 type TicketRow = { balance: number } | null;
 
+
+
+
 export default async function RedeemPage() {
   const supabase = await createClient();
   const {
@@ -31,6 +34,7 @@ export default async function RedeemPage() {
   const tickets = (ticketRow as TicketRow)?.balance ?? 0;
 
   const canRedeem = balance >= 1000 && tickets >= 1;
+
 
   return (
     <main className="mx-auto w-full max-w-xl px-4 pb-24 pt-6">
