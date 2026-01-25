@@ -3,19 +3,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MoreHorizontal, Trash2, ExternalLink } from "lucide-react";
+import { MoreHorizontal, Trash2, ExternalLink, Pencil } from "lucide-react";
 
 type Props = {
   postId: string;
-  isMine: boolean;           // 本人かどうか
+  isMine: boolean; // 本人かどうか
   className?: string;
-  goTo?: string;             // 例: `/posts/${postId}`
+  goTo?: string; // 例: `/posts/${postId}`
 };
 
 export default function PostMoreMenu({ postId, isMine, className, goTo }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
   const to = goTo ?? `/posts/${postId}`;
+  const editTo = `/posts/${postId}/edit`;
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -30,7 +32,10 @@ export default function PostMoreMenu({ postId, isMine, className, goTo }: Props)
     <div ref={ref} className={`relative ${className ?? ""}`}>
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         aria-haspopup="menu"
         aria-expanded={open}
         className="rounded-full p-1.5 hover:bg-black/5"
@@ -47,9 +52,20 @@ export default function PostMoreMenu({ postId, isMine, className, goTo }: Props)
           <Link
             href={to}
             className="flex items-center gap-2 px-4 py-3 text-sm hover:bg-black/5"
+            onClick={() => setOpen(false)}
           >
             <ExternalLink size={16} /> 投稿へ移動
           </Link>
+
+          {isMine && (
+            <Link
+              href={editTo}
+              className="flex items-center gap-2 px-4 py-3 text-sm hover:bg-black/5"
+              onClick={() => setOpen(false)}
+            >
+              <Pencil size={16} /> 編集する
+            </Link>
+          )}
 
           {isMine && (
             <form action={`/posts/${postId}/delete`} method="post">
@@ -59,7 +75,9 @@ export default function PostMoreMenu({ postId, isMine, className, goTo }: Props)
                 onClick={(e) => {
                   if (!confirm("この投稿を削除します。よろしいですか？")) {
                     e.preventDefault();
+                    return;
                   }
+                  setOpen(false);
                 }}
               >
                 <Trash2 size={16} /> 削除する

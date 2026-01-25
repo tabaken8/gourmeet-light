@@ -87,8 +87,19 @@ function formatPrice(p: PostRow): string | null {
         return "¥5,000〜¥6,999";
       case "7000-9999":
         return "¥7,000〜¥9,999";
-      case "10000+":
-        return "¥10,000〜";
+      case "10000-14999":
+        return "¥10,000〜¥14,999";
+      case "15000-19999":
+        return "¥15,000〜¥19,999";
+      case "20000-24999":
+        return "¥20,000〜¥24,999";
+      case "25000-29999":
+        return "¥25,000〜¥29,999";
+      case "30000-49999":
+        return "¥30,000〜¥49,999";
+      case "50000+":
+        return "¥50,000〜";
+
       default:
         return p.price_range;
     }
