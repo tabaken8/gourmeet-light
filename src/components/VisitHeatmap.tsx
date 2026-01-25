@@ -124,13 +124,7 @@ function monthLabel(m: number) {
   return `${m}月`;
 }
 
-export default function VisitHeatmap({
-  userId,
-  days,
-}: {
-  userId: string;
-  days: HeatmapDay[];
-}) {
+export default function VisitHeatmap({ userId, days }: { userId: string; days: HeatmapDay[] }) {
   const supabase = createClientComponentClient();
 
   // 横スクロール右寄せ（最新が右）
@@ -182,47 +176,80 @@ export default function VisitHeatmap({
     return (day + 6) % 7; // Mon=0..Sun=6
   }
 
-  // グリッド（GitHub風：週×曜日）
+  /**
+   * グリッド（週×曜日）を作る。
+   * さらに「月境界で少し空ける」ための breakBefore を週単位で持つ。
+   */
   const grid = useMemo(() => {
     const dates = calendar.dates;
-    if (dates.length === 0) return { weeks: [] as string[][] };
+    if (dates.length === 0) return { weeks: [] as string[][], breakBefore: [] as boolean[] };
 
     const first = dates[0];
     const pad = weekdayMon0(first);
     const padded: (string | null)[] = Array(pad).fill(null).concat(dates);
 
-    const weeks: string[][] = [];
+    const weeksRaw: string[][] = [];
     for (let i = 0; i < padded.length; i += 7) {
       const col = padded.slice(i, i + 7).map((x) => (x ?? "")) as string[];
-      weeks.push(col);
+      weeksRaw.push(col);
     }
 
-    return { weeks };
-  }, [calendar]);
-
-  // ✅ Month ラベル（週列ごと：月が変わった週だけ表示）
-  const monthLabels = useMemo(() => {
-    // 各週の「代表日」（その列で最初に非空のdateKey）を見て、前列と月が違うならラベル表示
-    const labels: Array<{ show: boolean; text: string }> = [];
+    // 月境界検出：各週列の「最初の有効日」で ym を取る
+    const breakBefore: boolean[] = [];
     let prevYM: string | null = null;
-
-    for (const col of grid.weeks) {
+    for (const col of weeksRaw) {
       const firstKey = col.find((x) => x && x.length === 10) ?? "";
       if (!firstKey) {
-        labels.push({ show: false, text: "" });
+        breakBefore.push(false);
         continue;
       }
-      const ym = firstKey.slice(0, 7); // YYYY-MM
-      if (ym !== prevYM) {
-        const m = Number(firstKey.slice(5, 7));
-        labels.push({ show: true, text: monthLabel(m) });
+      const ym = firstKey.slice(0, 7);
+      if (prevYM === null) {
+        breakBefore.push(false);
+        prevYM = ym;
+      } else if (ym !== prevYM) {
+        breakBefore.push(true); // ←この週の前に“月の区切りスペース”を入れる
         prevYM = ym;
       } else {
-        labels.push({ show: false, text: "" });
+        breakBefore.push(false);
       }
     }
-    return labels;
-  }, [grid.weeks]);
+
+    return { weeks: weeksRaw, breakBefore };
+  }, [calendar]);
+
+  /**
+   * ✅ Month ラベルは「列幅に影響させない」方式に変更
+   * - 各週列に対応する meta を作る
+   * - show: 月が切り替わる週だけ true
+   * - breakBefore: グリッドと同じ位置で“余白”を入れる
+   */
+  const monthMeta = useMemo(() => {
+    const meta: Array<{ show: boolean; text: string; breakBefore: boolean }> = [];
+    let prevYM: string | null = null;
+
+    for (let i = 0; i < grid.weeks.length; i++) {
+      const col = grid.weeks[i];
+      const firstKey = col.find((x) => x && x.length === 10) ?? "";
+      const bb = grid.breakBefore[i] ?? false;
+
+      if (!firstKey) {
+        meta.push({ show: false, text: "", breakBefore: bb });
+        continue;
+      }
+
+      const ym = firstKey.slice(0, 7);
+      if (ym !== prevYM) {
+        const m = Number(firstKey.slice(5, 7));
+        meta.push({ show: true, text: monthLabel(m), breakBefore: bb });
+        prevYM = ym;
+      } else {
+        meta.push({ show: false, text: "", breakBefore: bb });
+      }
+    }
+
+    return meta;
+  }, [grid.weeks, grid.breakBefore]);
 
   const yearRangeText = useMemo(() => {
     const sy = Number(calendar.startKey.slice(0, 4));
@@ -253,9 +280,7 @@ export default function VisitHeatmap({
           "id, created_at, visited_on, recommend_score, price_yen, price_range, place_id, place_name, place_address, image_variants, image_urls"
         )
         .eq("user_id", userId)
-        .or(
-          `visited_on.eq.${dateKey},and(visited_on.is.null,created_at.gte.${startIso},created_at.lt.${endIso})`
-        )
+        .or(`visited_on.eq.${dateKey},and(visited_on.is.null,created_at.gte.${startIso},created_at.lt.${endIso})`)
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -333,33 +358,25 @@ export default function VisitHeatmap({
   const hoverDay = hoverKey ? dayMap.get(hoverKey) ?? null : null;
 
   // ✅ 凡例：実際の段階（0 + 1 + 10段階）をそのまま並べる
-  const legendLevels = useMemo(() => {
-    // 0..11 を全部見せる（= 12個）
-    return Array.from({ length: 12 }, (_, i) => i);
-  }, []);
+  const legendLevels = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
 
   return (
     <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
-          <p className="mt-1 text-[11px] text-slate-500">
-            ブロックを押すと投稿を見ることができます。
-            <span className="ml-2 text-slate-400"></span>
-          </p>
+          <p className="mt-1 text-[11px] text-slate-500">ブロックを押すと投稿を見ることができます。</p>
         </div>
 
         <div className="text-[11px] text-slate-500">
           <div className="text-right font-medium text-slate-700">{yearRangeText}</div>
 
           <div className="mt-1 flex items-center justify-end gap-2">
-            <span className="text-slate-500"></span>
             <div className="flex items-center gap-0.5">
               {legendLevels.map((lv) => (
                 <span key={lv} className={`h-2.5 w-2.5 rounded-[3px] ${levelClass(lv)}`} />
               ))}
             </div>
-            <span className="text-slate-500"></span>
           </div>
         </div>
       </div>
@@ -367,26 +384,49 @@ export default function VisitHeatmap({
       {/* GitHub風：横スクロール（最新が右） */}
       <div ref={scrollRef} className="mt-4 overflow-x-auto overscroll-x-contain">
         <div className="min-w-[760px] pr-2">
-          {/* ✅ Month labels */}
-          <div className="mb-2 flex gap-1 pl-0">
-            {monthLabels.map((m, i) => (
-              <div key={i} className="w-3.5">
+          {/* ✅ Month labels（ズレない版）
+              - 各列を flex-none w-3.5 で完全固定
+              - 文字は absolute で“レイアウトに影響させない”
+              - 月境界は breakBefore でグリッドと同じ位置にスペースを入れる
+          */}
+ {/* ✅ Month labels（被り防止：行に高さを持たせる） */}
+            <div className="mb-2 flex gap-1 h-4 items-end">
+            {monthMeta.map((m, i) => (
+                <div
+                key={i}
+                className={[
+                    "relative flex-none w-3.5 h-4",
+                    m.breakBefore ? "ml-2" : "",
+                ].join(" ")}
+                >
                 {m.show ? (
-                  <div className="text-[10px] font-medium text-slate-500">{m.text}</div>
-                ) : (
-                  <div className="text-[10px] text-transparent">.</div>
-                )}
-              </div>
+                    <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 whitespace-nowrap leading-none">
+                    {m.text}
+                    </span>
+                ) : null}
+                </div>
             ))}
-          </div>
+            </div>
 
-          {/* Grid */}
+
+          {/* Grid（こちらも同じ breakBefore を適用して“セット管理”） */}
           <div className="flex gap-1">
             {grid.weeks.map((col, wi) => (
-              <div key={wi} className="flex flex-col gap-1">
+              <div
+                key={wi}
+                className={[
+                  "flex flex-col gap-1",
+                  grid.breakBefore[wi] ? "ml-2" : "",
+                ].join(" ")}
+              >
                 {col.map((dateKey, di) => {
                   if (!dateKey) {
-                    return <div key={`${wi}-${di}`} className="h-3.5 w-3.5 rounded-[3px] bg-transparent" />;
+                    return (
+                      <div
+                        key={`${wi}-${di}`}
+                        className="h-3.5 w-3.5 rounded-[3px] bg-transparent"
+                      />
+                    );
                   }
                   const d = dayMap.get(dateKey) ?? null;
                   const level = scoreToLevel(d?.maxScore ?? null);
@@ -396,7 +436,7 @@ export default function VisitHeatmap({
                       key={dateKey}
                       type="button"
                       className={[
-                        "h-3.5 w-3.5 rounded-[3px] transition",
+                        "h-3.5 w-3.5 flex-none rounded-[3px] transition",
                         "outline-none focus:ring-2 focus:ring-orange-300/60 focus:ring-offset-2 focus:ring-offset-white",
                         levelClass(level),
                         "hover:brightness-95",
@@ -484,9 +524,7 @@ export default function VisitHeatmap({
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {detailPosts.map((p) => {
                         const score =
-                          typeof p.recommend_score === "number" &&
-                          p.recommend_score >= 0 &&
-                          p.recommend_score <= 10
+                          typeof p.recommend_score === "number" && p.recommend_score >= 0 && p.recommend_score <= 10
                             ? p.recommend_score
                             : null;
 
