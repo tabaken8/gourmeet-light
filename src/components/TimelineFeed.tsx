@@ -63,11 +63,16 @@ function formatJST(iso: string) {
   }).format(dt);
 }
 
+/**
+ * ✅ Timeline（friends）では thumb を優先して使う
+ * - full は詳細 or 拡大で読むべき
+ * - legacy(image_urls) は互換のため残す（多くは full の可能性）
+ */
 function getTimelineImageUrls(p: PostRow): string[] {
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
 
   const fromVariants = variants
-    .map((v) => (v?.full ?? v?.thumb ?? null))
+    .map((v) => (v?.thumb ?? v?.full ?? null)) // ✅ thumb優先に修正
     .filter((x): x is string => !!x);
 
   if (fromVariants.length > 0) return fromVariants;
@@ -228,7 +233,7 @@ function planDiscoverTiles(
   };
 
   const canBigAt = (r: number, c: number) => {
-    if (c > 1) return false; // 2列またぐので col=2 からは無理
+    if (c > 1) return false;
     ensureRow(r);
     ensureRow(r + 1);
     return (
@@ -424,7 +429,6 @@ export default function TimelineFeed({
 
   // =========================
   // ✅ DISCOVER: 3列固定 + 正方形タイル + たまに2x2大正方形
-  //  - “押した感”と“面の質感”を足す
   // =========================
   if (activeTab === "discover") {
     return (
@@ -465,6 +469,7 @@ export default function TimelineFeed({
                       alt=""
                       className="absolute inset-0 h-full w-full object-cover"
                       loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-slate-100">
@@ -475,10 +480,8 @@ export default function TimelineFeed({
                     </div>
                   )}
 
-                  {/* ✅ “薄いハイライト”で質感 */}
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
 
-                  {/* ✅ モバイルでは display_name を出さない */}
                   <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
                     <span className="max-w-[120px] truncate">{display}</span>
                     {!isPublic && <Lock size={12} className="text-white/90" />}
@@ -531,11 +534,10 @@ export default function TimelineFeed({
         const mapUrl = p.place_id
           ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
           : p.place_address
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-              p.place_address
-            )}`
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
           : null;
 
+        // ✅ ここが最重要：thumb優先のURL配列（Timeline）
         const timelineImageUrls = getTimelineImageUrls(p);
 
         const initialLikeCount = p.likeCount ?? 0;
@@ -550,9 +552,7 @@ export default function TimelineFeed({
         };
 
         const score =
-          typeof p.recommend_score === "number" &&
-          p.recommend_score >= 1 &&
-          p.recommend_score <= 10
+          typeof p.recommend_score === "number" && p.recommend_score >= 0 && p.recommend_score <= 10
             ? p.recommend_score
             : null;
 
@@ -581,6 +581,8 @@ export default function TimelineFeed({
                           src={avatar}
                           alt=""
                           className="h-9 w-9 rounded-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         initial
@@ -595,21 +597,17 @@ export default function TimelineFeed({
                         >
                           {display}
                         </Link>
-                        {!isPublic && (
-                          <Lock size={12} className="shrink-0 text-slate-500" />
-                        )}
+                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
                       </div>
 
-                      <div className="text-[11px] text-slate-500">
-                        友達のおすすめ
-                      </div>
+                      <div className="text-[11px] text-slate-500">友達のおすすめ</div>
                     </div>
                   </div>
 
                   <PostMoreMenu postId={p.id} isMine={meId === p.user_id} />
                 </div>
 
-                {/* ✅ Gourmeet 署名ストリップ（皿の端のソース） */}
+                {/* ✅ Gourmeet 署名ストリップ */}
                 <div className="px-4 pb-3">
                   <div className="flex flex-wrap items-center gap-2">
                     {p.place_name ? (
@@ -630,7 +628,7 @@ export default function TimelineFeed({
                       </div>
                     ) : null}
 
-                    {score ? (
+                    {score !== null ? (
                       <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-orange-800">
                         おすすめ <span className="ml-1 font-semibold">{score}/10</span>
                       </span>
@@ -659,9 +657,7 @@ export default function TimelineFeed({
                       <button
                         type="button"
                         onClick={togglePhotos}
-                        aria-label={
-                          isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"
-                        }
+                        aria-label={isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"}
                         className="
                           md:hidden
                           gm-chip gm-press
@@ -688,6 +684,9 @@ export default function TimelineFeed({
                       postId={p.id}
                       imageUrls={timelineImageUrls}
                       syncUrl={false}
+                      // ✅ timelineは lazy 前提 + 近傍プリロードで操作即時を狙う（あなたの差し替え版に合わせる）
+                      eager={false}
+                      preloadNeighbors={true}
                     />
                   </Link>
                 )}
@@ -718,12 +717,7 @@ export default function TimelineFeed({
 
                 {/* Comments */}
                 <div className="px-4 pb-5">
-                  <PostComments
-                    postId={p.id}
-                    postUserId={p.user_id}
-                    meId={meId}
-                    previewCount={2}
-                  />
+                  <PostComments postId={p.id} postUserId={p.user_id} meId={meId} previewCount={2} />
                 </div>
               </div>
 

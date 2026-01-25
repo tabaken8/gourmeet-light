@@ -9,15 +9,26 @@ type Props = {
   imageUrls: string[];
   initialIndex?: number;
   syncUrl?: boolean; // 明示指定もできる（既定は「投稿詳細ページなら同期」）
+  eager?: boolean;   // ✅ 追加：詳細などで eager にしたい時
+  preloadNeighbors?: boolean; // ✅ 追加：近傍プリロード（timelineで true 推奨）
 };
+
+function preloadImage(url: string) {
+  if (!url) return;
+  const img = new Image();
+  img.decoding = "async";
+  img.loading = "eager";
+  img.src = url;
+}
 
 export default function PostImageCarousel({
   postId,
   imageUrls,
   initialIndex = 0,
   syncUrl,
+  eager,
+  preloadNeighbors = true,
 }: Props) {
-  // ✅ Hooks は early return より前に必ず呼ぶ
   const router = useRouter();
   const pathname = usePathname();
 
@@ -29,26 +40,25 @@ export default function PostImageCarousel({
 
   const [index, setIndex] = useState(() => clamp(initialIndex));
 
-  // ✅ URL同期は「投稿詳細ページならデフォルトON」(timelineで誤爆しない)
   const isPostDetailPage = pathname === `/posts/${postId}`;
   const shouldSyncUrl = syncUrl ?? isPostDetailPage;
 
-  // ✅ 画像枚数が変わったら index を範囲内に戻す
+  // ✅ 枚数変化で index を範囲内へ
   useEffect(() => {
     setIndex((i) => clamp(i));
   }, [clamp]);
 
-  const canPrev = total > 1 && index > 0;
-  const canNext = total > 1 && index < total - 1;
+  // ✅ 近傍（前後）だけプリロード：カルーセル即時化
+  useEffect(() => {
+    if (!preloadNeighbors) return;
+    if (total <= 1) return;
 
-  const prev = () => setIndex((i) => (i > 0 ? i - 1 : i));
-  const next = () => setIndex((i) => (i < total - 1 ? i + 1 : i));
+    const next = index + 1;
+    const prev = index - 1;
 
-  // ✅ 親が Link / onClick で遷移してても、矢印・ドット押下で遷移しない
-  const stopNav = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
+    if (next < total) preloadImage(imageUrls[next]);
+    if (prev >= 0) preloadImage(imageUrls[prev]);
+  }, [index, imageUrls, preloadNeighbors, total]);
 
   // ✅ URL同期（投稿詳細ページのみ、または syncUrl=true 明示時）
   useEffect(() => {
@@ -58,8 +68,21 @@ export default function PostImageCarousel({
     router.replace(url, { scroll: false });
   }, [index, postId, router, shouldSyncUrl, total]);
 
-  // ✅ early return は Hooks の後
   if (total === 0) return null;
+
+  const canPrev = total > 1 && index > 0;
+  const canNext = total > 1 && index < total - 1;
+  const prev = () => setIndex((i) => (i > 0 ? i - 1 : i));
+  const next = () => setIndex((i) => (i < total - 1 ? i + 1 : i));
+
+  const stopNav = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // ✅ 詳細は eager、タイムラインは lazy が基本
+  const loadingMode: "eager" | "lazy" =
+    eager ?? isPostDetailPage ? "eager" : "lazy";
 
   return (
     <div className="relative w-full overflow-hidden">
@@ -68,12 +91,9 @@ export default function PostImageCarousel({
         src={imageUrls[index]}
         alt=""
         className="w-full max-h-[600px] object-cover"
-        onClick={(e) => {
-          // 親がLinkなら画像クリックで遷移させたいケースもあるので止めない
-          // 止めたいなら下2行を有効化
-          // e.preventDefault();
-          // e.stopPropagation();
-        }}
+        loading={loadingMode}
+        decoding="async"
+        fetchPriority={loadingMode === "eager" ? "high" : "auto"}
       />
 
       {total > 1 && (
