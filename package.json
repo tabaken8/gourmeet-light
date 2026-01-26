@@ -18,6 +18,7 @@
     "@supabase/supabase-js": "^2.87.3",
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
+    "framer-motion": "^12.29.0",
     "heic2any": "^0.0.4",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.542.0",

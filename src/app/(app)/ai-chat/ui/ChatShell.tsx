@@ -672,7 +672,7 @@ function ResultCard({ r }: { r: any }) {
               ) : null}
 
               <div className="mt-1 text-xs text-slate-700">
-                {top.content && top.content.trim() ? top.content.trim() : "（コメントなし）"}
+                {top.content && top.content.trim() ? top.content.trim() : ""}
               </div>
 
               <div className="mt-2 flex items-center justify-between gap-2">
@@ -701,7 +701,7 @@ function ResultCard({ r }: { r: any }) {
                   className="block rounded-xl border border-black/[.06] bg-white/80 px-3 py-2 text-xs text-slate-800 hover:bg-white"
                 >
                   {p.author_display_name ? `${p.author_display_name}：` : ""}
-                  {p.content && p.content.trim() ? p.content.trim() : "（コメントなし）"}
+                  {p.content && p.content.trim() ? p.content.trim() : ""}
                 </a>
               ))}
             </div>

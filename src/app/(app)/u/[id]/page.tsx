@@ -8,6 +8,9 @@ import { Images, Globe2, Lock } from "lucide-react";
 // ✅ ヒートマップ（Client Component）
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
 
+// ✅ Stats（Client Component）
+import ProfileStatsPublic from "@/components/ProfileStatsPublic";
+
 export const dynamic = "force-dynamic";
 
 // ---- utils ----
@@ -38,11 +41,7 @@ function getRepresentativeDayKey(r: any): string {
   return "0000-00-00";
 }
 
-export default async function UserPublicPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function UserPublicPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
 
   // ログイン必須
@@ -54,9 +53,7 @@ export default async function UserPublicPage({
   const userId = params.id;
 
   // 自分のページなら /profile へ
-  if (userId === me.id) {
-    redirect("/profile");
-  }
+  if (userId === me.id) redirect("/profile");
 
   // プロフィール取得
   const { data: profile } = await supabase
@@ -78,7 +75,7 @@ export default async function UserPublicPage({
   let initiallyFollowing = false;
   let initiallyRequested = false;
 
-  if (me && me.id !== userId) {
+  if (me.id !== userId) {
     const { data: rel } = await supabase
       .from("follows")
       .select("status")
@@ -124,7 +121,7 @@ export default async function UserPublicPage({
   ]);
 
   // 投稿閲覧権限
-  const canViewPosts = isPublic || me.id === userId || initiallyFollowing;
+  const canViewPosts = isPublic || initiallyFollowing;
 
   // -----------------------------
   // 投稿（グリッド用）: 代表日付で並べ替え（visited_on 優先）
@@ -161,10 +158,7 @@ export default async function UserPublicPage({
   // -----------------------------
   let wantPosts: any[] = [];
   if (canViewPosts) {
-    const { data: wantRows } = await supabase
-      .from("post_wants")
-      .select("post_id")
-      .eq("user_id", userId);
+    const { data: wantRows } = await supabase.from("post_wants").select("post_id").eq("user_id", userId);
 
     if (wantRows?.length) {
       const ids = wantRows.map((r) => r.post_id);
@@ -172,9 +166,9 @@ export default async function UserPublicPage({
         .from("posts")
         .select("id, image_urls, image_variants, created_at")
         .in("id", ids)
-        .eq("status", "accepted")
         .order("created_at", { ascending: false })
         .limit(24);
+
       wantPosts = data ?? [];
     }
   }
@@ -186,7 +180,6 @@ export default async function UserPublicPage({
   let heatmapDays: HeatmapDay[] = [];
 
   if (canViewPosts) {
-    // 直近12ヶ月(365日)の範囲 (JST日付)
     const dtf = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Tokyo",
       year: "numeric",
@@ -198,11 +191,9 @@ export default async function UserPublicPage({
     const todayJst = dtf.format(today);
     const startJst = dtf.format(new Date(today.getTime() - 364 * 24 * 60 * 60 * 1000));
 
-    // created_at のざっくり範囲 (timestamptz)
     const startIso = new Date(Date.now() - 364 * 24 * 60 * 60 * 1000).toISOString();
     const endIso = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString();
 
-    // ① visited_on あり（来店日指定）
     const { data: withVisited } = await supabase
       .from("posts")
       .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
@@ -212,7 +203,6 @@ export default async function UserPublicPage({
       .lte("visited_on", todayJst)
       .limit(2000);
 
-    // ② visited_on なし（代表日付＝投稿日）
     const { data: noVisited } = await supabase
       .from("posts")
       .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
@@ -222,22 +212,18 @@ export default async function UserPublicPage({
       .lte("created_at", endIso)
       .limit(2000);
 
-    // idでユニーク化
     const rows = new Map<string, any>();
     for (const r of withVisited ?? []) rows.set(String(r.id), r);
     for (const r of noVisited ?? []) rows.set(String(r.id), r);
 
-    // ✅ 型を明示して never を防ぐ
     type DayPost = { id: string; thumbUrl: string | null; score: number | null };
     type DayAcc = { date: string; count: number; maxScore: number | null; posts: DayPost[] };
-
     const dayMap = new Map<string, DayAcc>();
 
     for (const r of rows.values()) {
       const dateKey = getRepresentativeDayKey(r);
       if (dateKey < startJst || dateKey > todayJst) continue;
 
-      // recommend_score を number|null に正規化（stringでも落ちない）
       const sRaw = (r as any)?.recommend_score;
       const score =
         typeof sRaw === "number"
@@ -248,12 +234,7 @@ export default async function UserPublicPage({
 
       const thumbUrl = getThumbUrlFromPostRow(r);
 
-      const cur: DayAcc = dayMap.get(dateKey) ?? {
-        date: dateKey,
-        count: 0,
-        maxScore: null,
-        posts: [],
-      };
+      const cur: DayAcc = dayMap.get(dateKey) ?? { date: dateKey, count: 0, maxScore: null, posts: [] };
 
       cur.count += 1;
       if (score !== null) cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
@@ -264,7 +245,6 @@ export default async function UserPublicPage({
 
     heatmapDays = Array.from(dayMap.values())
       .map((d) => {
-        // 同日内は score 高い順で3つだけ表示
         const sorted = d.posts.slice().sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
         const top3 = sorted.slice(0, 3).map((p) => ({ id: p.id, thumbUrl: p.thumbUrl }));
         return { date: d.date, count: d.count, maxScore: d.maxScore, posts: top3 };
@@ -320,9 +300,7 @@ export default async function UserPublicPage({
                     </h1>
 
                     <div className="mt-0.5 flex items-center gap-2">
-                      {username && (
-                        <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
-                      )}
+                      {username && <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p>}
 
                       {isFollowing && (
                         <p className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-slate-500 md:text-xs">
@@ -348,20 +326,14 @@ export default async function UserPublicPage({
                 </div>
 
                 {/* 右：フォローボタン */}
-                {me.id === userId ? (
-                  <span className="mt-2 rounded-full bg-orange-50 px-3 py-1 text-xs text-slate-600">
-                    あなたのプロフィール
-                  </span>
-                ) : (
-                  <div className="mt-18">
-                    <FollowButton
-                      targetUserId={profile.id}
-                      targetUsername={profile.username}
-                      initiallyFollowing={initiallyFollowing}
-                      initiallyRequested={initiallyRequested}
-                    />
-                  </div>
-                )}
+                <div className="mt-18">
+                  <FollowButton
+                    targetUserId={profile.id}
+                    targetUsername={profile.username}
+                    initiallyFollowing={initiallyFollowing}
+                    initiallyRequested={initiallyRequested}
+                  />
+                </div>
               </div>
 
               {/* Bio */}
@@ -398,7 +370,10 @@ export default async function UserPublicPage({
           </div>
         </section>
 
-        {/* ✅ Bio と 投稿の間：来店ログヒートマップ */}
+        {/* ✅ 追加：プロフィール統計（称号→比較→円グラフ） */}
+        <ProfileStatsPublic userId={userId} canView={canViewPosts} />
+
+        {/* ✅ 来店ログヒートマップ */}
         {canViewPosts ? (
           <VisitHeatmap userId={userId} days={heatmapDays} />
         ) : (
@@ -435,10 +410,14 @@ export default async function UserPublicPage({
                         src={thumb}
                         className="h-full w-full object-cover transition group-hover:opacity-95"
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center"></div>
                     )}
+
+                    {/* variants時代でも複数か判定したいが、ここは legacy のみでもOK */}
                     {Array.isArray(p.image_urls) && p.image_urls.length > 1 && (
                       <Images size={16} className="absolute right-1 top-1 text-white drop-shadow" />
                     )}
@@ -479,6 +458,8 @@ export default async function UserPublicPage({
                         src={thumb}
                         className="h-full w-full object-cover transition group-hover:opacity-95"
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-orange-900/80">
