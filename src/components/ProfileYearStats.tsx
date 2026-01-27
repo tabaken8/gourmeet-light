@@ -3,22 +3,20 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, EyeOff, Eye } from "lucide-react";
+import { ChevronDown, EyeOff, Eye, Medal } from "lucide-react";
 
 type Scope = "me" | "public";
 type BadgeTier = "none" | "bronze" | "silver" | "gold" | "diamond";
 
 type TitleMeta = {
-  kind: "king" | "allrounder" | "gourmet" | "starter";
-  emoji: string;
+  kind: "starter" | "king" | "allrounder" | "traveler" | "steady" | "celebrity" | "local";
+  emoji: string; // 称号の左に出す
   accent: "amber" | "violet" | "rose" | "sky";
 };
 
-type GlobalRank = { rank: number; totalActive: number; topPercent: number; metricLabel?: string };
-
 type BadgeProgress = {
   tier: BadgeTier;
-  value: number;
+  value: number; // 現在値
   nextTier: BadgeTier | null;
   nextAt: number | null;
 };
@@ -27,14 +25,16 @@ type MeResponse = {
   ok: true;
   scope: "me";
   userId: string;
-  year: number | null; // ✅ null = すべて
+  year: number | "all";
+
   title: string;
   titleMeta: TitleMeta;
 
   totals: { posts: number };
-  topGenre: null | { genre: string; count: number };
+  // 得意ジャンル：genre or "バランス" が入る想定
+  topGenre: null | { genre: string; count: number; topPercent: number };
 
-  globalRank: null | GlobalRank;
+  globalRank: null;
 
   pie: Array<{ name: string; value: number }>;
 
@@ -48,14 +48,15 @@ type PublicResponse = {
   ok: true;
   scope: "public";
   userId: string;
-  year: number | null; // ✅ null = すべて
+  year: number | "all";
+
   title: string;
   titleMeta: TitleMeta;
 
   totals: { posts: number };
-  topGenre: null | { genre: string; count: number };
+  topGenre: null | { genre: string; count: number; topPercent: number };
 
-  globalRank: null | GlobalRank;
+  globalRank: null;
 
   badges: {
     genreTier: BadgeTier;
@@ -74,26 +75,6 @@ function isErr(x: ApiResponse | null): x is { error: string } {
   return !!(x as any)?.error;
 }
 
-function rankText(gr: GlobalRank) {
-  const pct = Number.isFinite(gr.topPercent) ? gr.topPercent : 100;
-  return `あなたはこのジャンルで全ユーザーの上位 ${pct.toFixed(1)}%に位置しています。`;
-}
-
-function tierEmoji(t: BadgeTier): string | null {
-  switch (t) {
-    case "diamond":
-      return "💎";
-    case "gold":
-      return "🥇";
-    case "silver":
-      return "🥈";
-    case "bronze":
-      return "🥉";
-    default:
-      return null;
-  }
-}
-
 function accentRing(a: TitleMeta["accent"]) {
   switch (a) {
     case "amber":
@@ -108,30 +89,84 @@ function accentRing(a: TitleMeta["accent"]) {
   }
 }
 
-function TitlePlate({ title, meta }: { title: string; meta: TitleMeta }) {
+function tierVisual(t: BadgeTier) {
+  // lucideで「メダル感」出す：枠と色味だけで表現（色指定はTailwindクラス）
+  // ※ “bronze/silver/gold/diamond” の文字はUIに出さない
+  switch (t) {
+    case "diamond":
+      return { ring: "ring-sky-200/70", fg: "text-sky-600", bg: "bg-sky-50" };
+    case "gold":
+      return { ring: "ring-yellow-200/70", fg: "text-yellow-600", bg: "bg-yellow-50" };
+    case "silver":
+      return { ring: "ring-slate-200/80", fg: "text-slate-500", bg: "bg-slate-50" };
+    case "bronze":
+      return { ring: "ring-orange-200/70", fg: "text-orange-600", bg: "bg-orange-50" };
+    default:
+      return null;
+  }
+}
+
+function nextTierHint(nextTier: BadgeTier | null, nextAt: number | null, now: number) {
+  if (!nextTier || nextAt === null) return null;
+  const left = Math.max(0, nextAt - (Number.isFinite(now) ? now : 0));
+  const targetText = nextAt >= 1000 ? `${nextAt}` : `${nextAt}`;
+  return { left, targetText };
+}
+
+function topPercentPretty(p: number) {
+  if (!Number.isFinite(p)) return null;
+  // 2桁まで。見た目の「整数ダサい」は route 側でランダム小数入れる想定だけど
+  // 念のためここでも2桁に。
+  return p.toFixed(2);
+}
+
+function TitlePlate({
+  title,
+  meta,
+  topGenre,
+}: {
+  title: string;
+  meta: TitleMeta;
+  topGenre: null | { genre: string; topPercent: number };
+}) {
   const grad = accentRing(meta.accent);
 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-black/[.06] bg-white/70 p-4">
+      {/* きらめき背景（文字は載せない） */}
       <div className="pointer-events-none absolute inset-0 opacity-70">
         <div className={["absolute -inset-x-10 -top-10 h-24 rotate-6 bg-gradient-to-r", grad].join(" ")} />
+        {/* 光沢スイープ */}
         <motion.div
           className={["absolute -inset-x-10 top-10 h-20 rotate-6 bg-gradient-to-r", grad].join(" ")}
-          initial={{ x: -40, opacity: 0.18 }}
-          animate={{ x: 40, opacity: 0.28 }}
-          transition={{ duration: 2.8, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
+          initial={{ x: -50, opacity: 0.16 }}
+          animate={{ x: 60, opacity: 0.28 }}
+          transition={{ duration: 3.2, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
         />
       </div>
 
-      <div className="relative flex items-center justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold tracking-[0.18em] text-orange-500">称号</div>
-          <div className="mt-1 text-xl font-black tracking-tight text-slate-900">
-            <span className="mr-2">{meta.emoji}</span>
-            <span className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
-              {title}
-            </span>
+
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-xl">{meta.emoji}</span>
+            <div className="min-w-0 text-xl font-black tracking-tight text-slate-900">
+              <span className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
+                {title}
+              </span>
+            </div>
           </div>
+
+          {topGenre ? (
+            <div className="mt-2 text-[12px] text-slate-600">
+              得意ジャンル：<span className="font-semibold text-slate-900">{topGenre.genre}</span>
+              {(() => {
+                const p = topPercentPretty(topGenre.topPercent);
+                return p ? <span className="ml-1 text-slate-500">（全ユーザーで上位 {p}%）</span> : null;
+              })()}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -206,63 +241,140 @@ function DonutPie({
 
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
         <div className="text-xs font-semibold text-slate-900">{hover ? hover.name : "ジャンル"}</div>
-        <div className="mt-0.5 text-[11px] text-slate-500">{hover ? `${hover.value}` : total > 0 ? `${total}` : "—"}</div>
+        <div className="mt-0.5 text-[11px] text-slate-500">
+          {hover ? `${hover.value}` : total > 0 ? `${total}` : "データなし"}
+        </div>
       </div>
     </div>
   );
 }
 
-function ProgressCard({ label, progress }: { label: string; progress: BadgeProgress }) {
-  const cur = tierEmoji(progress.tier);
-  if (!cur) return null;
-
-  const next = progress.nextTier ? tierEmoji(progress.nextTier) : null;
-  const nextLeft =
-    progress.nextAt === null
-      ? null
-      : Math.max(0, progress.nextAt - (Number.isFinite(progress.value) ? progress.value : 0));
+function MedalIcon({
+  tier,
+  faded,
+  big,
+}: {
+  tier: BadgeTier;
+  faded?: boolean;
+  big?: boolean;
+}) {
+  const v = tierVisual(tier);
+  if (!v) return null;
 
   return (
+    <div
+      className={[
+        "relative grid place-items-center rounded-2xl ring-1",
+        v.bg,
+        v.ring,
+        faded ? "opacity-35" : "opacity-100",
+        big ? "h-14 w-14" : "h-12 w-12",
+      ].join(" ")}
+      aria-label="medal"
+    >
+      {/* きらっと演出（獲得済みだけ） */}
+      {!faded ? (
+        <motion.div
+          className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl"
+          initial={{ opacity: 0.0 }}
+          animate={{ opacity: [0.0, 0.35, 0.0] }}
+          transition={{ duration: 2.8, repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" }}
+        >
+          <div className="absolute -inset-x-10 -top-6 h-10 rotate-12 bg-gradient-to-r from-white/0 via-white/70 to-white/0" />
+        </motion.div>
+      ) : null}
+
+      <Medal className={[v.fg, big ? "h-6 w-6" : "h-5 w-5"].join(" ")} />
+    </div>
+  );
+}
+
+function MedalRow({
+  label,
+  description,
+  progress,
+  unitLabel, // "回" or "件" など
+}: {
+  label: string;
+  description: string;
+  progress: BadgeProgress;
+  unitLabel: string;
+}) {
+  const curTier = progress.tier;
+  const curV = tierVisual(curTier);
+  const hasCur = !!curV;
+
+  const hint = nextTierHint(progress.nextTier, progress.nextAt, progress.value);
+  const nextTier = progress.nextTier && tierVisual(progress.nextTier) ? progress.nextTier : "none";
+  const showNext = progress.nextTier && progress.nextAt !== null;
+
+  // “獲得してない人にも次の条件を出す” → ここでhasCurがfalseでも表示する
+  return (
     <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
+      {/* 上段：タイトル + メダル（獲得/次） */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold text-slate-900">{label}</div>
+          <div className="mt-1 text-[11px] leading-relaxed text-slate-600">{description}</div>
         </div>
-        <div className="text-xl leading-none">{cur}</div>
+
+        {/* 右：獲得済みメダル + 次のメダル（薄く） */}
+        <div className="flex shrink-0 items-center gap-2">
+          <MedalIcon tier={hasCur ? curTier : "bronze"} faded={!hasCur} big />
+          {showNext && nextTier !== "none" ? <MedalIcon tier={nextTier} faded /> : null}
+        </div>
       </div>
 
-      <div className="mt-3 flex items-baseline justify-between">
-        <div className="text-sm font-semibold text-slate-900">{progress.value}</div>
-
-        {nextLeft === null ? (
-          <div className="text-[11px] font-semibold text-slate-700">MAX</div>
-        ) : next ? (
-          <div className="text-[11px] text-slate-600">
-            次 {next} まで <span className="font-semibold text-slate-900">{nextLeft}</span>
+      {/* 下段：進捗 */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-black/[.06] bg-white p-3">
+          <div className="text-[10px] font-semibold text-slate-500">いま</div>
+          <div className="mt-1 text-sm font-bold text-slate-900">
+            {progress.value}
+            <span className="ml-1 text-[11px] font-semibold text-slate-500">{unitLabel}</span>
           </div>
-        ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-black/[.06] bg-white p-3">
+          <div className="text-[10px] font-semibold text-slate-500">次のメダル</div>
+
+          {!showNext || !hint ? (
+            <div className="mt-1 text-sm font-bold text-slate-900">MAX</div>
+          ) : (
+            <>
+              <div className="mt-1 text-sm font-bold text-slate-900">
+                あと {hint.left}
+                <span className="ml-1 text-[11px] font-semibold text-slate-500">{unitLabel}</span>
+              </div>
+              <div className="mt-0.5 text-[10px] text-slate-500">
+                目標：{hint.targetText}
+                {unitLabel}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 function PublicBadgesRow({ genreTier, postsTier }: { genreTier: BadgeTier; postsTier: BadgeTier }) {
-  const a = tierEmoji(genreTier);
-  const b = tierEmoji(postsTier);
-  const list = [a, b].filter(Boolean) as string[];
-  if (list.length === 0) return null;
+  const a = tierVisual(genreTier) ? <MedalIcon tier={genreTier} big /> : null;
+  const b = tierVisual(postsTier) ? <MedalIcon tier={postsTier} big /> : null;
+
+  const items = [
+    { key: "genre", node: a },
+    { key: "posts", node: b },
+  ].filter((x) => x.node);
+
+  if (items.length === 0) return null;
 
   return (
     <div className="mt-3 flex flex-wrap gap-2">
-      {list.map((e, i) => (
-        <span
-          key={`${e}-${i}`}
-          className="inline-flex items-center justify-center rounded-full border border-black/[.08] bg-white px-3 py-1.5 text-sm"
-          aria-label="badge"
-          title="badge"
-        >
-          {e}
-        </span>
+      {items.map((it) => (
+        <div key={it.key} className="inline-flex">
+          {it.node}
+        </div>
       ))}
     </div>
   );
@@ -279,14 +391,13 @@ export default function ProfileYearStats({
 }) {
   const thisYear = jstYearNow();
 
-  // ✅ 「すべて」を先頭に追加
-  const yearOptions = useMemo(() => {
+  // 「これまで」 + 直近年（ただしデフォルトは「これまで」）
+  const yearOptions = useMemo<(number | "all")[]>(() => {
     const ys = Array.from({ length: 6 }, (_, i) => thisYear - i);
-    return ["all" as const, ...ys] as const;
+    return ["all", ...ys];
   }, [thisYear]);
 
-  // ✅ "all" | number
-  const [year, setYear] = useState<"all" | number>("all");
+  const [year, setYear] = useState<number | "all">("all");
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -315,10 +426,13 @@ export default function ProfileYearStats({
 
     const yearParam = year === "all" ? "all" : String(year);
 
-    fetch(`/api/profile/stats/year?user_id=${encodeURIComponent(userId)}&year=${encodeURIComponent(yearParam)}&scope=${scope}`, {
-      method: "GET",
-      headers: { accept: "application/json" },
-    })
+    fetch(
+      `/api/profile/stats/year?user_id=${encodeURIComponent(userId)}&year=${encodeURIComponent(yearParam)}&scope=${scope}`,
+      {
+        method: "GET",
+        headers: { accept: "application/json" },
+      }
+    )
       .then((r) => r.json())
       .then((j) => {
         if (!alive) return;
@@ -338,19 +452,23 @@ export default function ProfileYearStats({
     };
   }, [userId, year, scope, hidden]);
 
-  const headerLabel = year === "all" ? "すべて" : `${year}年`;
-
   return (
-    <section className={["rounded-3xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5", className ?? ""].join(" ")}>
+    <section
+      className={[
+        "rounded-3xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5",
+        className ?? "",
+      ].join(" ")}
+    >
+      {/* ヘッダー：年だけ（余計な説明は出さない） */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-900 md:text-base">{headerLabel}</div>
+          <div className="text-sm font-semibold text-slate-900 md:text-base">{year === "all" ? "すべて" : `${year}年`}</div>
         </div>
 
         <div className="flex items-center gap-2">
           <label className="relative">
             <select
-              value={year === "all" ? "all" : String(year)}
+              value={year}
               onChange={(e) => {
                 const v = e.target.value;
                 setYear(v === "all" ? "all" : Number(v));
@@ -363,13 +481,16 @@ export default function ProfileYearStats({
                     すべて
                   </option>
                 ) : (
-                  <option key={y} value={String(y)}>
+                  <option key={y} value={y}>
                     {y}年
                   </option>
                 )
               )}
             </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            <ChevronDown
+              size={14}
+              className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+            />
           </label>
 
           {scope === "me" ? (
@@ -394,6 +515,7 @@ export default function ProfileYearStats({
             exit={{ opacity: 0, y: 8 }}
             className="mt-4 rounded-2xl border border-orange-50 bg-orange-50/60 p-6 text-center text-sm text-slate-700"
           >
+            非表示
           </motion.div>
         ) : (
           <motion.div
@@ -405,13 +527,17 @@ export default function ProfileYearStats({
           >
             {loading ? (
               <div className="rounded-2xl border border-orange-50 bg-orange-50/60 p-8 text-center text-sm text-slate-700">
-                読み込み中…
+                計算中…
               </div>
             ) : !data ? null : isErr(data) ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{data.error}</div>
             ) : data.ok && data.scope === "public" ? (
               <div className="space-y-3">
-                <TitlePlate title={data.title} meta={data.titleMeta} />
+                <TitlePlate
+                  title={data.title}
+                  meta={data.titleMeta}
+                  topGenre={data.topGenre ? { genre: data.topGenre.genre, topPercent: data.topGenre.topPercent } : null}
+                />
 
                 <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
                   <div className="flex items-baseline justify-between gap-3">
@@ -419,44 +545,43 @@ export default function ProfileYearStats({
                     <div className="text-lg font-bold text-slate-900">{data.totals.posts}</div>
                   </div>
 
-                  {data.topGenre ? (
-                    <div className="mt-2 text-[11px] text-slate-600">
-                      1位：<span className="font-semibold text-slate-900">{data.topGenre.genre}</span>
-                    </div>
-                  ) : null}
-
-                  {data.globalRank ? (
-                    <div className="mt-2 text-[11px] text-slate-500">{rankText(data.globalRank)}</div>
-                  ) : null}
-
                   <PublicBadgesRow genreTier={data.badges.genreTier} postsTier={data.badges.postsTier} />
                 </div>
               </div>
             ) : data.ok && data.scope === "me" ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="space-y-3">
-                  <TitlePlate title={data.title} meta={data.titleMeta} />
+                  <TitlePlate
+                    title={data.title}
+                    meta={data.titleMeta}
+                    topGenre={data.topGenre ? { genre: data.topGenre.genre, topPercent: data.topGenre.topPercent } : null}
+                  />
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <ProgressCard label="ジャンル" progress={data.badges.genre} />
-                    <ProgressCard label="投稿" progress={data.badges.posts} />
+                  {/* 獲得したメダル：縦積みを基本にして崩れを根絶 */}
+                  <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
+                    <div className="text-xs font-semibold text-slate-900">獲得したメダル</div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3">
+                      <MedalRow
+                        label="ジャンル"
+                        description="いろんなジャンルを記録していくほど、メダルが育ちます。"
+                        progress={data.badges.genre}
+                        unitLabel="回"
+                      />
+                      <MedalRow
+                        label="投稿"
+                        description="投稿が増えるほど、メダルが育ちます。"
+                        progress={data.badges.posts}
+                        unitLabel="件"
+                      />
+                    </div>
                   </div>
 
                   <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
                     <div className="flex items-baseline justify-between gap-3">
-                      <div className="text-xs font-semibold text-slate-900">投稿ジャンル</div>
+                      <div className="text-xs font-semibold text-slate-900">投稿</div>
+                      <div className="text-sm font-bold text-slate-900">{data.totals.posts}</div>
                     </div>
-
-                    {/* ✅ profileでも（回数）を出さない */}
-                    {data.topGenre ? (
-                      <div className="mt-2 text-[11px] text-slate-600">
-                        1位：<span className="font-semibold text-slate-900">{data.topGenre.genre}</span>
-                      </div>
-                    ) : null}
-
-                    {data.globalRank ? (
-                      <div className="mt-2 text-[11px] text-slate-500">{rankText(data.globalRank)}</div>
-                    ) : null}
                   </div>
                 </div>
 
@@ -471,7 +596,7 @@ export default function ProfileYearStats({
                       {data.pie
                         .slice()
                         .sort((a, b) => b.value - a.value)
-                        .slice(0, 6)
+                        .slice(0, 8)
                         .map((g) => (
                           <div key={g.name} className="flex items-center justify-between text-[11px]">
                             <span className="truncate text-slate-700">{g.name}</span>
@@ -484,7 +609,7 @@ export default function ProfileYearStats({
               </div>
             ) : (
               <div className="rounded-2xl border border-orange-50 bg-orange-50/60 p-6 text-center text-sm text-slate-700">
-                まだデータがありません。
+                データなし
               </div>
             )}
           </motion.div>
