@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Images, Globe2, Lock, Plus } from "lucide-react";
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
-import ProfileStats from "@/components/ProfileStats";
+import ProfileYearStats from "@/components/ProfileYearStats";
 
 export const dynamic = "force-dynamic";
 
@@ -384,7 +384,7 @@ export default async function AccountPage() {
               </div>
             </div>
           </section>
-          <ProfileStats userId={user.id} />
+          <ProfileYearStats userId={user.id} scope="me" />
 
           {/* ✅ 来店ヒートマップ：bio と 投稿の間 */}
           <VisitHeatmap userId={user.id} days={heatDays} />

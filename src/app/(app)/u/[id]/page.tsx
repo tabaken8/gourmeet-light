@@ -4,12 +4,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import FollowButton from "@/components/FollowButton";
 import { Images, Globe2, Lock } from "lucide-react";
+import ProfileYearStats from "@/components/ProfileYearStats";
 
 // ✅ ヒートマップ（Client Component）
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
-
-// ✅ Stats（Client Component）
-import ProfileStatsPublic from "@/components/ProfileStatsPublic";
 
 export const dynamic = "force-dynamic";
 
@@ -371,7 +369,9 @@ export default async function UserPublicPage({ params }: { params: { id: string 
         </section>
 
         {/* ✅ 追加：プロフィール統計（称号→比較→円グラフ） */}
-        <ProfileStatsPublic userId={userId} canView={canViewPosts} />
+        {canViewPosts ? (
+          <ProfileYearStats userId={userId} scope="public" />
+        ) : null}
 
         {/* ✅ 来店ログヒートマップ */}
         {canViewPosts ? (
