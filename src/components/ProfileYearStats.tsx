@@ -816,7 +816,7 @@ export default function ProfileYearStats({
   scope: Scope;
   className?: string;
 }) {
-  const year: "all" = "all";
+  const year = "all" as const;
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
