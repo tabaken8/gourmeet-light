@@ -1,22 +1,25 @@
 // src/components/ProfileYearStats.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, EyeOff, Eye, Medal } from "lucide-react";
+import { EyeOff, Eye } from "lucide-react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
+import { useRouter } from "next/navigation";
 
 type Scope = "me" | "public";
 type BadgeTier = "none" | "bronze" | "silver" | "gold" | "diamond";
 
 type TitleMeta = {
   kind: "starter" | "king" | "allrounder" | "traveler" | "steady" | "celebrity" | "local";
-  emoji: string; // 称号の左に出す
+  emoji: string; // 左に出す
   accent: "amber" | "violet" | "rose" | "sky";
 };
 
 type BadgeProgress = {
   tier: BadgeTier;
-  value: number; // 現在値
+  value: number;
   nextTier: BadgeTier | null;
   nextAt: number | null;
 };
@@ -31,9 +34,7 @@ type MeResponse = {
   titleMeta: TitleMeta;
 
   totals: { posts: number };
-  // 得意ジャンル：genre or "バランス" が入る想定
   topGenre: null | { genre: string; count: number; topPercent: number };
-
   globalRank: null;
 
   pie: Array<{ name: string; value: number }>;
@@ -55,7 +56,6 @@ type PublicResponse = {
 
   totals: { posts: number };
   topGenre: null | { genre: string; count: number; topPercent: number };
-
   globalRank: null;
 
   badges: {
@@ -66,41 +66,41 @@ type PublicResponse = {
 
 type ApiResponse = MeResponse | PublicResponse | { error: string };
 
-function jstYearNow(): number {
-  const y = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric" }).format(new Date());
-  return Number(y);
-}
-
 function isErr(x: ApiResponse | null): x is { error: string } {
   return !!(x as any)?.error;
 }
 
+function topPercentPretty(p: number) {
+  if (!Number.isFinite(p)) return null;
+  return p.toFixed(2);
+}
+
+/** -------- UI helper: gradient accent -------- */
 function accentRing(a: TitleMeta["accent"]) {
   switch (a) {
     case "amber":
-      return "from-amber-200 via-orange-100 to-amber-200 ring-amber-200/70";
+      return "from-amber-200/80 via-orange-100/60 to-amber-200/80 ring-amber-200/60";
     case "violet":
-      return "from-violet-200 via-fuchsia-100 to-violet-200 ring-violet-200/70";
+      return "from-violet-200/80 via-fuchsia-100/60 to-violet-200/80 ring-violet-200/60";
     case "rose":
-      return "from-rose-200 via-orange-100 to-rose-200 ring-rose-200/70";
+      return "from-rose-200/80 via-orange-100/60 to-rose-200/80 ring-rose-200/60";
     case "sky":
     default:
-      return "from-sky-200 via-white to-sky-200 ring-sky-200/70";
+      return "from-sky-200/70 via-white/60 to-sky-200/70 ring-sky-200/60";
   }
 }
 
-function tierVisual(t: BadgeTier) {
-  // lucideで「メダル感」出す：枠と色味だけで表現（色指定はTailwindクラス）
-  // ※ “bronze/silver/gold/diamond” の文字はUIに出さない
+/** -------- "メダル"は絵文字で -------- */
+function tierEmoji(t: BadgeTier) {
   switch (t) {
-    case "diamond":
-      return { ring: "ring-sky-200/70", fg: "text-sky-600", bg: "bg-sky-50" };
-    case "gold":
-      return { ring: "ring-yellow-200/70", fg: "text-yellow-600", bg: "bg-yellow-50" };
-    case "silver":
-      return { ring: "ring-slate-200/80", fg: "text-slate-500", bg: "bg-slate-50" };
     case "bronze":
-      return { ring: "ring-orange-200/70", fg: "text-orange-600", bg: "bg-orange-50" };
+      return "🥉";
+    case "silver":
+      return "🥈";
+    case "gold":
+      return "🥇";
+    case "diamond":
+      return "💎";
     default:
       return null;
   }
@@ -109,34 +109,27 @@ function tierVisual(t: BadgeTier) {
 function nextTierHint(nextTier: BadgeTier | null, nextAt: number | null, now: number) {
   if (!nextTier || nextAt === null) return null;
   const left = Math.max(0, nextAt - (Number.isFinite(now) ? now : 0));
-  const targetText = nextAt >= 1000 ? `${nextAt}` : `${nextAt}`;
-  return { left, targetText };
+  return { left, targetText: `${nextAt}` };
 }
 
-function topPercentPretty(p: number) {
-  if (!Number.isFinite(p)) return null;
-  // 2桁まで。見た目の「整数ダサい」は route 側でランダム小数入れる想定だけど
-  // 念のためここでも2桁に。
-  return p.toFixed(2);
-}
-
+/** -------- Title plate -------- */
 function TitlePlate({
   title,
   meta,
   topGenre,
+  totalsPosts,
 }: {
   title: string;
   meta: TitleMeta;
   topGenre: null | { genre: string; topPercent: number };
+  totalsPosts: number;
 }) {
   const grad = accentRing(meta.accent);
 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-black/[.06] bg-white/70 p-4">
-      {/* きらめき背景（文字は載せない） */}
       <div className="pointer-events-none absolute inset-0 opacity-70">
         <div className={["absolute -inset-x-10 -top-10 h-24 rotate-6 bg-gradient-to-r", grad].join(" ")} />
-        {/* 光沢スイープ */}
         <motion.div
           className={["absolute -inset-x-10 top-10 h-20 rotate-6 bg-gradient-to-r", grad].join(" ")}
           initial={{ x: -50, opacity: 0.16 }}
@@ -150,7 +143,7 @@ function TitlePlate({
           <div className="text-[11px] font-semibold tracking-[0.18em] text-orange-500">称号</div>
 
           <div className="mt-1 flex items-center gap-2">
-            <span className="text-xl">{meta.emoji}</span>
+            <span className="text-2xl">{meta.emoji}</span>
             <div className="min-w-0 text-xl font-black tracking-tight text-slate-900">
               <span className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
                 {title}
@@ -163,6 +156,8 @@ function TitlePlate({
               得意ジャンル：<span className="font-semibold text-slate-900">{topGenre.genre}</span>
               {(() => {
                 const p = topPercentPretty(topGenre.topPercent);
+                // 投稿数が少ない人は topPercent 出さない（プロモーションで促す）
+                if (totalsPosts <= 3) return null;
                 return p ? <span className="ml-1 text-slate-500">（全ユーザーで上位 {p}%）</span> : null;
               })()}
             </div>
@@ -173,17 +168,17 @@ function TitlePlate({
   );
 }
 
-/**
- * 軽量ドーナツ（依存なし）
- */
+/** -------- Donut Pie -------- */
 function DonutPie({
   data,
   size = 168,
   thickness = 18,
+  onHoverName,
 }: {
   data: Array<{ name: string; value: number }>;
   size?: number;
   thickness?: number;
+  onHoverName?: (name: string | null) => void;
 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   const [hover, setHover] = useState<{ name: string; value: number } | null>(null);
@@ -204,7 +199,12 @@ function DonutPie({
   const r = (size - thickness) / 2;
   const c = size / 2;
 
-  const colorFor = (i: number) => `hsl(${(i * 360) / Math.max(1, segments.length)}, 70%, 55%)`;
+  // “暗いだけ”でも “原色ベタ”でもない、上品寄りパレット（hsl の S/L を控えめに）
+  const colorFor = (i: number) => {
+    const n = Math.max(1, segments.length);
+    const hue = (i * 360) / n;
+    return `hsl(${hue}, 55%, 58%)`;
+  };
 
   const arcPath = (start: number, frac: number) => {
     const end = start + frac;
@@ -232,9 +232,15 @@ function DonutPie({
             strokeLinecap="butt"
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            onMouseEnter={() => setHover({ name: s.name, value: s.value })}
-            onMouseLeave={() => setHover(null)}
+            transition={{ duration: 0.9, ease: "easeOut" }}
+            onMouseEnter={() => {
+              setHover({ name: s.name, value: s.value });
+              onHoverName?.(s.name);
+            }}
+            onMouseLeave={() => {
+              setHover(null);
+              onHoverName?.(null);
+            }}
           />
         ))}
       </svg>
@@ -249,83 +255,96 @@ function DonutPie({
   );
 }
 
-function MedalIcon({
-  tier,
-  faded,
-  big,
+/** -------- Legend (普通の凡例) -------- */
+function GenreLegend({
+  data,
+  getColor,
+  onPick,
+  active,
 }: {
-  tier: BadgeTier;
-  faded?: boolean;
-  big?: boolean;
+  data: Array<{ name: string; value: number }>;
+  getColor: (i: number) => string;
+  onPick: (name: string | null) => void;
+  active: string | null;
 }) {
-  const v = tierVisual(tier);
-  if (!v) return null;
+  const rows = data
+    .slice()
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 12);
+
+  if (!rows.length) return null;
 
   return (
-    <div
-      className={[
-        "relative grid place-items-center rounded-2xl ring-1",
-        v.bg,
-        v.ring,
-        faded ? "opacity-35" : "opacity-100",
-        big ? "h-14 w-14" : "h-12 w-12",
-      ].join(" ")}
-      aria-label="medal"
-    >
-      {/* きらっと演出（獲得済みだけ） */}
-      {!faded ? (
-        <motion.div
-          className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl"
-          initial={{ opacity: 0.0 }}
-          animate={{ opacity: [0.0, 0.35, 0.0] }}
-          transition={{ duration: 2.8, repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" }}
-        >
-          <div className="absolute -inset-x-10 -top-6 h-10 rotate-12 bg-gradient-to-r from-white/0 via-white/70 to-white/0" />
-        </motion.div>
-      ) : null}
-
-      <Medal className={[v.fg, big ? "h-6 w-6" : "h-5 w-5"].join(" ")} />
+    <div className="mt-4 space-y-1">
+      {rows.map((g, idx) => {
+        const isActive = active === g.name;
+        return (
+          <button
+            key={g.name}
+            type="button"
+            onMouseEnter={() => onPick(g.name)}
+            onMouseLeave={() => onPick(null)}
+            onClick={() => onPick(isActive ? null : g.name)}
+            className={[
+              "w-full rounded-xl px-2 py-1 text-left text-[11px] transition",
+              isActive ? "bg-black/5" : "hover:bg-black/5",
+            ].join(" ")}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: getColor(idx), boxShadow: "0 0 0 2px rgba(255,255,255,0.9)" }}
+                />
+                <span className="truncate text-slate-700">{g.name}</span>
+              </div>
+              <span className="tabular-nums text-slate-500">{g.value}</span>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
+/** -------- Badges row (emoji medals) -------- */
 function MedalRow({
   label,
   description,
   progress,
-  unitLabel, // "回" or "件" など
+  unitLabel,
 }: {
   label: string;
   description: string;
   progress: BadgeProgress;
   unitLabel: string;
 }) {
-  const curTier = progress.tier;
-  const curV = tierVisual(curTier);
-  const hasCur = !!curV;
+  const cur = tierEmoji(progress.tier);
+  const next = tierEmoji(progress.nextTier ?? "none");
 
   const hint = nextTierHint(progress.nextTier, progress.nextAt, progress.value);
-  const nextTier = progress.nextTier && tierVisual(progress.nextTier) ? progress.nextTier : "none";
-  const showNext = progress.nextTier && progress.nextAt !== null;
 
-  // “獲得してない人にも次の条件を出す” → ここでhasCurがfalseでも表示する
   return (
     <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
-      {/* 上段：タイトル + メダル（獲得/次） */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold text-slate-900">{label}</div>
           <div className="mt-1 text-[11px] leading-relaxed text-slate-600">{description}</div>
         </div>
 
-        {/* 右：獲得済みメダル + 次のメダル（薄く） */}
         <div className="flex shrink-0 items-center gap-2">
-          <MedalIcon tier={hasCur ? curTier : "bronze"} faded={!hasCur} big />
-          {showNext && nextTier !== "none" ? <MedalIcon tier={nextTier} faded /> : null}
+          <div className={["grid place-items-center rounded-2xl bg-black/5", "h-14 w-14"].join(" ")}>
+            <span className="text-3xl">{cur ?? "—"}</span>
+          </div>
+          {progress.nextTier && hint ? (
+            <div className={["grid place-items-center rounded-2xl bg-black/5", "h-12 w-12 opacity-60"].join(" ")}>
+              <span className="text-2xl">{next ?? ""}</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
-      {/* 下段：進捗 */}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-2xl border border-black/[.06] bg-white p-3">
           <div className="text-[10px] font-semibold text-slate-500">いま</div>
@@ -338,7 +357,7 @@ function MedalRow({
         <div className="rounded-2xl border border-black/[.06] bg-white p-3">
           <div className="text-[10px] font-semibold text-slate-500">次のメダル</div>
 
-          {!showNext || !hint ? (
+          {!progress.nextTier || !hint ? (
             <div className="mt-1 text-sm font-bold text-slate-900">MAX</div>
           ) : (
             <>
@@ -358,28 +377,436 @@ function MedalRow({
   );
 }
 
-function PublicBadgesRow({ genreTier, postsTier }: { genreTier: BadgeTier; postsTier: BadgeTier }) {
-  const a = tierVisual(genreTier) ? <MedalIcon tier={genreTier} big /> : null;
-  const b = tierVisual(postsTier) ? <MedalIcon tier={postsTier} big /> : null;
+/** =========================
+ *  Map (userの投稿一覧)
+ *  - scope publicでも表示
+ *  - pinはサムネ
+ *  - pin/infoから投稿へ遷移
+ *  - サムネは render/image で軽量化（可能なら）
+ * ========================= */
 
-  const items = [
-    { key: "genre", node: a },
-    { key: "posts", node: b },
-  ].filter((x) => x.node);
+type PostRow = {
+  id: string;
+  user_id: string;
+  place_id: string | null;
+  place_name: string | null;
+  place_address: string | null;
+  created_at: string | null;
+  image_urls?: string[] | null;
+};
 
-  if (items.length === 0) return null;
+type PlaceRow = {
+  place_id: string;
+  lat: number | null;
+  lng: number | null;
+  name: string | null;
+  address: string | null;
+  photo_url: string | null;
+};
+
+type PlacePin = {
+  place_id: string;
+  lat: number;
+  lng: number;
+  place_name: string;
+  place_address: string;
+  latest_post_id: string;
+  latest_image_url: string | null;
+};
+
+function toMs(ts: string | null) {
+  if (!ts) return 0;
+  const ms = Date.parse(ts);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function ensureGmapsOptionsOnce(opts: Parameters<typeof setOptions>[0]) {
+  const g = globalThis as any;
+  if (!g.__GMAPS_OPTIONS_SET__) {
+    setOptions(opts);
+    g.__GMAPS_OPTIONS_SET__ = true;
+  }
+}
+
+/**
+ * Supabase public URL → render/image へ変換して軽量サムネ化（対応してない環境ならそのまま）
+ * 例:
+ *  /storage/v1/object/public/bucket/path.jpg
+ *   → /storage/v1/render/image/public/bucket/path.jpg?width=120&quality=45
+ */
+function toSupabaseThumbUrl(url: string, width = 120, quality = 45) {
+  try {
+    const u = new URL(url);
+    const p = u.pathname;
+
+    const needle = "/storage/v1/object/public/";
+    if (!p.includes(needle)) return url;
+
+    const rest = p.split(needle)[1]; // bucket/path...
+    const renderPath = `/storage/v1/render/image/public/${rest}`;
+    const out = new URL(u.origin + renderPath);
+    out.searchParams.set("width", String(width));
+    out.searchParams.set("quality", String(quality));
+    // 高さ指定しない（勝手に比率維持）
+    return out.toString();
+  } catch {
+    return url;
+  }
+}
+
+function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
+  const wrap = document.createElement("div");
+  wrap.style.position = "relative";
+  wrap.style.width = "44px";
+  wrap.style.height = "44px";
+  wrap.style.borderRadius = "9999px";
+  wrap.style.overflow = "hidden";
+  wrap.style.cursor = "pointer";
+  wrap.style.background = "linear-gradient(180deg,#fff,#f3f4f6)";
+  wrap.style.border = highlight ? "3px solid rgba(234,88,12,0.95)" : "2px solid rgba(255,255,255,0.95)";
+  wrap.style.boxShadow = highlight ? "0 10px 26px rgba(234,88,12,0.30)" : "0 6px 18px rgba(0,0,0,0.20)";
+  wrap.style.transform = "translateZ(0)";
+
+  const img = document.createElement("img");
+  img.alt = "thumb";
+  img.referrerPolicy = "no-referrer";
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "cover";
+  img.style.filter = "saturate(1.05) contrast(1.02)";
+  img.decoding = "async";
+
+  if (imageUrl) {
+    // まず軽いサムネURL
+    img.src = toSupabaseThumbUrl(imageUrl, 120, 45);
+  } else {
+    // fallback
+    img.src =
+      "data:image/svg+xml;charset=utf-8," +
+      encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88"><rect width="100%" height="100%" fill="#f3f4f6"/><text x="50%" y="52%" text-anchor="middle" font-size="22" font-weight="800" fill="#111827">📍</text></svg>`
+      );
+  }
+
+  wrap.appendChild(img);
+  return wrap;
+}
+
+function ProfilePlacesMap({
+  userId,
+  scope,
+}: {
+  userId: string;
+  scope: Scope;
+}) {
+  const supabase = createClientComponentClient();
+  const router = useRouter();
+
+  const mapDivRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const infoRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const markerByPlaceIdRef = useRef<Map<string, any>>(new Map());
+
+  const gmapsRef = useRef<{ GMap: any; AdvancedMarkerElement: any; InfoWindow: any } | null>(null);
+
+  const apiKey =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY ||
+    "";
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || "";
+
+  const [gmapsReady, setGmapsReady] = useState(false);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [errorText, setErrorText] = useState<string>("");
+
+  const [pins, setPins] = useState<PlacePin[]>([]);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string>("");
+
+  /** load pins: この user の投稿一覧だけ */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      setStatus("loading");
+      setErrorText("");
+
+      if (!apiKey) {
+        setStatus("error");
+        setErrorText("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定です");
+        return;
+      }
+      if (!mapId) {
+        setStatus("error");
+        setErrorText("NEXT_PUBLIC_GOOGLE_MAP_ID が未設定です（Map IDが必要）");
+        return;
+      }
+
+      // publicでも見せたいので、認証が無くても動く形にする（RLS次第）
+      const { data: posts, error: poErr } = await supabase
+        .from("posts")
+        .select("id, user_id, place_id, place_name, place_address, created_at, image_urls")
+        .eq("user_id", userId)
+        .not("place_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(800);
+
+      if (poErr) {
+        setStatus("error");
+        setErrorText(`posts 取得失敗: ${poErr.message}`);
+        return;
+      }
+
+      const postRows = ((posts as PostRow[] | null) ?? []).filter((p) => !!p.place_id) as PostRow[];
+      const placeIds = Array.from(new Set(postRows.map((p) => p.place_id).filter(Boolean) as string[]));
+
+      if (!placeIds.length) {
+        setPins([]);
+        setStatus("ready");
+        return;
+      }
+
+      const { data: places, error: plErr } = await supabase
+        .from("places")
+        .select("place_id, lat, lng, name, address, photo_url")
+        .in("place_id", placeIds);
+
+      if (plErr) {
+        setStatus("error");
+        setErrorText(`places 取得失敗: ${plErr.message}`);
+        return;
+      }
+
+      const placeById = new Map<string, PlaceRow>();
+      ((places as PlaceRow[] | null) ?? []).forEach((p) => placeById.set(p.place_id, p));
+
+      // aggregate by place_id（最新投稿を採用）
+      const pinByPlace = new Map<string, PlacePin>();
+
+      for (const p of postRows) {
+        const pid = p.place_id!;
+        const plc = placeById.get(pid);
+        if (!plc || plc.lat == null || plc.lng == null) continue;
+
+        const createdMs = toMs(p.created_at);
+        const img0 = Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
+
+        const existing = pinByPlace.get(pid);
+        if (!existing) {
+          pinByPlace.set(pid, {
+            place_id: pid,
+            lat: plc.lat,
+            lng: plc.lng,
+            place_name: p.place_name || plc.name || "(no name)",
+            place_address: p.place_address || plc.address || "",
+            latest_post_id: p.id,
+            latest_image_url: img0 || plc.photo_url || null,
+          });
+        } else {
+          // より新しい投稿なら更新
+          // 既存の createdMs を持ってないので、比較したければ別Mapに置くが簡略化：postsはdescなので初回が最新のはず
+          // 念のため createdMs 比較する場合は extra field を入れてください
+          // ここでは「desc取得」前提で更新なしでOK
+        }
+      }
+
+      const pinsSorted = Array.from(pinByPlace.values());
+
+      if (cancelled) return;
+      setPins(pinsSorted);
+      setStatus("ready");
+    }
+
+    run().catch((e) => {
+      console.error(e);
+      setStatus("error");
+      setErrorText(e?.message ?? "unknown error");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, userId, apiKey, mapId]);
+
+  /** load google maps libs once */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      if (!apiKey || !mapId) return;
+
+      ensureGmapsOptionsOnce({
+        key: apiKey,
+        v: "weekly",
+        language: "ja",
+        region: "JP",
+      });
+
+      const [{ Map: GMap, InfoWindow }, { AdvancedMarkerElement }] = await Promise.all([
+        importLibrary("maps") as Promise<any>,
+        importLibrary("marker") as Promise<any>,
+      ]);
+
+      if (cancelled) return;
+      gmapsRef.current = { GMap, AdvancedMarkerElement, InfoWindow };
+      setGmapsReady(true);
+    }
+
+    load().catch((e) => console.error(e));
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey, mapId]);
+
+  /** init map once */
+  useEffect(() => {
+    if (!gmapsReady) return;
+    if (!gmapsRef.current) return;
+    if (!mapDivRef.current) return;
+    if (mapRef.current) return;
+
+    const { GMap, InfoWindow } = gmapsRef.current;
+
+    mapRef.current = new GMap(mapDivRef.current, {
+      center: { lat: 35.681236, lng: 139.767125 },
+      zoom: 12,
+      mapId,
+      mapTypeControl: false,
+      fullscreenControl: false,
+      streetViewControl: false,
+      clickableIcons: false,
+    });
+
+    infoRef.current = new InfoWindow();
+  }, [gmapsReady, mapId]);
+
+  function openInfoForPin(pin: PlacePin) {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const marker = markerByPlaceIdRef.current.get(pin.place_id);
+
+    // DOMで作る（ボタンでrouter.push）
+    const wrap = document.createElement("div");
+    wrap.style.minWidth = "240px";
+
+    const title = document.createElement("div");
+    title.textContent = pin.place_name;
+    title.style.fontWeight = "900";
+    title.style.fontSize = "14px";
+    title.style.marginBottom = "6px";
+    wrap.appendChild(title);
+
+    if (pin.place_address) {
+      const addr = document.createElement("div");
+      addr.textContent = pin.place_address;
+      addr.style.color = "#374151";
+      addr.style.fontSize = "12px";
+      addr.style.marginBottom = "10px";
+      wrap.appendChild(addr);
+    }
+
+    const btn = document.createElement("button");
+    btn.textContent = "投稿を見る";
+    btn.style.borderRadius = "12px";
+    btn.style.padding = "8px 10px";
+    btn.style.fontSize = "12px";
+    btn.style.fontWeight = "900";
+    btn.style.border = "1px solid rgba(0,0,0,0.10)";
+    btn.style.background = "#111827";
+    btn.style.color = "white";
+    btn.style.cursor = "pointer";
+    btn.onclick = () => {
+      if (pin.latest_post_id) router.push(`/posts/${pin.latest_post_id}`);
+    };
+    wrap.appendChild(btn);
+
+    try {
+      infoRef.current?.setContent(wrap);
+      if (marker) infoRef.current?.open({ map, anchor: marker });
+    } catch {}
+
+    map.panTo({ lat: pin.lat, lng: pin.lng });
+    map.setZoom(Math.max(14, map.getZoom?.() ?? 14));
+  }
+
+  /** render markers whenever pins/selected changes */
+  useEffect(() => {
+    const map = mapRef.current;
+    const libs = gmapsRef.current;
+    if (!map || !libs) return;
+
+    // cleanup
+    for (const m of markersRef.current) {
+      try {
+        m.map = null;
+      } catch {}
+    }
+    markersRef.current = [];
+    markerByPlaceIdRef.current = new Map();
+    try {
+      infoRef.current?.close();
+    } catch {}
+
+    if (!pins.length) return;
+
+    const bounds = new google.maps.LatLngBounds();
+
+    for (const pin of pins) {
+      const highlight = selectedPlaceId === pin.place_id;
+      const content = makePhotoPinContent(pin.latest_image_url, highlight);
+
+      const marker = new libs.AdvancedMarkerElement({
+        map,
+        position: { lat: pin.lat, lng: pin.lng },
+        content,
+      });
+
+      content.addEventListener("click", () => {
+        setSelectedPlaceId(pin.place_id);
+        openInfoForPin(pin);
+      });
+
+      // ダブルクリックで即遷移（誤タップ防止）
+      content.addEventListener("dblclick", () => {
+        if (pin.latest_post_id) router.push(`/posts/${pin.latest_post_id}`);
+      });
+
+      markersRef.current.push(marker);
+      markerByPlaceIdRef.current.set(pin.place_id, marker);
+      bounds.extend({ lat: pin.lat, lng: pin.lng });
+    }
+
+    map.fitBounds(bounds, 60);
+  }, [pins, selectedPlaceId, router]);
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      {items.map((it) => (
-        <div key={it.key} className="inline-flex">
-          {it.node}
+    <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold text-slate-900">マップ</div>
+        <div className="text-[11px] text-slate-500">
+          {status === "loading" ? "読み込み中…" : status === "error" ? errorText : `pins: ${pins.length}`}
         </div>
-      ))}
+      </div>
+
+      <div
+        ref={mapDivRef}
+        className="mt-3 w-full overflow-hidden rounded-2xl bg-slate-100"
+        style={{ height: "420px" }}
+      />
+      <div className="mt-2 text-[11px] text-slate-500">
+        ピンをタップで詳細、<span className="font-semibold">ダブルタップで投稿へ</span>
+      </div>
     </div>
   );
 }
 
+/** =========================
+ * ProfileYearStats (main)
+ * - 年タブ/セレクトは削除（常に "すべて"）
+ * - 表示した瞬間も毎回アニメ（mounted key）
+ * - publicでも楽しいアニメ
+ * ========================= */
 export default function ProfileYearStats({
   userId,
   scope,
@@ -389,15 +816,8 @@ export default function ProfileYearStats({
   scope: Scope;
   className?: string;
 }) {
-  const thisYear = jstYearNow();
+  const year: "all" = "all";
 
-  // 「これまで」 + 直近年（ただしデフォルトは「これまで」）
-  const yearOptions = useMemo<(number | "all")[]>(() => {
-    const ys = Array.from({ length: 6 }, (_, i) => thisYear - i);
-    return ["all", ...ys];
-  }, [thisYear]);
-
-  const [year, setYear] = useState<number | "all">("all");
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -410,6 +830,11 @@ export default function ProfileYearStats({
       return false;
     }
   });
+
+  const [mountedKey, setMountedKey] = useState(0); // ★毎回アニメ用
+  useEffect(() => {
+    setMountedKey((x) => x + 1);
+  }, [userId, scope]);
 
   useEffect(() => {
     if (!storageKey) return;
@@ -424,15 +849,10 @@ export default function ProfileYearStats({
     let alive = true;
     setLoading(true);
 
-    const yearParam = year === "all" ? "all" : String(year);
-
-    fetch(
-      `/api/profile/stats/year?user_id=${encodeURIComponent(userId)}&year=${encodeURIComponent(yearParam)}&scope=${scope}`,
-      {
-        method: "GET",
-        headers: { accept: "application/json" },
-      }
-    )
+    fetch(`/api/profile/stats/year?user_id=${encodeURIComponent(userId)}&year=all&scope=${scope}`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    })
       .then((r) => r.json())
       .then((j) => {
         if (!alive) return;
@@ -450,7 +870,22 @@ export default function ProfileYearStats({
     return () => {
       alive = false;
     };
-  }, [userId, year, scope, hidden]);
+  }, [userId, scope, hidden]);
+
+  // donut legend palette must match DonutPie’s internal formula for “index”
+  const pieForLegend = useMemo(() => {
+    const pie = (data && !isErr(data) && (data as any).ok) ? (data as any).pie ?? [] : [];
+    const rows = (pie as Array<{ name: string; value: number }>).filter((d) => d.value > 0);
+    // same sort as Legend uses (desc)
+    return rows.sort((a, b) => b.value - a.value).slice(0, 12);
+  }, [data]);
+
+  const [legendActive, setLegendActive] = useState<string | null>(null);
+  const legendColor = (idx: number) => {
+    const n = Math.max(1, pieForLegend.length);
+    const hue = (idx * 360) / n;
+    return `hsl(${hue}, 55%, 58%)`;
+  };
 
   return (
     <section
@@ -459,70 +894,41 @@ export default function ProfileYearStats({
         className ?? "",
       ].join(" ")}
     >
-      {/* ヘッダー：年だけ（余計な説明は出さない） */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-900 md:text-base">{year === "all" ? "すべて" : `${year}年`}</div>
+          <div className="text-sm font-semibold text-slate-900 md:text-base">すべて</div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="relative">
-            <select
-              value={year}
-              onChange={(e) => {
-                const v = e.target.value;
-                setYear(v === "all" ? "all" : Number(v));
-              }}
-              className="appearance-none rounded-full border border-black/[.08] bg-white px-3 py-2 pr-8 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-orange-300/60"
-            >
-              {yearOptions.map((y) =>
-                y === "all" ? (
-                  <option key="all" value="all">
-                    すべて
-                  </option>
-                ) : (
-                  <option key={y} value={y}>
-                    {y}年
-                  </option>
-                )
-              )}
-            </select>
-            <ChevronDown
-              size={14}
-              className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
-            />
-          </label>
-
-          {scope === "me" ? (
-            <button
-              type="button"
-              onClick={() => setHidden((v) => !v)}
-              className="inline-flex items-center gap-1 rounded-full border border-black/[.08] bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-black/5"
-            >
-              {hidden ? <Eye size={14} /> : <EyeOff size={14} />}
-              {hidden ? "表示" : "隠す"}
-            </button>
-          ) : null}
-        </div>
+        {scope === "me" ? (
+          <button
+            type="button"
+            onClick={() => setHidden((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-full border border-black/[.08] bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-black/5"
+          >
+            {hidden ? <Eye size={14} /> : <EyeOff size={14} />}
+            {hidden ? "表示" : "隠す"}
+          </button>
+        ) : null}
       </div>
 
-      <AnimatePresence initial={false} mode="popLayout">
+      <AnimatePresence initial={true} mode="popLayout">
         {hidden ? (
           <motion.div
-            key="hidden"
-            initial={{ opacity: 0, y: 8 }}
+            key={`hidden-${mountedKey}`}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
+            exit={{ opacity: 0, y: 10 }}
             className="mt-4 rounded-2xl border border-orange-50 bg-orange-50/60 p-6 text-center text-sm text-slate-700"
           >
             非表示
           </motion.div>
         ) : (
           <motion.div
-            key="content"
-            initial={{ opacity: 0, y: 8 }}
+            key={`content-${mountedKey}-${loading ? "loading" : "ready"}`}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
             className="mt-4"
           >
             {loading ? (
@@ -537,6 +943,7 @@ export default function ProfileYearStats({
                   title={data.title}
                   meta={data.titleMeta}
                   topGenre={data.topGenre ? { genre: data.topGenre.genre, topPercent: data.topGenre.topPercent } : null}
+                  totalsPosts={data.totals.posts}
                 />
 
                 <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
@@ -544,9 +951,16 @@ export default function ProfileYearStats({
                     <div className="text-xs font-semibold text-slate-900">投稿</div>
                     <div className="text-lg font-bold text-slate-900">{data.totals.posts}</div>
                   </div>
-
-                  <PublicBadgesRow genreTier={data.badges.genreTier} postsTier={data.badges.postsTier} />
+                  {data.totals.posts <= 3 ? (
+                    <div className="mt-2 text-[11px] font-semibold text-slate-600">
+                      あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span>{" "}
+                      投稿でランキングに参加できます
+                    </div>
+                  ) : null}
                 </div>
+
+                {/* publicでもmap表示 */}
+                <ProfilePlacesMap userId={userId} scope={scope} />
               </div>
             ) : data.ok && data.scope === "me" ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
@@ -555,9 +969,9 @@ export default function ProfileYearStats({
                     title={data.title}
                     meta={data.titleMeta}
                     topGenre={data.topGenre ? { genre: data.topGenre.genre, topPercent: data.topGenre.topPercent } : null}
+                    totalsPosts={data.totals.posts}
                   />
 
-                  {/* 獲得したメダル：縦積みを基本にして崩れを根絶 */}
                   <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
                     <div className="text-xs font-semibold text-slate-900">獲得したメダル</div>
 
@@ -582,29 +996,34 @@ export default function ProfileYearStats({
                       <div className="text-xs font-semibold text-slate-900">投稿</div>
                       <div className="text-sm font-bold text-slate-900">{data.totals.posts}</div>
                     </div>
+
+                    {data.totals.posts <= 3 ? (
+                      <div className="mt-2 text-[11px] font-semibold text-slate-600">
+                        あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span>{" "}
+                        投稿でランキングに参加できます
+                      </div>
+                    ) : null}
                   </div>
+
+                  {/* me でも map 表示 */}
+                  <ProfilePlacesMap userId={userId} scope={scope} />
                 </div>
 
                 <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
                   <div className="text-xs font-semibold text-slate-900">ジャンル</div>
                   <div className="mt-3 flex items-center justify-center">
-                    <DonutPie data={data.pie} />
+                    <DonutPie
+                      data={data.pie}
+                      onHoverName={(n) => setLegendActive(n)}
+                    />
                   </div>
 
-                  {data.pie.length ? (
-                    <div className="mt-4 space-y-1">
-                      {data.pie
-                        .slice()
-                        .sort((a, b) => b.value - a.value)
-                        .slice(0, 8)
-                        .map((g) => (
-                          <div key={g.name} className="flex items-center justify-between text-[11px]">
-                            <span className="truncate text-slate-700">{g.name}</span>
-                            <span className="tabular-nums text-slate-500">{g.value}</span>
-                          </div>
-                        ))}
-                    </div>
-                  ) : null}
+                  <GenreLegend
+                    data={data.pie}
+                    getColor={(i) => legendColor(i)}
+                    onPick={(name) => setLegendActive(name)}
+                    active={legendActive}
+                  />
                 </div>
               </div>
             ) : (
