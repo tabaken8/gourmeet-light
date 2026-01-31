@@ -1,3 +1,4 @@
+// app/api/timeline/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPlacePhotoRefs } from "@/lib/google/getPlacePhotoRefs";
@@ -11,7 +12,7 @@ type PlacePhotos = { refs: string[]; attributionsHtml: string };
 
 async function buildPlacePhotoMap(placeIds: string[], perPlace = 6) {
   const uniq = Array.from(new Set(placeIds)).filter(Boolean);
-  const limited = uniq.slice(0, 10); // ★重くなるので上限（必要なら増やす）
+  const limited = uniq.slice(0, 10);
 
   const map: Record<string, PlacePhotos> = {};
   await Promise.all(
@@ -34,13 +35,9 @@ function countByPostId(rows: any[]) {
   }, {});
 }
 
-// -------------------------
-// ✅ admin client (service role)
-// -------------------------
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
   if (!url || !serviceKey) return null;
 
   return createSupabaseAdmin(url, serviceKey, {
@@ -48,12 +45,6 @@ function getAdminClient() {
   });
 }
 
-// -------------------------
-// ✅ k-hop 探索（BFS）
-// - startUserId から follow 辺を辿る（status=accepted）
-// - targetIds の hop を最大 maxK まで埋める
-// - hop=1 は「自分がフォロー中」
-// -------------------------
 async function computeKHopsToTargets(args: {
   admin: ReturnType<typeof getAdminClient>;
   startUserId: string;
@@ -65,7 +56,6 @@ async function computeKHopsToTargets(args: {
   const hopMap: Record<string, number> = {};
   const targetSet = new Set(targetIds.filter(Boolean));
 
-  // 対象が空なら何もしない
   if (!admin || !startUserId || targetSet.size === 0) return hopMap;
 
   const visited = new Set<string>([startUserId]);
@@ -75,7 +65,6 @@ async function computeKHopsToTargets(args: {
     const fromIds = Array.from(frontier);
     if (fromIds.length === 0) break;
 
-    // follower_id in frontier の辺を取得
     const { data, error } = await admin
       .from("follows")
       .select("followee_id")
@@ -96,15 +85,12 @@ async function computeKHopsToTargets(args: {
       visited.add(v);
       next.add(v);
 
-      // target に含まれるなら hop を記録（最短が先に入る）
       if (targetSet.has(v) && hopMap[v] == null) {
         hopMap[v] = k;
       }
     }
 
-    // もう target 全部埋まったなら終了
     if (Object.keys(hopMap).length >= targetSet.size) break;
-
     frontier = next;
   }
 
@@ -129,7 +115,6 @@ function scoreForDiscover(params: {
   const now = Date.now();
 
   const hop = params.k_hop;
-  // hop=2が最強、3,4…と弱く
   const hopScore = typeof hop === "number" && hop >= 2 ? 1 / (hop - 1) : 0.15;
 
   const t = Date.parse(params.created_at);
@@ -141,15 +126,12 @@ function scoreForDiscover(params: {
       ? Math.min(1, Math.max(0, params.recommend_score / 10))
       : 0.4;
 
-  // 同点崩しの微小ゆらぎ（順序固定）
   const jitter = ((hashString(params.postId) % 1000) / 1000) * 0.02;
 
-  // ✅ k-hop優先、次に新しさ
   return 0.62 * hopScore + 0.28 * recencyScore + 0.10 * recommend + jitter;
 }
 
 function reorderNoSameUserConsecutive(input: any[]) {
-  // 既にスコア順になっている前提で、同一user連続を回避する貪欲
   const pool = [...input];
   const out: any[] = [];
   let lastUser: string | null = null;
@@ -173,8 +155,8 @@ function reorderNoSameUserConsecutive(input: any[]) {
 }
 
 export async function GET(req: Request) {
-  const supabase = await createClient(); // ✅ ユーザーJWT（likedByMe等で使う）
-  const admin = getAdminClient(); // ✅ k-hop用（service role）
+  const supabase = await createClient();
+  const admin = getAdminClient();
 
   const { data: auth } = await supabase.auth.getUser();
   const user = auth.user;
@@ -182,28 +164,30 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const tab = url.searchParams.get("tab") === "friends" ? "friends" : "discover";
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 10), 30);
-  const cursor = url.searchParams.get("cursor"); // created_at のISO想定
+  const cursor = url.searchParams.get("cursor");
 
-  // ✅ friends だけログイン必須
   if (tab === "friends" && !user) {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  // ✅ 追加: recommend_score / price_yen / price_range を返す
+  // ✅ 画像カラムを全部返す（ここが欠けるとフロントが選べない）
   const postSelect =
-    "id, content, user_id, created_at, image_urls, image_variants, place_name, place_address, place_id, recommend_score, price_yen, price_range";
+    "id, content, user_id, created_at," +
+    " image_urls, image_variants, image_assets," +
+    " cover_square_url, cover_full_url, cover_pin_url," +
+    " place_name, place_address, place_id," +
+    " recommend_score, price_yen, price_range";
 
   // ---------------- discover（未ログインOK） ----------------
   if (tab === "discover") {
     let q = supabase
       .from("posts")
-      .select(
-        `${postSelect}, profiles!inner ( id, display_name, avatar_url, is_public )`
-      )
+      .select(`${postSelect}, profiles!inner ( id, display_name, avatar_url, is_public )`)
       .eq("profiles.is_public", true)
       .order("created_at", { ascending: false })
       .limit(limit);
-    if (user?.id) q = q.neq("user_id", user.id); // ✅ 自分の投稿を除外
+
+    if (user?.id) q = q.neq("user_id", user.id);
     if (cursor) q = q.lt("created_at", cursor);
 
     const { data: rows, error } = await q;
@@ -211,17 +195,13 @@ export async function GET(req: Request) {
 
     const raw = (rows ?? []) as any[];
 
-    // ★ Like集計（このバッチ分だけ）
+    // Like集計
     const postIds = raw.map((r) => r.id);
     let likeCountMap: Record<string, number> = {};
     let likedSet = new Set<string>();
 
     if (postIds.length) {
-      const { data: likesAll } = await supabase
-        .from("post_likes")
-        .select("post_id")
-        .in("post_id", postIds);
-
+      const { data: likesAll } = await supabase.from("post_likes").select("post_id").in("post_id", postIds);
       likeCountMap = countByPostId(likesAll ?? []);
 
       if (user) {
@@ -234,24 +214,17 @@ export async function GET(req: Request) {
       }
     }
 
-    // ★ Place写真（このバッチ分だけ）
+    // Place写真
     const placeIds = raw.map((r) => r.place_id).filter(Boolean);
     const placePhotoMap = await buildPlacePhotoMap(placeIds, 6);
 
-    // ✅ k-hop（ログイン時だけ計算）
+    // k-hop（ログイン時のみ）
     const authorIds = Array.from(new Set(raw.map((r) => r.user_id).filter(Boolean)));
-
     let hopMap: Record<string, number> = {};
     if (user?.id && admin) {
-      hopMap = await computeKHopsToTargets({
-        admin,
-        startUserId: user.id,
-        targetIds: authorIds,
-        maxK: 6, // 好きに（2,3,4... を考えるなら 6 くらいまでで十分）
-      });
+      hopMap = await computeKHopsToTargets({ admin, startUserId: user.id, targetIds: authorIds, maxK: 6 });
     }
 
-    // ✅ posts へ整形（k_hop / is_following も返す）
     let posts = raw.map((r) => {
       const k_hop = user?.id ? (hopMap[r.user_id] ?? null) : null;
       const is_following = user?.id ? k_hop === 1 : false;
@@ -261,8 +234,15 @@ export async function GET(req: Request) {
         content: r.content,
         user_id: r.user_id,
         created_at: r.created_at,
-        image_urls: r.image_urls,
-        image_variants: r.image_variants,
+
+        image_urls: r.image_urls ?? null,
+        image_variants: r.image_variants ?? null,
+        image_assets: r.image_assets ?? null,
+
+        cover_square_url: r.cover_square_url ?? null,
+        cover_full_url: r.cover_full_url ?? null,
+        cover_pin_url: r.cover_pin_url ?? null,
+
         place_name: r.place_name,
         place_address: r.place_address,
         place_id: r.place_id,
@@ -285,20 +265,16 @@ export async function GET(req: Request) {
         likeCount: likeCountMap[r.id] ?? 0,
         likedByMe: user ? likedSet.has(r.id) : false,
 
-        // ✅ discover用
         k_hop,
         is_following,
       };
     });
 
-    // ✅ k=1（フォロー中）除外（ログイン時のみ意味がある）
-    if (user?.id) {
-      posts = posts.filter((p) => p.k_hop !== 1);
-    }
+    // k=1除外（discover）
+    if (user?.id) posts = posts.filter((p: any) => p.k_hop !== 1);
 
-    // ✅ スコアリングして並び替え
     const scored = posts
-      .map((p) => ({
+      .map((p: any) => ({
         ...p,
         __score: scoreForDiscover({
           created_at: p.created_at,
@@ -307,12 +283,9 @@ export async function GET(req: Request) {
           postId: p.id,
         }),
       }))
-      .sort((a, b) => (b.__score ?? 0) - (a.__score ?? 0));
+      .sort((a: any, b: any) => (b.__score ?? 0) - (a.__score ?? 0));
 
-    // ✅ 同一ユーザー連続を避ける
-    const reordered = reorderNoSameUserConsecutive(scored).map(({ __score, ...rest }) => rest);
-
-    // cursor は「created_at 降順の生クエリ」に合わせて維持（ページング破綻を避ける）
+    const reordered = reorderNoSameUserConsecutive(scored).map(({ __score, ...rest }: any) => rest);
     const nextCursor = raw.length ? raw[raw.length - 1].created_at : null;
 
     return json({ posts: reordered, nextCursor });
@@ -359,21 +332,17 @@ export async function GET(req: Request) {
   const profMap: Record<string, any> = {};
   for (const p of profs ?? []) profMap[p.id] = p;
 
-  // ★ Place写真
+  // Place写真
   const placeIds = base.map((p) => p.place_id).filter(Boolean);
   const placePhotoMap = await buildPlacePhotoMap(placeIds, 6);
 
-  // ★ Like集計
+  // Like集計
   const postIds = base.map((p) => p.id);
   let likeCountMap: Record<string, number> = {};
   let likedSet = new Set<string>();
 
   if (postIds.length) {
-    const { data: likesAll } = await supabase
-      .from("post_likes")
-      .select("post_id")
-      .in("post_id", postIds);
-
+    const { data: likesAll } = await supabase.from("post_likes").select("post_id").in("post_id", postIds);
     likeCountMap = countByPostId(likesAll ?? []);
 
     const { data: myLikes } = await supabase

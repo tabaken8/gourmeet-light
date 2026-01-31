@@ -1,3 +1,4 @@
+// src/components/PostImageCarousel.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -8,9 +9,12 @@ type Props = {
   postId: string;
   imageUrls: string[];
   initialIndex?: number;
-  syncUrl?: boolean; // 明示指定もできる（既定は「投稿詳細ページなら同期」）
-  eager?: boolean;   // ✅ 追加：詳細などで eager にしたい時
-  preloadNeighbors?: boolean; // ✅ 追加：近傍プリロード（timelineで true 推奨）
+  syncUrl?: boolean; // 既定: 投稿詳細ページなら同期
+  eager?: boolean; // 詳細などで eager にしたい時
+  preloadNeighbors?: boolean; // 近傍プリロード（timelineで true 推奨）
+
+  fit?: "cover" | "contain";
+  aspect?: "auto" | "square";
 };
 
 function preloadImage(url: string) {
@@ -28,6 +32,8 @@ export default function PostImageCarousel({
   syncUrl,
   eager,
   preloadNeighbors = true,
+  fit = "cover",
+  aspect = "auto",
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -43,24 +49,20 @@ export default function PostImageCarousel({
   const isPostDetailPage = pathname === `/posts/${postId}`;
   const shouldSyncUrl = syncUrl ?? isPostDetailPage;
 
-  // ✅ 枚数変化で index を範囲内へ
   useEffect(() => {
     setIndex((i) => clamp(i));
   }, [clamp]);
 
-  // ✅ 近傍（前後）だけプリロード：カルーセル即時化
   useEffect(() => {
     if (!preloadNeighbors) return;
     if (total <= 1) return;
 
     const next = index + 1;
     const prev = index - 1;
-
     if (next < total) preloadImage(imageUrls[next]);
     if (prev >= 0) preloadImage(imageUrls[prev]);
   }, [index, imageUrls, preloadNeighbors, total]);
 
-  // ✅ URL同期（投稿詳細ページのみ、または syncUrl=true 明示時）
   useEffect(() => {
     if (!shouldSyncUrl) return;
     if (total <= 0) return;
@@ -72,6 +74,7 @@ export default function PostImageCarousel({
 
   const canPrev = total > 1 && index > 0;
   const canNext = total > 1 && index < total - 1;
+
   const prev = () => setIndex((i) => (i > 0 ? i - 1 : i));
   const next = () => setIndex((i) => (i < total - 1 ? i + 1 : i));
 
@@ -80,20 +83,94 @@ export default function PostImageCarousel({
     e.stopPropagation();
   };
 
-  // ✅ 詳細は eager、タイムラインは lazy が基本
-  const loadingMode: "eager" | "lazy" =
-    eager ?? isPostDetailPage ? "eager" : "lazy";
+  // ⚠️ eager ?? isPostDetailPage の優先順位事故防止
+  const loadingMode: "eager" | "lazy" = (eager ?? isPostDetailPage) ? "eager" : "lazy";
+  const fitCls = fit === "contain" ? "object-contain" : "object-cover";
 
+  // ✅ square モード（タイムライン用）：必ず正方形枠
+  if (aspect === "square") {
+    return (
+      <div className="relative w-full aspect-square overflow-hidden bg-slate-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={imageUrls[index]}
+          alt=""
+          className={["absolute inset-0 h-full w-full", fitCls].join(" ")}
+          loading={loadingMode}
+          decoding="async"
+          fetchPriority={loadingMode === "eager" ? "high" : "auto"}
+          draggable={false}
+        />
+
+        {total > 1 && (
+          <>
+            {canPrev && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopNav(e);
+                  prev();
+                }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
+                aria-label="Previous image"
+              >
+                <ChevronLeft size={20} />
+              </button>
+            )}
+
+            {canNext && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopNav(e);
+                  next();
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
+                aria-label="Next image"
+              >
+                <ChevronRight size={20} />
+              </button>
+            )}
+
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+              {imageUrls.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={(e) => {
+                    stopNav(e);
+                    setIndex(i);
+                  }}
+                  className="p-0.5"
+                  aria-label={`Go to image ${i + 1}`}
+                >
+                  <span
+                    className={[
+                      "block h-2 w-2 rounded-full",
+                      i === index ? "bg-white" : "bg-white/50",
+                    ].join(" ")}
+                  />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ✅ auto（詳細ページなど互換）
   return (
-    <div className="relative w-full overflow-hidden">
+    <div className="relative w-full overflow-hidden bg-slate-100">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={imageUrls[index]}
         alt=""
-        className="w-full max-h-[600px] object-cover"
+        className="block w-full max-h-[600px] object-cover"
         loading={loadingMode}
         decoding="async"
         fetchPriority={loadingMode === "eager" ? "high" : "auto"}
+        draggable={false}
       />
 
       {total > 1 && (
@@ -139,9 +216,10 @@ export default function PostImageCarousel({
                 aria-label={`Go to image ${i + 1}`}
               >
                 <span
-                  className={`block h-2 w-2 rounded-full ${
-                    i === index ? "bg-white" : "bg-white/50"
-                  }`}
+                  className={[
+                    "block h-2 w-2 rounded-full",
+                    i === index ? "bg-white" : "bg-white/50",
+                  ].join(" ")}
                 />
               </button>
             ))}

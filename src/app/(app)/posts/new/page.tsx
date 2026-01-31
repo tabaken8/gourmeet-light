@@ -1,3 +1,4 @@
+// src/app/(app)/posts/new/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -14,15 +15,11 @@ type PlaceResult = {
 
 type PreparedImage = {
   id: string;
-
-  // 生成済みファイル（正方形統一）
-  pin: File;    // map pin 用（超軽量）
-  square: File; // timeline/card 用（統一）
-  full: File;   // 詳細用（高画質・元アスペクト保持）
-
-  previewUrl: string; // square の objectURL
+  pin: File;
+  square: File;
+  full: File;
+  previewUrl: string;
   label: string;
-
   origW: number;
   origH: number;
 };
@@ -66,13 +63,11 @@ function pickOutputFormat() {
   return { mime: "image/jpeg", ext: "jpg" as const };
 }
 
-/** 高品質段階縮小（半分ずつ） */
 function scaleCanvasHighQuality(src: HTMLCanvasElement, tw: number, th: number) {
   let cur = src;
   let curW = src.width;
   let curH = src.height;
 
-  // 半分縮小を繰り返して目標に近づける
   while (curW / 2 > tw && curH / 2 > th) {
     const next = document.createElement("canvas");
     const nextW = Math.max(tw, Math.floor(curW / 2));
@@ -91,7 +86,6 @@ function scaleCanvasHighQuality(src: HTMLCanvasElement, tw: number, th: number) 
     curH = nextH;
   }
 
-  // 最終リサイズ
   if (curW !== tw || curH !== th) {
     const out = document.createElement("canvas");
     out.width = tw;
@@ -117,7 +111,6 @@ async function canvasToFile(
   return new File([blob], `${nameBase}.${opts.ext}`, { type: opts.mime });
 }
 
-/** 中心クロップで正方形キャンバスを作る */
 function cropCenterSquare(bitmap: ImageBitmap) {
   const w = bitmap.width;
   const h = bitmap.height;
@@ -138,7 +131,6 @@ function cropCenterSquare(bitmap: ImageBitmap) {
   return canvas;
 }
 
-/** 長辺指定で（アスペクト維持で）縮小キャンバスを作る */
 function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
   const w = bitmap.width;
   const h = bitmap.height;
@@ -161,14 +153,32 @@ function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
   return scaleCanvasHighQuality(base, tw, th);
 }
 
-/**
- * 画像を用意：
- * - square: 正方形（中心クロップ）→ 1080px
- * - pin   : square をさらに 160px
- * - full  : 元アスペクト維持で長辺 3072px
- *
- * 生成は Promise.all で並列
- */
+async function tryAutofillVisitedOnFromFirstPhoto(file: File): Promise<string | null> {
+  try {
+    const mod: any = await import("exifr");
+    const exifr = mod.default ?? mod;
+
+    const tags = await exifr.parse(file, { pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"] });
+    const dtRaw = tags?.DateTimeOriginal ?? tags?.CreateDate ?? tags?.ModifyDate;
+
+    const dt =
+      dtRaw instanceof Date
+        ? dtRaw
+        : typeof dtRaw === "string" || typeof dtRaw === "number"
+        ? new Date(dtRaw)
+        : null;
+
+    if (!dt || !Number.isFinite(dt.getTime())) return null;
+
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  } catch {
+    return null;
+  }
+}
+
 async function prepareImage(file: File): Promise<PreparedImage> {
   const normalized = isHeicLike(file) ? await convertHeicToJpeg(file) : file;
   const fmt = pickOutputFormat();
@@ -179,10 +189,8 @@ async function prepareImage(file: File): Promise<PreparedImage> {
 
   const baseName = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  // square の元（正方形キャンバス）
   const squareBase = cropCenterSquare(bitmap);
 
-  // 並列生成（square/pin/full）
   const [squareCanvas, pinCanvas, fullCanvas] = await Promise.all([
     Promise.resolve(scaleCanvasHighQuality(squareBase, 1080, 1080)),
     Promise.resolve(scaleCanvasHighQuality(squareBase, 160, 160)),
@@ -190,9 +198,21 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   ]);
 
   const [squareFile, pinFile, fullFile] = await Promise.all([
-    canvasToFile(squareCanvas, `${baseName}_square`, { mime: fmt.mime, quality: fmt.ext === "avif" ? 0.65 : fmt.ext === "webp" ? 0.88 : 0.92, ext: fmt.ext }),
-    canvasToFile(pinCanvas, `${baseName}_pin`, { mime: fmt.mime, quality: fmt.ext === "avif" ? 0.55 : fmt.ext === "webp" ? 0.80 : 0.86, ext: fmt.ext }),
-    canvasToFile(fullCanvas, `${baseName}_full`, { mime: fmt.mime, quality: fmt.ext === "avif" ? 0.70 : fmt.ext === "webp" ? 0.90 : 0.94, ext: fmt.ext }),
+    canvasToFile(squareCanvas, `${baseName}_square`, {
+      mime: fmt.mime,
+      quality: fmt.ext === "avif" ? 0.65 : fmt.ext === "webp" ? 0.88 : 0.92,
+      ext: fmt.ext,
+    }),
+    canvasToFile(pinCanvas, `${baseName}_pin`, {
+      mime: fmt.mime,
+      quality: fmt.ext === "avif" ? 0.55 : fmt.ext === "webp" ? 0.8 : 0.86,
+      ext: fmt.ext,
+    }),
+    canvasToFile(fullCanvas, `${baseName}_full`, {
+      mime: fmt.mime,
+      quality: fmt.ext === "avif" ? 0.7 : fmt.ext === "webp" ? 0.9 : 0.94,
+      ext: fmt.ext,
+    }),
   ]);
 
   const previewUrl = URL.createObjectURL(squareFile);
@@ -209,7 +229,6 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   };
 }
 
-/** 同時実行数を制限する簡易プール */
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>) {
   const results: R[] = new Array(items.length);
   let i = 0;
@@ -225,7 +244,6 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T,
   return results;
 }
 
-// 価格レンジ候補（DBのチェック制約と一致させる）
 const PRICE_RANGES = [
   { value: "~999", label: "〜¥999" },
   { value: "1000-1999", label: "¥1,000〜¥1,999" },
@@ -298,8 +316,6 @@ function Section({
         </div>
         {right && <div className="shrink-0">{right}</div>}
       </div>
-
-      {/* ✅ 全幅（左右余白ゼロ） */}
       <div className="border-t border-orange-100 bg-white p-3">{children}</div>
     </section>
   );
@@ -334,9 +350,6 @@ export default function NewPostPage() {
 
   // 来店日（任意）
   const [visitedOn, setVisitedOn] = useState<string>("");
-
-  // 付与演出モーダル（現状維持）
-  const [award, setAward] = useState<{ points: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -389,7 +402,17 @@ export default function NewPostPage() {
       const limited = imageFiles.slice(0, Math.max(0, MAX - imgs.length));
       if (limited.length === 0) return;
 
-      // 生成も並列（ただし重いので同時数制限）
+      if (!visitedOn && imgs.length === 0 && limited.length > 0) {
+        let guessed = await tryAutofillVisitedOnFromFirstPhoto(limited[0]);
+        if (!guessed && isHeicLike(limited[0])) {
+          try {
+            const converted = await convertHeicToJpeg(limited[0]);
+            guessed = await tryAutofillVisitedOnFromFirstPhoto(converted);
+          } catch {}
+        }
+        if (guessed) setVisitedOn(guessed);
+      }
+
       const prepared = await mapWithConcurrency(limited, 2, async (f) => prepareImage(f));
       setImgs((prev) => [...prev, ...prepared]);
     } catch (e: any) {
@@ -435,7 +458,6 @@ export default function NewPostPage() {
   const isContentComplete = content.trim().length > 0;
   const isPhotoComplete = imgs.length > 0;
   const isRecommendComplete = recommendSelected;
-
   const isAllRequiredComplete = isPhotoComplete && isRecommendComplete && isPriceComplete && isContentComplete;
 
   const progressRow = (
@@ -471,6 +493,32 @@ export default function NewPostPage() {
     </div>
   );
 
+  /**
+   * ✅ FK対策：posts.place_id が places を参照してるなら、先に places を upsert する
+   */
+  const ensurePlaceExists = async (place: PlaceResult) => {
+    const pid = place.place_id;
+    if (!pid) return;
+
+    // よくある schema: places(id primary key text, name text, address text)
+    // もしカラム名が違うならここだけ合わせて。
+    const { error } = await supabase
+      .from("places")
+      .upsert(
+        {
+          id: pid,
+          name: place.name ?? null,
+          address: place.formatted_address ?? null,
+        },
+        { onConflict: "id" }
+      );
+
+    if (error) {
+      // ここで落とすと投稿できないので、原因をメッセージに出して止める
+      throw new Error(`places upsert failed: ${error.message}`);
+    }
+  };
+
   const submit = async () => {
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
@@ -483,10 +531,14 @@ export default function NewPostPage() {
     setMsg(null);
 
     try {
-      const CACHE = "31536000"; // 1年
+      // ✅ place FK対策（選択しているなら先に upsert）
+      if (selectedPlace?.place_id) {
+        await ensurePlaceExists(selectedPlace);
+      }
+
+      const CACHE = "31536000";
       const bucket = supabase.storage.from("post-images");
 
-      // 画像アップロード（画像ごとに pin/square/full を並列）
       const uploaded = await mapWithConcurrency(imgs, 2, async (img) => {
         const base = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -498,7 +550,6 @@ export default function NewPostPage() {
         const squarePath = `${uid}/${base}_square.${squareExt}`;
         const fullPath = `${uid}/${base}_full.${fullExt}`;
 
-        // 3つを同時upload
         const [upPin, upSquare, upFull] = await Promise.all([
           bucket.upload(pinPath, img.pin, { cacheControl: CACHE, upsert: false, contentType: img.pin.type }),
           bucket.upload(squarePath, img.square, { cacheControl: CACHE, upsert: false, contentType: img.square.type }),
@@ -522,7 +573,6 @@ export default function NewPostPage() {
         };
       });
 
-      // 互換用：image_variants/thumb = square、image_urls = full
       const image_assets = uploaded;
       const image_variants = uploaded.map((x) => ({ thumb: x.square, full: x.full }));
       const image_urls = uploaded.map((x) => x.full);
@@ -536,7 +586,6 @@ export default function NewPostPage() {
 
       const visited_on = visitedOn ? visitedOn : null;
 
-      // place の正規化はあなたの既存ロジックに合わせて（ここでは簡易版：そのまま入れる）
       const place_id = selectedPlace?.place_id ?? null;
       const place_name = selectedPlace?.name ?? null;
       const place_address = selectedPlace?.formatted_address ?? null;
@@ -545,13 +594,11 @@ export default function NewPostPage() {
         user_id: uid,
         content,
 
-        // ✅ 新：統一アセット
         image_assets,
         cover_pin_url,
         cover_square_url,
         cover_full_url,
 
-        // ✅ 互換：既存UIが壊れないよう埋める
         image_variants,
         image_urls,
 
@@ -564,9 +611,9 @@ export default function NewPostPage() {
         price_range,
         visited_on,
       });
+
       if (insErr) throw insErr;
 
-      // ここは今まで通り：反映して遷移
       confetti({ particleCount: 60, spread: 80, origin: { y: 0.7 } });
       router.push("/timeline");
       router.refresh();
@@ -579,7 +626,6 @@ export default function NewPostPage() {
 
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      {/* ✅ ガチ全幅（左右余白ゼロ） */}
       <div className="w-full pb-32 pt-6">
         <header className="border-b border-orange-100 bg-white/70 p-3 backdrop-blur">
           <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">New Post</h1>
@@ -594,7 +640,6 @@ export default function NewPostPage() {
           }}
           className="bg-white"
         >
-          {/* 写真 */}
           <Section
             title="写真"
             required
@@ -635,7 +680,11 @@ export default function NewPostPage() {
             >
               <div className="flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-2xl bg-white shadow-sm">
-                  {processing ? <Loader2 className="h-5 w-5 animate-spin text-orange-600" /> : <ImageIcon className="h-5 w-5 text-orange-600" />}
+                  {processing ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
+                  ) : (
+                    <ImageIcon className="h-5 w-5 text-orange-600" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-slate-900">{imgs.length ? "写真を追加する" : "ここに写真を追加"}</div>
@@ -660,7 +709,6 @@ export default function NewPostPage() {
                   </button>
                 </div>
 
-                {/* ✅ 全幅＆左右余白ゼロ（New Postの他UIと同じ） */}
                 <div className="mt-2 -mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
                   {imgs.map((img) => (
                     <div key={img.id} className="relative shrink-0">
@@ -685,7 +733,6 @@ export default function NewPostPage() {
             )}
           </Section>
 
-          {/* おすすめ度 */}
           <Section
             title="おすすめ度"
             required
@@ -762,7 +809,6 @@ export default function NewPostPage() {
             </div>
           </Section>
 
-          {/* 価格 */}
           <Section title="価格" required right={priceModeSwitch}>
             <div className="space-y-3">
               {priceMode === "exact" && (
@@ -778,7 +824,9 @@ export default function NewPostPage() {
                       aria-label="価格（実額）"
                     />
                   </div>
-                  <div className="min-w-[90px] text-right text-[12px] text-slate-500">{priceYenValue ? `¥${formatYen(priceYenValue)}` : ""}</div>
+                  <div className="min-w-[90px] text-right text-[12px] text-slate-500">
+                    {priceYenValue ? `¥${formatYen(priceYenValue)}` : ""}
+                  </div>
                 </div>
               )}
 
@@ -803,7 +851,6 @@ export default function NewPostPage() {
             </div>
           </Section>
 
-          {/* 本文 */}
           <Section title="本文" required subtitle={<span className="hidden sm:inline">Cmd/Ctrl + Enter で投稿</span>}>
             <textarea
               className="h-28 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white md:h-36"
@@ -820,7 +867,6 @@ export default function NewPostPage() {
             />
           </Section>
 
-          {/* 来店日（任意） */}
           <Section title="いつ行った？" subtitle={<span className="text-slate-400">任意</span>}>
             <div className="flex items-center gap-2">
               <input
@@ -842,7 +888,6 @@ export default function NewPostPage() {
             </div>
           </Section>
 
-          {/* 店舗（任意） */}
           <Section
             title="お店をつける"
             subtitle={<span className="text-slate-400">任意</span>}
@@ -930,7 +975,6 @@ export default function NewPostPage() {
         </form>
       </div>
 
-      {/* ✅ 画面下 fixed CTA：ガチ全幅（左右余白ゼロ） */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         <div
           className="border-t border-orange-100 bg-white/95 p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur"
@@ -956,29 +1000,6 @@ export default function NewPostPage() {
           </div>
         </div>
       </div>
-
-      {/* 付与演出モーダル（必要ならここはあなたの既存のまま差し戻してOK） */}
-      {award && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-orange-100 bg-white p-5 shadow-xl">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Points Get!</div>
-            <div className="mt-2 text-lg font-bold text-slate-900">🎉 {award.points}pt 獲得しました！</div>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                className="flex-1 rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
-                onClick={() => {
-                  setAward(null);
-                  router.push("/timeline");
-                  router.refresh();
-                }}
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

@@ -19,6 +19,13 @@ type ImageVariant = {
   [k: string]: any;
 };
 
+type ImageAsset = {
+  pin?: string | null;
+  square?: string | null;
+  full?: string | null;
+  [k: string]: any;
+};
+
 type ProfileLite = {
   id: string;
   display_name: string | null;
@@ -31,8 +38,15 @@ type PostRow = {
   content: string | null;
   user_id: string;
   created_at: string;
+
   image_urls: string[] | null;
   image_variants: ImageVariant[] | null;
+
+  image_assets?: ImageAsset[] | null;
+  cover_square_url?: string | null;
+  cover_full_url?: string | null;
+  cover_pin_url?: string | null;
+
   place_name: string | null;
   place_address: string | null;
   place_id: string | null;
@@ -64,29 +78,45 @@ function formatJST(iso: string) {
 }
 
 /**
- * ✅ Timeline（friends）では thumb を優先して使う
- * - full は詳細 or 拡大で読むべき
- * - legacy(image_urls) は互換のため残す（多くは full の可能性）
+ * ✅ friends Timelineでは「正方形URLのみ」を返す（統一が壊れるfallbackはしない）
+ * 優先順位：
+ *  1) cover_square_url（最強）
+ *  2) image_assets[].square（新）
+ *  3) image_variants[].thumb（旧）
  */
-function getTimelineImageUrls(p: PostRow): string[] {
-  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
+function getTimelineSquareUrls(p: PostRow): string[] {
+  // 1) cover_square_url があればそれを先頭にしつつ、他のsquareも足す
+  const cover = p.cover_square_url ? [p.cover_square_url] : [];
 
-  const fromVariants = variants
-    .map((v) => (v?.thumb ?? v?.full ?? null)) // ✅ thumb優先に修正
+  // 2) image_assets[].square
+  const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
+  const squaresFromAssets = assets
+    .map((a) => a?.square ?? null)
     .filter((x): x is string => !!x);
 
-  if (fromVariants.length > 0) return fromVariants;
+  // 3) image_variants[].thumb
+  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
+  const thumbsFromVariants = variants
+    .map((v) => v?.thumb ?? null)
+    .filter((x): x is string => !!x);
 
-  const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
-  return legacy.filter((x): x is string => !!x);
+  // まとめ：重複排除
+  const all = [...cover, ...squaresFromAssets, ...thumbsFromVariants];
+  const uniq = Array.from(new Set(all)).filter(Boolean);
+
+  return uniq;
 }
 
-function getFirstThumb(p: PostRow): string | null {
-  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
-  const v = variants[0];
-  const best = v?.thumb ?? v?.full ?? null;
-  if (best) return best;
+function getFirstSquareThumb(p: PostRow): string | null {
+  if (p.cover_square_url) return p.cover_square_url;
 
+  const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
+  if (assets[0]?.square) return assets[0].square;
+
+  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
+  if (variants[0]?.thumb) return variants[0].thumb;
+
+  // discoverタイルは古い投稿も見せたいので legacy fallback 可
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy[0] ?? null;
 }
@@ -151,30 +181,6 @@ function formatPrice(p: PostRow): string | null {
   return null;
 }
 
-function Badge({
-  children,
-  tone = "slate",
-}: {
-  children: React.ReactNode;
-  tone?: "slate" | "orange";
-}) {
-  const cls =
-    tone === "orange"
-      ? "border-orange-200 bg-orange-50 text-orange-800"
-      : "border-black/10 bg-white text-slate-700";
-
-  return (
-    <span
-      className={[
-        "inline-flex h-6 items-center rounded-full border px-2 text-[11px] font-medium",
-        cls,
-      ].join(" ")}
-    >
-      {children}
-    </span>
-  );
-}
-
 // ---- seed & hash helpers ----
 function hashString(s: string): number {
   let h = 2166136261;
@@ -192,24 +198,18 @@ function makeSeed(): string {
       crypto.getRandomValues(a);
       return `${a[0]}-${a[1]}`;
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-/**
- * 3列グリッドで「大(2x2)」が末尾で余りにくいように、
- * クライアント側で "置き方" を決める簡易パッカー。
- */
 function planDiscoverTiles(
   ordered: PostRow[],
   seed: string,
   opts?: {
-    bigDenom?: number; // 小さいほどbig増える（例:4 => 25%）
-    minIndexForBig?: number; // 序盤はbig抑制
-    tailGuard?: number; // 末尾N件はbig禁止（余り防止）
-    maxBig?: number; // 1バッチあたり上限
+    bigDenom?: number;
+    minIndexForBig?: number;
+    tailGuard?: number;
+    maxBig?: number;
   }
 ): DiscoverTile[] {
   const bigDenom = opts?.bigDenom ?? 4;
@@ -236,12 +236,7 @@ function planDiscoverTiles(
     if (c > 1) return false;
     ensureRow(r);
     ensureRow(r + 1);
-    return (
-      !occ[r][c] &&
-      !occ[r][c + 1] &&
-      !occ[r + 1][c] &&
-      !occ[r + 1][c + 1]
-    );
+    return !occ[r][c] && !occ[r][c + 1] && !occ[r + 1][c] && !occ[r + 1][c + 1];
   };
 
   const markSmall = (r: number, c: number) => {
@@ -268,15 +263,10 @@ function planDiscoverTiles(
 
     const h = hashString(`${seed}:big:${p.id}`);
     const wantBigByRand = h % bigDenom === 0;
-
     const allowByTail = remain > tailGuard;
 
     const wantBig =
-      i > minIndexForBig &&
-      allowByTail &&
-      wantBigByRand &&
-      bigCount < maxBig &&
-      canBigAt(r, c);
+      i > minIndexForBig && allowByTail && wantBigByRand && bigCount < maxBig && canBigAt(r, c);
 
     if (wantBig) {
       markBig(r, c);
@@ -304,10 +294,7 @@ export default function TimelineFeed({
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // friends用：モバイルで「Google写真」を開いた投稿だけ展開
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
-
-  // ✅ refreshごとに順序が変わるseed（描画中は固定）
   const [seed] = useState(() => makeSeed());
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -371,26 +358,21 @@ export default function TimelineFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, done, loading, activeTab]);
 
-  // ✅ discover用：自分は除外（保険）
   const discoverBase = useMemo(() => {
     return meId ? posts.filter((p) => p.user_id !== meId) : posts;
   }, [posts, meId]);
 
-  // ✅ discover用：順序をseedで揺らす（“元の順位をだいたい保つ”）
   const discoverGridPosts = useMemo(() => {
     const jitterWeight = 8;
-
     const scored = discoverBase.map((p, rank) => {
-      const jitter = (hashString(`${seed}:order:${p.id}`) % 1000) / 1000; // 0..1
+      const jitter = (hashString(`${seed}:order:${p.id}`) % 1000) / 1000;
       const key = rank + jitter * jitterWeight;
       return { p, key };
     });
-
     scored.sort((a, b) => a.key - b.key);
     return scored.map((x) => x.p);
   }, [discoverBase, seed]);
 
-  // ✅ discover用：bigが末尾で余りにくいように「置き方」を決める
   const discoverTiles = useMemo(() => {
     return planDiscoverTiles(discoverGridPosts, seed, {
       bigDenom: 4,
@@ -400,7 +382,6 @@ export default function TimelineFeed({
     });
   }, [discoverGridPosts, seed]);
 
-  // friendsタブで未ログインなら統一LoginCardへ
   if (error?.includes("Unauthorized") && activeTab === "friends") {
     return (
       <LoginCard
@@ -428,24 +409,18 @@ export default function TimelineFeed({
   }
 
   // =========================
-  // ✅ DISCOVER: 3列固定 + 正方形タイル + たまに2x2大正方形
+  // DISCOVER
   // =========================
   if (activeTab === "discover") {
     return (
       <div className="w-full">
-        <div
-          className="
-            grid grid-cols-3
-            gap-[2px] md:gap-2
-            [grid-auto-flow:dense]
-          "
-        >
+        <div className="grid grid-cols-3 gap-[2px] md:gap-2 [grid-auto-flow:dense]">
           {discoverTiles.map(({ p, big }) => {
             const prof = p.profile;
             const display = prof?.display_name ?? "ユーザー";
             const isPublic = prof?.is_public ?? true;
 
-            const thumb = getFirstThumb(p);
+            const thumb = getFirstSquareThumb(p);
             const tileSpan = big ? "col-span-2 row-span-2" : "col-span-1 row-span-1";
 
             return (
@@ -453,11 +428,9 @@ export default function TimelineFeed({
                 key={p.id}
                 href={`/posts/${p.id}`}
                 className={[
-                  "relative block overflow-hidden",
-                  "bg-slate-100",
+                  "relative block overflow-hidden bg-slate-100",
                   "focus:outline-none focus:ring-2 focus:ring-orange-400",
-                  "gm-press",
-                  "ring-1 ring-black/[.05]",
+                  "gm-press ring-1 ring-black/[.05]",
                   tileSpan,
                 ].join(" ")}
               >
@@ -500,25 +473,19 @@ export default function TimelineFeed({
 
         <div ref={sentinelRef} className="h-10" />
 
-        {loading && (
-          <div className="pb-8 pt-4 text-center text-xs text-slate-500">読み込み中...</div>
-        )}
-
+        {loading && <div className="pb-8 pt-4 text-center text-xs text-slate-500">読み込み中...</div>}
         {error && !error.includes("Unauthorized") && (
           <div className="pb-8 pt-4 text-center text-xs text-red-600">{error}</div>
         )}
-
         {done && posts.length > 0 && (
-          <div className="pb-8 pt-4 text-center text-[11px] text-slate-400">
-            ログインしてもっと見つける
-          </div>
+          <div className="pb-8 pt-4 text-center text-[11px] text-slate-400">ログインしてもっと見つける</div>
         )}
       </div>
     );
   }
 
   // =========================
-  // ✅ FRIENDS: “紙片” + “署名ストリップ”
+  // FRIENDS
   // =========================
   const MOBILE_THUMBS = 3;
 
@@ -537,8 +504,8 @@ export default function TimelineFeed({
           ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
           : null;
 
-        // ✅ ここが最重要：thumb優先のURL配列（Timeline）
-        const timelineImageUrls = getTimelineImageUrls(p);
+        // ✅ 正方形URL配列（friends timelineは統一のため squareのみ）
+        const timelineImageUrls = getTimelineSquareUrls(p);
 
         const initialLikeCount = p.likeCount ?? 0;
         const initialLiked = p.likedByMe ?? false;
@@ -559,13 +526,7 @@ export default function TimelineFeed({
         const priceLabel = formatPrice(p);
 
         return (
-          <article
-            key={p.id}
-            className="
-              gm-card gm-press
-              overflow-hidden
-            "
-          >
+          <article key={p.id} className="gm-card gm-press overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
               <div className="md:border-r md:border-black/[.05]">
                 {/* Header */}
@@ -607,7 +568,7 @@ export default function TimelineFeed({
                   <PostMoreMenu postId={p.id} isMine={meId === p.user_id} />
                 </div>
 
-                {/* ✅ Gourmeet 署名ストリップ */}
+                {/* Strip */}
                 <div className="px-4 pb-3">
                   <div className="flex flex-wrap items-center gap-2">
                     {p.place_name ? (
@@ -658,12 +619,7 @@ export default function TimelineFeed({
                         type="button"
                         onClick={togglePhotos}
                         aria-label={isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"}
-                        className="
-                          md:hidden
-                          gm-chip gm-press
-                          inline-flex h-7 items-center gap-1 px-2
-                          text-[11px] text-slate-700
-                        "
+                        className="md:hidden gm-chip gm-press inline-flex h-7 items-center gap-1 px-2 text-[11px] text-slate-700"
                       >
                         <GoogleMark className="h-4 w-4" />
                         <span className="leading-none">写真</span>
@@ -677,16 +633,20 @@ export default function TimelineFeed({
                   </div>
                 </div>
 
-                {/* Media */}
+                {/* ✅ Media：正方形枠 + カルーセルも正方形 */}
                 {timelineImageUrls.length > 0 && (
-                  <Link href={`/posts/${p.id}`} className="block">
+                  <Link
+                    href={`/posts/${p.id}`}
+                    className="block w-full aspect-square overflow-hidden bg-slate-100"
+                  >
                     <PostImageCarousel
                       postId={p.id}
                       imageUrls={timelineImageUrls}
                       syncUrl={false}
-                      // ✅ timelineは lazy 前提 + 近傍プリロードで操作即時を狙う（あなたの差し替え版に合わせる）
                       eager={false}
                       preloadNeighbors={true}
+                      fit="cover"
+                      aspect="square"   // ★これがないと square枠にならない
                     />
                   </Link>
                 )}
@@ -724,12 +684,7 @@ export default function TimelineFeed({
               {/* Right panel (PC) */}
               <aside className="hidden md:block p-4">
                 {p.place_id ? (
-                  <PlacePhotoGallery
-                    placeId={p.place_id}
-                    placeName={p.place_name}
-                    per={8}
-                    maxThumbs={8}
-                  />
+                  <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={8} maxThumbs={8} />
                 ) : (
                   <div className="text-xs text-slate-400">写真を取得できませんでした</div>
                 )}
@@ -739,12 +694,7 @@ export default function TimelineFeed({
             {/* Mobile expand photos */}
             {p.place_id && isPhotosOpen ? (
               <div className="md:hidden pb-5 px-4">
-                <PlacePhotoGallery
-                  placeId={p.place_id}
-                  placeName={p.place_name}
-                  per={MOBILE_THUMBS}
-                  maxThumbs={MOBILE_THUMBS}
-                />
+                <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={3} maxThumbs={3} />
               </div>
             ) : null}
           </article>
@@ -754,11 +704,9 @@ export default function TimelineFeed({
       <div ref={sentinelRef} className="h-10" />
 
       {loading && <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>}
-
       {error && !error.includes("Unauthorized") && (
         <div className="pb-8 text-center text-xs text-red-600">{error}</div>
       )}
-
       {done && posts.length > 0 && (
         <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>
       )}
