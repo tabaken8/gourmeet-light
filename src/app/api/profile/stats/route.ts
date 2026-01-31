@@ -2,53 +2,59 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
-
 type GenreRow = { genre: string; count: number };
 
-function normalizeGenre(x: any): string {
-  const s = typeof x === "string" ? x.trim() : "";
-  return s ? s : "未分類";
+export const dynamic = "force-dynamic";
+
+function normalizeGenre(g: any): string {
+  const s = typeof g === "string" ? g.trim() : "";
+  return s || "未分類";
 }
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
 
-  const url = new URL(req.url);
-  const userId = url.searchParams.get("user_id")?.trim();
-
-  if (!userId) {
-    return NextResponse.json({ error: "user_id is required" }, { status: 400 });
-  }
-
-  // ✅ me は “居ても居なくても” OK（publicなら未ログインでも見せたい場合に備える）
+  // viewer（ログイン必須）
   const {
     data: { user: me },
   } = await supabase.auth.getUser();
 
-  // profile取得（公開/非公開判定）
-  const { data: profile, error: profErr } = await supabase
+  if (!me) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // target user id
+  const userId = req.nextUrl.searchParams.get("user_id");
+  if (!userId) {
+    return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+  }
+
+  // target profile (公開/非公開判定)
+  const { data: profile, error: pErr } = await supabase
     .from("profiles")
     .select("id, is_public")
     .eq("id", userId)
     .maybeSingle();
 
-  if (profErr || !profile) {
-    return NextResponse.json({ error: "profile not found" }, { status: 404 });
+  if (pErr) {
+    return NextResponse.json({ error: pErr.message }, { status: 500 });
+  }
+  if (!profile) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const isPublic = profile.is_public ?? true;
 
-  // ✅ 閲覧権限：
-  // - 公開プロフィールならOK
-  // - 本人ならOK
-  // - それ以外は「acceptedフォロー」ならOK
+  // ---- access check ----
   let canView = false;
-  if (isPublic) canView = true;
-  if (me && me.id === userId) canView = true;
 
-  if (!canView && me) {
-    const { data: rel } = await supabase
+  if (me.id === userId) {
+    canView = true;
+  } else if (isPublic) {
+    canView = true;
+  } else {
+    // 非公開なら「承認済みフォロー」だけOK
+    const { data: rel, error: fErr } = await supabase
       .from("follows")
       .select("status")
       .eq("follower_id", me.id)
@@ -56,97 +62,69 @@ export async function GET(req: NextRequest) {
       .eq("status", "accepted")
       .maybeSingle();
 
-    if (rel) canView = true;
+    if (!fErr && rel) canView = true;
   }
 
   if (!canView) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // ① 投稿総数
-  const { count: totalPosts = 0 } = await supabase
+  // ---- stats build (all-time) ----
+  // posts（必要最低限）
+  const { data: posts, error: postsErr } = await supabase
     .from("posts")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId);
-
-  // ② posts から place_id（= google place id）を集める
-  const { data: postPlaceRows, error: ppErr } = await supabase
-    .from("posts")
-    .select("place_id")
+    .select("id, place_id")
     .eq("user_id", userId)
-    .not("place_id", "is", null)
     .limit(5000);
 
-  if (ppErr) {
-    return NextResponse.json({ error: "failed to load posts" }, { status: 500 });
+  if (postsErr) {
+    return NextResponse.json({ error: postsErr.message }, { status: 500 });
   }
 
+  const totalPosts = posts?.length ?? 0;
+
+  // place_id -> genre を引くために places をまとめて取得
   const placeIds = Array.from(
     new Set(
-      (postPlaceRows ?? [])
-        .map((r: any) => (typeof r?.place_id === "string" ? r.place_id : null))
+      (posts ?? [])
+        .map((p: any) => (typeof p?.place_id === "string" ? p.place_id : null))
         .filter((x: any): x is string => !!x)
     )
   );
 
-  // place が無い投稿しかない場合
-  if (placeIds.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      userId,
-      totalPosts,
-      topGenre: "未分類",
-      genres: [{ genre: "未分類", count: totalPosts }],
-    });
-  }
+  let placeGenreMap = new Map<string, string>();
 
-  // ③ places から primary_genre を引く（place_id が主キー）
-  // supabase の in() は大量だと詰むので chunk
-  const placeGenreMap = new Map<string, string>();
-  const CHUNK = 200;
-
-  for (let i = 0; i < placeIds.length; i += CHUNK) {
-    const chunk = placeIds.slice(i, i + CHUNK);
-    const { data: places, error: plErr } = await supabase
+  if (placeIds.length > 0) {
+    const { data: places, error: placesErr } = await supabase
       .from("places")
       .select("place_id, primary_genre")
-      .in("place_id", chunk);
+      .in("place_id", placeIds)
+      .limit(5000);
 
-    if (plErr) {
-      return NextResponse.json({ error: "failed to load places" }, { status: 500 });
+    if (placesErr) {
+      return NextResponse.json({ error: placesErr.message }, { status: 500 });
     }
 
-    for (const p of places ?? []) {
-      const pid = typeof (p as any)?.place_id === "string" ? (p as any).place_id : null;
+    for (const r of places ?? []) {
+      const pid = typeof (r as any)?.place_id === "string" ? (r as any).place_id : null;
       if (!pid) continue;
-      placeGenreMap.set(pid, normalizeGenre((p as any).primary_genre));
+      placeGenreMap.set(pid, normalizeGenre((r as any)?.primary_genre));
     }
   }
 
-  // ④ もう一度 posts を見て、place_id→genre でカウント
-  // （posts を全部持って来るのが嫌なら、RPC化やview化は後で）
-  const { data: postRows2, error: p2Err } = await supabase
-    .from("posts")
-    .select("place_id")
-    .eq("user_id", userId)
-    .not("place_id", "is", null)
-    .limit(5000);
+  // 集計：投稿単位で primary_genre をカウント
+  const genreCount = new Map<string, number>();
 
-  if (p2Err) {
-    return NextResponse.json({ error: "failed to load posts" }, { status: 500 });
+  for (const p of posts ?? []) {
+    const pid = typeof (p as any)?.place_id === "string" ? (p as any).place_id : null;
+    const genre = pid ? placeGenreMap.get(pid) ?? "未分類" : "未分類";
+    genreCount.set(genre, (genreCount.get(genre) ?? 0) + 1);
   }
 
-  const counter = new Map<string, number>();
-  for (const r of postRows2 ?? []) {
-    const pid = typeof (r as any)?.place_id === "string" ? (r as any).place_id : null;
-    if (!pid) continue;
-    const g = placeGenreMap.get(pid) ?? "未分類";
-    counter.set(g, (counter.get(g) ?? 0) + 1);
-  }
-
-  const genres: GenreRow[] = Array.from(counter.entries())
+  const genres: GenreRow[] = Array.from(genreCount.entries())
     .map(([genre, count]) => ({ genre, count }))
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12); // 上位だけ（円グラフ向け）
 
   const topGenre = genres[0]?.genre ?? "未分類";
 
@@ -155,6 +133,6 @@ export async function GET(req: NextRequest) {
     userId,
     totalPosts,
     topGenre,
-    genres,
+    genres, // [{genre,count}]
   });
 }

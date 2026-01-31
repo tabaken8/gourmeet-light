@@ -13,7 +13,7 @@ type BadgeTier = "none" | "bronze" | "silver" | "gold" | "diamond";
 
 type TitleMeta = {
   kind: "starter" | "king" | "allrounder" | "traveler" | "steady" | "celebrity" | "local";
-  emoji: string; // 左に出す
+  emoji: string;
   accent: "amber" | "violet" | "rose" | "sky";
 };
 
@@ -75,7 +75,6 @@ function topPercentPretty(p: number) {
   return p.toFixed(2);
 }
 
-/** -------- UI helper: gradient accent -------- */
 function accentRing(a: TitleMeta["accent"]) {
   switch (a) {
     case "amber":
@@ -83,14 +82,13 @@ function accentRing(a: TitleMeta["accent"]) {
     case "violet":
       return "from-violet-200/80 via-fuchsia-100/60 to-violet-200/80 ring-violet-200/60";
     case "rose":
-      return "from-rose-200/80 via-orange-100/60 to-rose-200/80 ring-rose-200/60";
+      return "from-rose-200/80 via-orange-100/60 to-rose-200/60 ring-rose-200/60";
     case "sky":
     default:
       return "from-sky-200/70 via-white/60 to-sky-200/70 ring-sky-200/60";
   }
 }
 
-/** -------- "メダル"は絵文字で -------- */
 function tierEmoji(t: BadgeTier) {
   switch (t) {
     case "bronze":
@@ -112,7 +110,6 @@ function nextTierHint(nextTier: BadgeTier | null, nextAt: number | null, now: nu
   return { left, targetText: `${nextAt}` };
 }
 
-/** -------- Title plate -------- */
 function TitlePlate({
   title,
   meta,
@@ -156,7 +153,6 @@ function TitlePlate({
               得意ジャンル：<span className="font-semibold text-slate-900">{topGenre.genre}</span>
               {(() => {
                 const p = topPercentPretty(topGenre.topPercent);
-                // 投稿数が少ない人は topPercent 出さない（プロモーションで促す）
                 if (totalsPosts <= 3) return null;
                 return p ? <span className="ml-1 text-slate-500">（全ユーザーで上位 {p}%）</span> : null;
               })()}
@@ -168,7 +164,6 @@ function TitlePlate({
   );
 }
 
-/** -------- Donut Pie -------- */
 function DonutPie({
   data,
   size = 168,
@@ -199,7 +194,6 @@ function DonutPie({
   const r = (size - thickness) / 2;
   const c = size / 2;
 
-  // “暗いだけ”でも “原色ベタ”でもない、上品寄りパレット（hsl の S/L を控えめに）
   const colorFor = (i: number) => {
     const n = Math.max(1, segments.length);
     const hue = (i * 360) / n;
@@ -255,7 +249,6 @@ function DonutPie({
   );
 }
 
-/** -------- Legend (普通の凡例) -------- */
 function GenreLegend({
   data,
   getColor,
@@ -308,7 +301,6 @@ function GenreLegend({
   );
 }
 
-/** -------- Badges row (emoji medals) -------- */
 function MedalRow({
   label,
   description,
@@ -322,7 +314,6 @@ function MedalRow({
 }) {
   const cur = tierEmoji(progress.tier);
   const next = tierEmoji(progress.nextTier ?? "none");
-
   const hint = nextTierHint(progress.nextTier, progress.nextAt, progress.value);
 
   return (
@@ -378,11 +369,9 @@ function MedalRow({
 }
 
 /** =========================
- *  Map (userの投稿一覧)
- *  - scope publicでも表示
- *  - pinはサムネ
- *  - pin/infoから投稿へ遷移
- *  - サムネは render/image で軽量化（可能なら）
+ *  Map pins
+ *  - 画像失敗時に「壊れた画像アイコン」が出ないよう background-image で描画する
+ *  - contain で縮小表示
  * ========================= */
 
 type PostRow = {
@@ -392,7 +381,18 @@ type PostRow = {
   place_name: string | null;
   place_address: string | null;
   created_at: string | null;
+
+  // 既存互換
   image_urls?: string[] | null;
+  image_variants?: Array<{ thumb?: string; full?: string }> | null;
+
+  // ✅ 新：正方形 pin/square/full
+  image_assets?: Array<{ pin?: string; square?: string; full?: string }> | null;
+
+  // ✅ 新：cover ショートカット
+  cover_pin_url?: string | null;
+  cover_square_url?: string | null;
+  cover_full_url?: string | null;
 };
 
 type PlaceRow = {
@@ -414,12 +414,6 @@ type PlacePin = {
   latest_image_url: string | null;
 };
 
-function toMs(ts: string | null) {
-  if (!ts) return 0;
-  const ms = Date.parse(ts);
-  return Number.isFinite(ms) ? ms : 0;
-}
-
 function ensureGmapsOptionsOnce(opts: Parameters<typeof setOptions>[0]) {
   const g = globalThis as any;
   if (!g.__GMAPS_OPTIONS_SET__) {
@@ -428,32 +422,76 @@ function ensureGmapsOptionsOnce(opts: Parameters<typeof setOptions>[0]) {
   }
 }
 
+// フォールバック（📍）
+function fallbackPinSvgDataUrl() {
+  return (
+    "data:image/svg+xml;charset=utf-8," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="1" stop-color="#f3f4f6"/>
+          </linearGradient>
+        </defs>
+        <rect width="100%" height="100%" rx="44" ry="44" fill="url(#g)"/>
+        <text x="50%" y="54%" text-anchor="middle" font-size="24" font-weight="800" fill="#111827">📍</text>
+      </svg>`
+    )
+  );
+}
+
 /**
- * Supabase public URL → render/image へ変換して軽量サムネ化（対応してない環境ならそのまま）
- * 例:
- *  /storage/v1/object/public/bucket/path.jpg
+ * URLが変な形でもなるべく耐える軽い正規化
+ * - //example.com/... → https: を補う
+ * - （それ以外の相対っぽいのはそのまま：ここで推測して壊すよりマシ）
+ */
+function normalizeMaybeUrl(url: string) {
+  const s = url.trim();
+  if (!s) return s;
+  if (s.startsWith("//")) return `https:${s}`;
+  return s;
+}
+
+/**
+ * Supabase public URL → render/image へ変換して軽量化（対応してない/変換不能ならそのまま）
+ * /storage/v1/object/public/bucket/path.jpg
  *   → /storage/v1/render/image/public/bucket/path.jpg?width=120&quality=45
  */
-function toSupabaseThumbUrl(url: string, width = 120, quality = 45) {
+function toSupabaseThumbUrl(url: string, width = 120, height?: number, quality = 45, resize: "cover" | "contain" = "cover") {
   try {
-    const u = new URL(url);
+    const u0 = normalizeMaybeUrl(url);
+    const u = new URL(u0);
     const p = u.pathname;
 
     const needle = "/storage/v1/object/public/";
-    if (!p.includes(needle)) return url;
+    if (!p.includes(needle)) return u.toString();
 
     const rest = p.split(needle)[1]; // bucket/path...
     const renderPath = `/storage/v1/render/image/public/${rest}`;
     const out = new URL(u.origin + renderPath);
+
     out.searchParams.set("width", String(width));
+    if (height != null) out.searchParams.set("height", String(height));
+
+    // ✅ ここが重要：正方形にクロップしたいなら cover
+    out.searchParams.set("resize", resize);
+
     out.searchParams.set("quality", String(quality));
-    // 高さ指定しない（勝手に比率維持）
+    // out.searchParams.set("format", "webp"); // もし使える環境ならONでもOK
+
     return out.toString();
   } catch {
     return url;
   }
 }
 
+
+/**
+ * ✅ “縮小して収めるピン”
+ * - 背景画像で描画（壊れた画像アイコンを出さない）
+ * - contain（トリミングしない）
+ */
 function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
   const wrap = document.createElement("div");
   wrap.style.position = "relative";
@@ -467,38 +505,78 @@ function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
   wrap.style.boxShadow = highlight ? "0 10px 26px rgba(234,88,12,0.30)" : "0 6px 18px rgba(0,0,0,0.20)";
   wrap.style.transform = "translateZ(0)";
 
-  const img = document.createElement("img");
-  img.alt = "thumb";
-  img.referrerPolicy = "no-referrer";
-  img.style.width = "100%";
-  img.style.height = "100%";
-  img.style.objectFit = "cover";
-  img.style.filter = "saturate(1.05) contrast(1.02)";
-  img.decoding = "async";
+  // 内側フレーム：ここで“縮小して見える”感じを作る
+  const inner = document.createElement("div");
+  inner.style.position = "absolute";
+  inner.style.inset = "4px"; // ← 3〜6で好み調整
+  inner.style.borderRadius = "9999px";
+  inner.style.overflow = "hidden";
+  inner.style.background = "rgba(255,255,255,0.78)";
+  inner.style.boxShadow = "inset 0 0 0 1px rgba(0,0,0,0.04)";
+  wrap.appendChild(inner);
 
+  // 実際の“画像面”は background で描画（contain）
+  const face = document.createElement("div");
+  face.style.position = "absolute";
+  face.style.inset = "0px";
+  face.style.borderRadius = "9999px";
+  face.style.backgroundRepeat = "no-repeat";
+  face.style.backgroundPosition = "center";
+  face.style.backgroundSize = "contain";
+  // ほんの少し余白（画像がギリギリまで来ないように）
+  face.style.padding = "2px";
+  face.style.boxSizing = "border-box";
+  inner.appendChild(face);
+
+  const fallback = fallbackPinSvgDataUrl();
+
+  // いったんフォールバックを入れておく
+  face.style.backgroundImage = `url("${fallback}")`;
+
+  // imageUrl があれば “thumb” を試す（失敗時はフォールバックのまま）
   if (imageUrl) {
-    // まず軽いサムネURL
-    img.src = toSupabaseThumbUrl(imageUrl, 120, 45);
-  } else {
-    // fallback
-    img.src =
-      "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88"><rect width="100%" height="100%" fill="#f3f4f6"/><text x="50%" y="52%" text-anchor="middle" font-size="22" font-weight="800" fill="#111827">📍</text></svg>`
-      );
+    const raw = normalizeMaybeUrl(imageUrl);
+    const thumb = toSupabaseThumbUrl(raw, 120, 120, 45, "cover");
+
+
+    // preload して成功したら background に反映
+    const probe = new Image();
+    probe.decoding = "async";
+    probe.referrerPolicy = "no-referrer";
+    probe.onload = () => {
+      face.style.backgroundImage = `url("${thumb}")`;
+    };
+    probe.onerror = () => {
+      // 失敗時はフォールバック維持
+      face.style.backgroundImage = `url("${fallback}")`;
+    };
+    probe.src = thumb;
   }
 
-  wrap.appendChild(img);
   return wrap;
 }
 
-function ProfilePlacesMap({
-  userId,
-  scope,
-}: {
-  userId: string;
-  scope: Scope;
-}) {
+/** ✅ 新旧混在でも安全に「ピン向けの正方形URL」を選ぶ */
+function pickBestPinUrl(p: PostRow): string | null {
+  // 1) cover_pin_url（最速・最優先）
+  if (p.cover_pin_url && typeof p.cover_pin_url === "string") return p.cover_pin_url;
+
+  // 2) image_assets[0].pin（新方式）
+  const a0 = Array.isArray(p.image_assets) && p.image_assets.length ? p.image_assets[0] : null;
+  if (a0 && typeof a0.pin === "string" && a0.pin) return a0.pin;
+
+  // 3) 互換：image_variants[0].thumb（thumb = square運用でもOK）
+  const v0 = Array.isArray(p.image_variants) && p.image_variants.length ? p.image_variants[0] : null;
+  if (v0 && typeof v0.thumb === "string" && v0.thumb) return v0.thumb;
+
+  // 4) 旧：image_urls[0]（縦長の可能性あり、最終手段）
+  const u0 = Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
+  if (u0 && typeof u0 === "string") return u0;
+
+  return null;
+}
+
+function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
   const supabase = createClientComponentClient();
   const router = useRouter();
 
@@ -523,7 +601,6 @@ function ProfilePlacesMap({
   const [pins, setPins] = useState<PlacePin[]>([]);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string>("");
 
-  /** load pins: この user の投稿一覧だけ */
   useEffect(() => {
     let cancelled = false;
 
@@ -542,10 +619,12 @@ function ProfilePlacesMap({
         return;
       }
 
-      // publicでも見せたいので、認証が無くても動く形にする（RLS次第）
+      // ✅ 新: image_assets / cover_* / image_variants を取る（既存も残す）
       const { data: posts, error: poErr } = await supabase
         .from("posts")
-        .select("id, user_id, place_id, place_name, place_address, created_at, image_urls")
+        .select(
+          "id, user_id, place_id, place_name, place_address, created_at, image_urls, image_variants, image_assets, cover_pin_url, cover_square_url, cover_full_url"
+        )
         .eq("user_id", userId)
         .not("place_id", "is", null)
         .order("created_at", { ascending: false })
@@ -580,7 +659,6 @@ function ProfilePlacesMap({
       const placeById = new Map<string, PlaceRow>();
       ((places as PlaceRow[] | null) ?? []).forEach((p) => placeById.set(p.place_id, p));
 
-      // aggregate by place_id（最新投稿を採用）
       const pinByPlace = new Map<string, PlacePin>();
 
       for (const p of postRows) {
@@ -588,11 +666,10 @@ function ProfilePlacesMap({
         const plc = placeById.get(pid);
         if (!plc || plc.lat == null || plc.lng == null) continue;
 
-        const createdMs = toMs(p.created_at);
-        const img0 = Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
+        // ✅ ここが本体：pin用正方形を優先選択
+        const img0 = pickBestPinUrl(p);
 
-        const existing = pinByPlace.get(pid);
-        if (!existing) {
+        if (!pinByPlace.has(pid)) {
           pinByPlace.set(pid, {
             place_id: pid,
             lat: plc.lat,
@@ -602,11 +679,6 @@ function ProfilePlacesMap({
             latest_post_id: p.id,
             latest_image_url: img0 || plc.photo_url || null,
           });
-        } else {
-          // より新しい投稿なら更新
-          // 既存の createdMs を持ってないので、比較したければ別Mapに置くが簡略化：postsはdescなので初回が最新のはず
-          // 念のため createdMs 比較する場合は extra field を入れてください
-          // ここでは「desc取得」前提で更新なしでOK
         }
       }
 
@@ -628,7 +700,6 @@ function ProfilePlacesMap({
     };
   }, [supabase, userId, apiKey, mapId]);
 
-  /** load google maps libs once */
   useEffect(() => {
     let cancelled = false;
 
@@ -658,7 +729,6 @@ function ProfilePlacesMap({
     };
   }, [apiKey, mapId]);
 
-  /** init map once */
   useEffect(() => {
     if (!gmapsReady) return;
     if (!gmapsRef.current) return;
@@ -680,13 +750,12 @@ function ProfilePlacesMap({
     infoRef.current = new InfoWindow();
   }, [gmapsReady, mapId]);
 
-  function openInfoForPin(pin: PlacePin) {
+  const openInfoForPin = (pin: PlacePin) => {
     const map = mapRef.current;
     if (!map) return;
 
     const marker = markerByPlaceIdRef.current.get(pin.place_id);
 
-    // DOMで作る（ボタンでrouter.push）
     const wrap = document.createElement("div");
     wrap.style.minWidth = "240px";
 
@@ -728,15 +797,13 @@ function ProfilePlacesMap({
 
     map.panTo({ lat: pin.lat, lng: pin.lng });
     map.setZoom(Math.max(14, map.getZoom?.() ?? 14));
-  }
+  };
 
-  /** render markers whenever pins/selected changes */
   useEffect(() => {
     const map = mapRef.current;
     const libs = gmapsRef.current;
     if (!map || !libs) return;
 
-    // cleanup
     for (const m of markersRef.current) {
       try {
         m.map = null;
@@ -767,7 +834,6 @@ function ProfilePlacesMap({
         openInfoForPin(pin);
       });
 
-      // ダブルクリックで即遷移（誤タップ防止）
       content.addEventListener("dblclick", () => {
         if (pin.latest_post_id) router.push(`/posts/${pin.latest_post_id}`);
       });
@@ -789,11 +855,7 @@ function ProfilePlacesMap({
         </div>
       </div>
 
-      <div
-        ref={mapDivRef}
-        className="mt-3 w-full overflow-hidden rounded-2xl bg-slate-100"
-        style={{ height: "420px" }}
-      />
+      <div ref={mapDivRef} className="mt-3 w-full overflow-hidden rounded-2xl bg-slate-100" style={{ height: "420px" }} />
       <div className="mt-2 text-[11px] text-slate-500">
         ピンをタップで詳細、<span className="font-semibold">ダブルタップで投稿へ</span>
       </div>
@@ -803,9 +865,6 @@ function ProfilePlacesMap({
 
 /** =========================
  * ProfileYearStats (main)
- * - 年タブ/セレクトは削除（常に "すべて"）
- * - 表示した瞬間も毎回アニメ（mounted key）
- * - publicでも楽しいアニメ
  * ========================= */
 export default function ProfileYearStats({
   userId,
@@ -816,8 +875,6 @@ export default function ProfileYearStats({
   scope: Scope;
   className?: string;
 }) {
-  const year = "all" as const;
-
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -831,7 +888,7 @@ export default function ProfileYearStats({
     }
   });
 
-  const [mountedKey, setMountedKey] = useState(0); // ★毎回アニメ用
+  const [mountedKey, setMountedKey] = useState(0);
   useEffect(() => {
     setMountedKey((x) => x + 1);
   }, [userId, scope]);
@@ -872,11 +929,9 @@ export default function ProfileYearStats({
     };
   }, [userId, scope, hidden]);
 
-  // donut legend palette must match DonutPie’s internal formula for “index”
   const pieForLegend = useMemo(() => {
-    const pie = (data && !isErr(data) && (data as any).ok) ? (data as any).pie ?? [] : [];
+    const pie = data && !isErr(data) && (data as any).ok ? (data as any).pie ?? [] : [];
     const rows = (pie as Array<{ name: string; value: number }>).filter((d) => d.value > 0);
-    // same sort as Legend uses (desc)
     return rows.sort((a, b) => b.value - a.value).slice(0, 12);
   }, [data]);
 
@@ -953,13 +1008,11 @@ export default function ProfileYearStats({
                   </div>
                   {data.totals.posts <= 3 ? (
                     <div className="mt-2 text-[11px] font-semibold text-slate-600">
-                      あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span>{" "}
-                      投稿でランキングに参加できます
+                      あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span> 投稿でランキングに参加できます
                     </div>
                   ) : null}
                 </div>
 
-                {/* publicでもmap表示 */}
                 <ProfilePlacesMap userId={userId} scope={scope} />
               </div>
             ) : data.ok && data.scope === "me" ? (
@@ -999,23 +1052,18 @@ export default function ProfileYearStats({
 
                     {data.totals.posts <= 3 ? (
                       <div className="mt-2 text-[11px] font-semibold text-slate-600">
-                        あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span>{" "}
-                        投稿でランキングに参加できます
+                        あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span> 投稿でランキングに参加できます
                       </div>
                     ) : null}
                   </div>
 
-                  {/* me でも map 表示 */}
                   <ProfilePlacesMap userId={userId} scope={scope} />
                 </div>
 
                 <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
                   <div className="text-xs font-semibold text-slate-900">ジャンル</div>
                   <div className="mt-3 flex items-center justify-center">
-                    <DonutPie
-                      data={data.pie}
-                      onHoverName={(n) => setLegendActive(n)}
-                    />
+                    <DonutPie data={data.pie} onHoverName={(n) => setLegendActive(n)} />
                   </div>
 
                   <GenreLegend
