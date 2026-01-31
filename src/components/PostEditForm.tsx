@@ -1,8 +1,9 @@
 // src/components/PostEditForm.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { MapPin, X, Loader2 } from "lucide-react";
 
 export type EditInitialPost = {
   id: string;
@@ -20,10 +21,17 @@ export type EditInitialPost = {
   place_name: string | null;
   place_address: string | null;
 
-  // 今回は安全に「表示だけ」（編集は将来）
   image_variants: any[] | null;
   image_urls: string[] | null;
 };
+
+type PlaceResult = {
+  place_id: string;
+  name: string;
+  formatted_address: string;
+};
+
+type PhotoItem = { thumb: string; full: string };
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
@@ -46,10 +54,48 @@ function jstTodayKey() {
   }
 }
 
+function asTrimmedString(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t ? t : null;
+}
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+function isPhotoItem(v: unknown): v is PhotoItem {
+  if (!v || typeof v !== "object") return false;
+  const o = v as any;
+  return typeof o.thumb === "string" && typeof o.full === "string";
+}
+
+function buildPhotosFromInitial(initial: EditInitialPost): PhotoItem[] {
+  // 1) image_variants: [{ thumb, full }] を優先
+  const variants: any[] = Array.isArray(initial.image_variants) ? initial.image_variants : [];
+  const fromVariants: PhotoItem[] = variants
+    .map((v: any) => {
+      const thumb = asTrimmedString(v?.thumb);
+      const full = asTrimmedString(v?.full);
+      if (thumb && full) return { thumb, full };
+      if (full && !thumb) return { thumb: full, full };
+      if (thumb && !full) return { thumb, full: thumb };
+      return null;
+    })
+    .filter(isPhotoItem);
+
+  if (fromVariants.length > 0) return fromVariants;
+
+  // 2) image_urls: string[] をフォールバック
+  const urls: unknown[] = Array.isArray(initial.image_urls) ? initial.image_urls : [];
+  return urls
+    .filter(isNonEmptyString)
+    .map((u: string) => {
+      const t = u.trim();
+      return { thumb: t, full: t };
+    });
+}
+
 /**
- * 価格レンジ（投稿詳細の formatPrice と整合）
- * - 下側：〜999 / 1000-1999 ... 7000-9999
- * - 上側：10000-14999 ... 30000-49999 / 50000+
+ * 価格レンジ
  */
 const PRICE_RANGE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "~999", label: "〜¥999" },
@@ -59,8 +105,6 @@ const PRICE_RANGE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "4000-4999", label: "¥4,000〜¥4,999" },
   { value: "5000-6999", label: "¥5,000〜¥6,999" },
   { value: "7000-9999", label: "¥7,000〜¥9,999" },
-
-  // ✅ あなたの要望：1万以上は細かい閾値
   { value: "10000-14999", label: "¥10,000〜¥14,999" },
   { value: "15000-19999", label: "¥15,000〜¥19,999" },
   { value: "20000-24999", label: "¥20,000〜¥24,999" },
@@ -69,31 +113,19 @@ const PRICE_RANGE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "50000+", label: "¥50,000〜" },
 ];
 
-/**
- * 既存データの price_range が古い/別形式でも、編集画面で「近い候補」に寄せる。
- * 例:
- * - "~9999" -> "7000-9999"（最後の帯に寄せる）
- * - "10000+" -> "10000-14999"（最初の1万帯に寄せる）
- * - "10000-49999" みたいな雑な帯 -> 近い候補に寄せる
- */
 function normalizePriceRange(v: string | null | undefined): string {
   if (!v) return "~999";
-
-  // そのまま候補にあるならそれを採用
   if (PRICE_RANGE_OPTIONS.some((o) => o.value === v)) return v;
 
-  // よくある旧形式
   if (v === "~9999") return "7000-9999";
   if (v === "10000+") return "10000-14999";
-  if (v === "~999") return "~999"; // 念のため
+  if (v === "~999") return "~999";
 
-  // "a-b" を読めるなら近い候補へ
   if (v.includes("-")) {
     const [aRaw, bRaw] = v.split("-");
     const a = Number(String(aRaw).replace(/[^\d]/g, ""));
     const b = Number(String(bRaw).replace(/[^\d]/g, ""));
     if (Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= 0) {
-      // 代表値（中点）で近い帯を探す
       const mid = (a + b) / 2;
 
       const buckets: Array<{ min: number; max: number; value: string }> = [
@@ -121,7 +153,6 @@ function normalizePriceRange(v: string | null | undefined): string {
     }
   }
 
-  // "a+" 形式
   if (v.endsWith("+")) {
     const a = Number(v.replace(/[^\d]/g, ""));
     if (Number.isFinite(a)) {
@@ -135,14 +166,12 @@ function normalizePriceRange(v: string | null | undefined): string {
     }
   }
 
-  // 最後は無難に
   return "~999";
 }
 
 export default function PostEditForm({ initial }: { initial: EditInitialPost }) {
   const router = useRouter();
 
-  // visited_on が無いなら「今日」をデフォルト
   const defaultVisited = initial.visited_on ?? jstTodayKey();
 
   const [content, setContent] = useState(initial.content ?? "");
@@ -152,7 +181,6 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     typeof initial.recommend_score === "number" ? initial.recommend_score : null
   );
 
-  // 価格：実額 or レンジ
   const initialMode: "exact" | "range" = useMemo(() => {
     if (typeof initial.price_yen === "number" && initial.price_yen > 0) return "exact";
     if (initial.price_range) return "range";
@@ -163,15 +191,51 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
   const [priceYen, setPriceYen] = useState<string>(
     typeof initial.price_yen === "number" && initial.price_yen > 0 ? String(initial.price_yen) : ""
   );
-
-  // ✅ ここが修正点：初期値を "~9999" ではなく normalize した候補にする
   const [priceRange, setPriceRange] = useState<string>(normalizePriceRange(initial.price_range));
 
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
-  const placeName = initial.place_name ?? "";
-  const placeAddress = initial.place_address ?? "";
+  // 写真（表示）
+  const photos = useMemo(() => buildPhotosFromInitial(initial), [initial]);
+
+  // 店（新規投稿と同じ検索UX）
+  const initialSelectedPlace: PlaceResult | null = useMemo(() => {
+    if (initial.place_id && initial.place_name) {
+      return {
+        place_id: initial.place_id,
+        name: initial.place_name,
+        formatted_address: initial.place_address ?? "",
+      };
+    }
+    return null;
+  }, [initial.place_id, initial.place_name, initial.place_address]);
+
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(initialSelectedPlace);
+  const [isSearchingPlace, setIsSearchingPlace] = useState(false);
+
+  useEffect(() => {
+    if (placeQuery.trim().length < 2) {
+      setPlaceResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearchingPlace(true);
+        const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
+        const data = await res.json().catch(() => ({}));
+        setPlaceResults((data.results ?? []).slice(0, 6));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsSearchingPlace(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [placeQuery]);
 
   const scoreText = useMemo(() => {
     if (score === null) return "";
@@ -183,14 +247,11 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     setErrMsg(null);
     setSaving(true);
     try {
-      // score 正規化（null or 0..10）
       let scoreVal: number | null = null;
       if (score !== null && Number.isFinite(score)) scoreVal = clamp(score, 0, 10);
 
-      // visited_on は空なら今日
       const visited = visitedOn?.trim() ? visitedOn.trim() : jstTodayKey();
 
-      // price 正規化
       let price_yen: number | null = null;
       let price_range: string | null = null;
 
@@ -207,6 +268,9 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         recommend_score: scoreVal,
         price_yen,
         price_range,
+        place_id: selectedPlace?.place_id ?? null,
+        place_name: selectedPlace?.name ?? null,
+        place_address: selectedPlace?.formatted_address ?? null,
       };
 
       const res = await fetch(`/posts/${initial.id}/edit/update`, {
@@ -232,20 +296,122 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
   return (
     <section className="gm-card overflow-hidden">
       <div className="px-4 py-4 md:px-5 md:py-5">
-        {/* 画像（いったん表示のみ） */}
+        {/* 写真 */}
         <div className="mb-4 rounded-2xl border border-black/[.06] bg-white/70 p-3">
           <div className="text-xs font-semibold text-slate-800">写真</div>
-          <div className="mt-2 text-[11px] text-slate-500"></div>
+
+          {photos.length > 0 ? (
+            <div className="mt-3 -mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
+              {photos.map((p, i) => (
+                <a
+                  key={`${p.full}-${i}`}
+                  href={p.full}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="relative shrink-0"
+                  aria-label="open photo"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.thumb}
+                    alt={`photo-${i + 1}`}
+                    className="h-24 w-24 rounded-2xl object-cover shadow-sm"
+                  />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 text-sm text-slate-500">写真なし</div>
+          )}
         </div>
 
         {/* 店 */}
         <div className="mb-4 rounded-2xl border border-black/[.06] bg-white/70 p-3">
-          <div className="text-xs font-semibold text-slate-800">お店</div>
-          <div className="mt-2 text-sm text-slate-800">
-            {placeName ? <div className="font-medium">{placeName}</div> : <div className="text-slate-500">未設定</div>}
-            {placeAddress ? <div className="mt-1 text-xs text-slate-500">{placeAddress}</div> : null}
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-slate-800">お店</div>
+            {isSearchingPlace ? (
+              <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-orange-600">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                検索中
+              </div>
+            ) : null}
           </div>
-          <div className="mt-2 text-[11px] text-slate-500"></div>
+
+          {selectedPlace ? (
+            <div className="mt-2 flex items-start justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/60 px-3 py-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-900">{selectedPlace.name}</div>
+                <div className="truncate text-[12px] text-slate-500">{selectedPlace.formatted_address}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPlace(null);
+                  setPlaceQuery("");
+                  setPlaceResults([]);
+                }}
+                className="shrink-0 rounded-full bg-white/80 px-2 py-1 text-[12px] font-semibold text-slate-600 hover:bg-white"
+                aria-label="clear place"
+              >
+                <span className="inline-flex items-center gap-1">
+                  <X className="h-4 w-4" />
+                  クリア
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2 text-sm text-slate-500">未設定</div>
+          )}
+
+          <div className="mt-3 relative">
+            <div className="flex items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/40 px-3 py-2 focus-within:border-orange-300 focus-within:bg-white">
+              <MapPin className="h-4 w-4 text-orange-600" />
+              <input
+                type="text"
+                value={placeQuery}
+                onChange={(e) => setPlaceQuery(e.target.value)}
+                placeholder="店名やエリアで検索（例: 渋谷 カフェ）"
+                className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                aria-label="店舗検索"
+              />
+            </div>
+
+            {placeQuery.length >= 2 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-2">
+                {placeResults.length > 0 ? (
+                  <div className="overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-lg">
+                    <ul className="max-h-64 overflow-y-auto py-1">
+                      {placeResults.map((p) => (
+                        <li
+                          key={p.place_id}
+                          className="cursor-pointer px-3 py-2 transition hover:bg-orange-50"
+                          onClick={() => {
+                            setSelectedPlace(p);
+                            setPlaceQuery("");
+                            setPlaceResults([]);
+                          }}
+                        >
+                          <div className="flex items-start gap-2">
+                            <MapPin className="mt-1 h-4 w-4 text-orange-600" />
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
+                              <div className="truncate text-[12px] text-slate-500">{p.formatted_address}</div>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  !isSearchingPlace && (
+                    <div className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-[12px] text-slate-500 shadow-sm">
+                      候補が見つかりませんでした。
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 来店日 */}
