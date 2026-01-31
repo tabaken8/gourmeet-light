@@ -1,4 +1,3 @@
-// (例) src/app/new-post/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +6,9 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Image as ImageIcon, MapPin, X, Check, Loader2 } from "lucide-react";
 import confetti from "canvas-confetti";
 
+// =====================
+// types
+// =====================
 type PlaceResult = {
   place_id: string;
   name: string;
@@ -28,6 +30,9 @@ type PreparedImage = {
   origH: number;
 };
 
+// =====================
+// utils: heic
+// =====================
 function isHeicLike(file: File) {
   const name = file.name.toLowerCase();
   const type = (file.type || "").toLowerCase();
@@ -42,11 +47,7 @@ function isHeicLike(file: File) {
 async function convertHeicToJpeg(file: File): Promise<File> {
   const mod: any = await import("heic2any");
   const heic2any = mod.default ?? mod;
-  const blob: Blob = await heic2any({
-    blob: file,
-    toType: "image/jpeg",
-    quality: 0.86,
-  });
+  const blob: Blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.86 });
   const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
   return new File([blob], newName, { type: "image/jpeg" });
 }
@@ -67,7 +68,6 @@ function canUseWebp(): boolean {
     return false;
   }
 }
-
 function pickOutputFormat() {
   const avif = typeof window !== "undefined" && canUseAvif();
   const webp = typeof window !== "undefined" && canUseWebp();
@@ -120,11 +120,7 @@ async function canvasToFile(
   opts: { mime: string; quality: number; ext: string }
 ): Promise<File> {
   const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
-      opts.mime,
-      opts.quality
-    );
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), opts.mime, opts.quality);
   });
   return new File([blob], `${nameBase}.${opts.ext}`, { type: opts.mime });
 }
@@ -150,6 +146,7 @@ function cropCenterSquare(bitmap: ImageBitmap) {
   return canvas;
 }
 
+
 /** 長辺指定で（アスペクト維持で）縮小キャンバスを作る */
 function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
   const w = bitmap.width;
@@ -162,7 +159,6 @@ function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
   const base = document.createElement("canvas");
   base.width = w;
   base.height = h;
-
   {
     const ctx = base.getContext("2d");
     if (!ctx) throw new Error("Canvas ctx error");
@@ -170,11 +166,10 @@ function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bitmap, 0, 0, w, h);
   }
-
   return scaleCanvasHighQuality(base, tw, th);
 }
 
-/** EXIF から visitedOn を推定（YYYY-MM-DD） */
+/** EXIF から visitedOn を推定 */
 async function tryAutofillVisitedOnFromFirstPhoto(file: File): Promise<string | null> {
   try {
     const mod: any = await import("exifr");
@@ -202,10 +197,10 @@ async function tryAutofillVisitedOnFromFirstPhoto(file: File): Promise<string | 
 }
 
 /**
- * 画像生成：
- * - square: 正方形（中心クロップ）→ 1080
- * - pin   : square → 160
- * - full  : 元アスペクト維持で長辺 3072
+ * 画像を用意：
+ * - square: 正方形（中心クロップ）→ 1080px
+ * - pin   : square をさらに 160px
+ * - full  : 元アスペクト維持で長辺 3072px
  */
 async function prepareImage(file: File): Promise<PreparedImage> {
   const normalized = isHeicLike(file) ? await convertHeicToJpeg(file) : file;
@@ -257,12 +252,8 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   };
 }
 
-/** 同時実行数制限 */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, idx: number) => Promise<R>
-) {
+/** 同時実行数を制限する簡易プール */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>) {
   const results: R[] = new Array(items.length);
   let i = 0;
 
@@ -277,7 +268,9 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-// 価格レンジ（DB制約と合わせる）
+// =====================
+// price helpers
+// =====================
 const PRICE_RANGES = [
   { value: "~999", label: "〜¥999" },
   { value: "1000-1999", label: "¥1,000〜¥1,999" },
@@ -356,6 +349,9 @@ function Section({
   );
 }
 
+// =====================
+// main
+// =====================
 export default function NewPostPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
@@ -381,8 +377,7 @@ export default function NewPostPage() {
   // 価格
   const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
-  const [priceRange, setPriceRange] =
-    useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
+  const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
 
   // 来店日（任意）
   const [visitedOn, setVisitedOn] = useState<string>("");
@@ -415,7 +410,7 @@ export default function NewPostPage() {
     return () => clearTimeout(timer);
   }, [placeQuery]);
 
-  // objectURL 解放
+  // objectURL解放
   const imgsRef = useRef<PreparedImage[]>([]);
   useEffect(() => {
     imgsRef.current = imgs;
@@ -438,7 +433,7 @@ export default function NewPostPage() {
       const limited = imageFiles.slice(0, Math.max(0, MAX - imgs.length));
       if (limited.length === 0) return;
 
-      // 初回だけEXIFから visitedOn 自動入力
+      // visitedOn 自動推定（1枚目）
       if (!visitedOn && imgs.length === 0 && limited.length > 0) {
         let guessed = await tryAutofillVisitedOnFromFirstPhoto(limited[0]);
         if (!guessed && isHeicLike(limited[0])) {
@@ -495,9 +490,7 @@ export default function NewPostPage() {
   const isContentComplete = content.trim().length > 0;
   const isPhotoComplete = imgs.length > 0;
   const isRecommendComplete = recommendSelected;
-
-  const isAllRequiredComplete =
-    isPhotoComplete && isRecommendComplete && isPriceComplete && isContentComplete;
+  const isAllRequiredComplete = isPhotoComplete && isRecommendComplete && isPriceComplete && isContentComplete;
 
   const progressRow = (
     <div className="flex flex-wrap gap-2">
@@ -532,23 +525,50 @@ export default function NewPostPage() {
     </div>
   );
 
+  /**
+   * ✅ places upsert（スキーマ一致）
+   * - places: place_id (PK), name, address, lat, lng, photo_url, place_types, primary_type, updated_at
+   */
+  const upsertPlaceIfNeeded = async (): Promise<string | null> => {
+    if (!selectedPlace?.place_id) return null;
+
+    // /api/places が lat/lng/types/photo_url を返してない場合もあるので、
+    // ここでは最低限 "place_id/name/address" だけ upsert する（存在するカラムのみ）
+    const payload = {
+      place_id: selectedPlace.place_id,
+      name: selectedPlace.name ?? null,
+      address: selectedPlace.formatted_address ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from("places")
+      .upsert(payload, { onConflict: "place_id" });
+
+    if (error) {
+      throw new Error(`places upsert failed: ${error.message}`);
+    }
+    return selectedPlace.place_id;
+  };
+
   const submit = async () => {
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
     if (!imgs.length) return setMsg("写真を追加してください。");
     if (!recommendSelected) return setMsg("おすすめ度を選んでください。");
-    if (!isPriceComplete)
-      return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
+    if (!isPriceComplete) return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
     if (!content.trim()) return setMsg("本文を入力してください。");
 
     setBusy(true);
     setMsg(null);
 
     try {
+      // ✅ 先に places を upsert（FK回避）
+      const ensuredPlaceId = await upsertPlaceIfNeeded();
+
       const CACHE = "31536000"; // 1年
       const bucket = supabase.storage.from("post-images");
 
-      // 画像アップロード（pin/square/full を並列）
       const uploaded = await mapWithConcurrency(imgs, 2, async (img) => {
         const base = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -583,10 +603,7 @@ export default function NewPostPage() {
         };
       });
 
-      // ✅ 新：統一アセット
       const image_assets = uploaded;
-
-      // ✅ 互換：image_variants/thumb = square、image_urls = full
       const image_variants = uploaded.map((x) => ({ thumb: x.square, full: x.full }));
       const image_urls = uploaded.map((x) => x.full);
 
@@ -596,44 +613,28 @@ export default function NewPostPage() {
 
       const price_yen = priceMode === "exact" ? priceYenValue : null;
       const price_range = priceMode === "range" ? priceRange : null;
+
       const visited_on = visitedOn ? visitedOn : null;
 
-      const place_id = selectedPlace?.place_id ?? null;
+      const place_id = ensuredPlaceId; // ✅ upsert 済み or null
       const place_name = selectedPlace?.name ?? null;
       const place_address = selectedPlace?.formatted_address ?? null;
 
-      // =========================================================
-      // ✅ 重要：places を先に upsert（キーは place_id）
-      // これで posts.place_id の外部キーが必ず満たされる
-      // =========================================================
-      if (place_id) {
-        const { error: placeErr } = await supabase.from("places").upsert(
-          {
-            place_id,
-            name: place_name,
-            formatted_address: place_address,
-          },
-          { onConflict: "place_id" } // ✅ id は使わない
-        );
-
-        if (placeErr) {
-          throw new Error(`places upsert failed: ${placeErr.message}`);
-        }
-      }
-
-      // posts insert
       const { error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
         content,
 
+        // ✅ 新：統一アセット
         image_assets,
         cover_pin_url,
         cover_square_url,
         cover_full_url,
 
+        // ✅ 互換
         image_variants,
         image_urls,
 
+        // ✅ place（FKは place_id のみが重要）
         place_id,
         place_name,
         place_address,
@@ -708,9 +709,7 @@ export default function NewPostPage() {
               tabIndex={0}
               className={[
                 "cursor-pointer rounded-2xl border-2 border-dashed p-4 transition",
-                imgs.length
-                  ? "border-orange-100 bg-orange-50/40 hover:bg-orange-50/60"
-                  : "border-orange-200 bg-orange-50/60 hover:bg-orange-50",
+                imgs.length ? "border-orange-100 bg-orange-50/40 hover:bg-orange-50/60" : "border-orange-200 bg-orange-50/60 hover:bg-orange-50",
               ].join(" ")}
             >
               <div className="flex items-center gap-3">
@@ -722,12 +721,8 @@ export default function NewPostPage() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {imgs.length ? "写真を追加する" : "ここに写真を追加"}
-                  </div>
-                  <div className="mt-0.5 text-[12px] text-slate-500">
-                    {processing ? "変換 / 生成中…" : "タップして選択、またはドラッグ＆ドロップ"}
-                  </div>
+                  <div className="text-sm font-semibold text-slate-900">{imgs.length ? "写真を追加する" : "ここに写真を追加"}</div>
+                  <div className="mt-0.5 text-[12px] text-slate-500">{processing ? "変換 / 生成中…" : "タップして選択、またはドラッグ＆ドロップ"}</div>
                 </div>
               </div>
             </div>
@@ -752,11 +747,7 @@ export default function NewPostPage() {
                   {imgs.map((img) => (
                     <div key={img.id} className="relative shrink-0">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.previewUrl}
-                        alt={img.label}
-                        className="h-24 w-24 rounded-2xl object-cover shadow-sm"
-                      />
+                      <img src={img.previewUrl} alt={img.label} className="h-24 w-24 rounded-2xl object-cover shadow-sm" />
                       <button
                         type="button"
                         onClick={() => removeImage(img.id)}
@@ -892,9 +883,7 @@ export default function NewPostPage() {
                 </div>
               )}
 
-              {priceMode === "exact" && !isPriceComplete && (
-                <div className="text-[12px] text-slate-500">実額を入力してください。</div>
-              )}
+              {priceMode === "exact" && !isPriceComplete && <div className="text-[12px] text-slate-500">実額を入力してください。</div>}
             </div>
           </Section>
 
@@ -1018,6 +1007,10 @@ export default function NewPostPage() {
                   </div>
                 )}
               </div>
+
+              <div className="text-[11px] text-slate-500">
+                ※ places テーブルのカラムに合わせて <strong>place_id / name / address</strong> だけ先に保存しています（FK対策）。
+              </div>
             </div>
           </Section>
 
@@ -1025,7 +1018,7 @@ export default function NewPostPage() {
         </form>
       </div>
 
-      {/* 下 fixed CTA */}
+      {/* 画面下 fixed CTA */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         <div
           className="border-t border-orange-100 bg-white/95 p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur"
@@ -1033,9 +1026,7 @@ export default function NewPostPage() {
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-700">
-                {isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}
-              </div>
+              <div className="text-[12px] font-semibold text-slate-700">{isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}</div>
               <div className="mt-1">{progressRow}</div>
             </div>
 
@@ -1045,9 +1036,7 @@ export default function NewPostPage() {
               disabled={busy || processing || !isAllRequiredComplete}
               className={[
                 "inline-flex h-11 shrink-0 items-center justify-center rounded-full px-6 text-sm font-bold shadow-sm transition",
-                busy || processing || !isAllRequiredComplete
-                  ? "bg-orange-200 text-white opacity-80"
-                  : "bg-orange-600 text-white hover:bg-orange-700",
+                busy || processing || !isAllRequiredComplete ? "bg-orange-200 text-white opacity-80" : "bg-orange-600 text-white hover:bg-orange-700",
               ].join(" ")}
             >
               {processing ? "画像生成中…" : busy ? "投稿中…" : "投稿する"}
