@@ -378,7 +378,7 @@ export default async function PostPage({
           {post.place_id ? (
             <div className="mt-3 rounded-2xl border border-black/[.06] bg-white/70 p-3">
               <div className="mb-1 text-[11px] font-semibold text-slate-700">
-                このお店のジャンル（みんなで決める）
+                ジャンル
               </div>
               <GenreVoteInline placeId={post.place_id} />
             </div>

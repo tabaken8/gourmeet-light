@@ -174,7 +174,7 @@ export default function GenreVoteInline({ placeId }: Props) {
         {myGenre ? (
           <span className="truncate">
             ジャンル: <span className="text-slate-800 font-medium">{myGenre}</span>{" "}
-            <span className="text-slate-400">（変更）</span>
+            <span className="text-slate-400"></span>
           </span>
         ) : (
           <span className="text-slate-500">ジャンルを選ぶ</span>

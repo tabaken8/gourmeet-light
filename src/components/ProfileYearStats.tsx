@@ -65,7 +65,6 @@ type PublicResponse = {
 };
 
 type ApiResponse = MeResponse | PublicResponse | { error: string };
-
 function isErr(x: ApiResponse | null): x is { error: string } {
   return !!(x as any)?.error;
 }
@@ -369,30 +368,38 @@ function MedalRow({
 }
 
 /** =========================
- *  Map pins
- *  - 画像失敗時に「壊れた画像アイコン」が出ないよう background-image で描画する
- *  - contain で縮小表示
+ *  Map pins + InfoWindow
  * ========================= */
+
+type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
+type ImageAsset = { pin?: string | null; square?: string | null; full?: string | null; [k: string]: any };
+
+type ProfileLite = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
 
 type PostRow = {
   id: string;
   user_id: string;
+  content: string | null;
   place_id: string | null;
   place_name: string | null;
   place_address: string | null;
   created_at: string | null;
 
-  // 既存互換
   image_urls?: string[] | null;
-  image_variants?: Array<{ thumb?: string; full?: string }> | null;
+  image_variants?: ImageVariant[] | null;
+  image_assets?: ImageAsset[] | null;
 
-  // ✅ 新：正方形 pin/square/full
-  image_assets?: Array<{ pin?: string; square?: string; full?: string }> | null;
-
-  // ✅ 新：cover ショートカット
   cover_pin_url?: string | null;
   cover_square_url?: string | null;
   cover_full_url?: string | null;
+
+  recommend_score?: number | string | null;
+  price_yen?: number | string | null;
+  price_range?: string | null;
 };
 
 type PlaceRow = {
@@ -408,10 +415,21 @@ type PlacePin = {
   place_id: string;
   lat: number;
   lng: number;
+
   place_name: string;
   place_address: string;
+
   latest_post_id: string;
   latest_image_url: string | null;
+
+  latest_user_id: string;
+  latest_display_name: string | null;
+  latest_avatar_url: string | null;
+
+  latest_content: string | null;
+  latest_recommend_score: number | null;
+  latest_price_yen: number | null;
+  latest_price_range: string | null;
 };
 
 function ensureGmapsOptionsOnce(opts: Parameters<typeof setOptions>[0]) {
@@ -422,7 +440,6 @@ function ensureGmapsOptionsOnce(opts: Parameters<typeof setOptions>[0]) {
   }
 }
 
-// フォールバック（📍）
 function fallbackPinSvgDataUrl() {
   return (
     "data:image/svg+xml;charset=utf-8," +
@@ -441,11 +458,6 @@ function fallbackPinSvgDataUrl() {
   );
 }
 
-/**
- * URLが変な形でもなるべく耐える軽い正規化
- * - //example.com/... → https: を補う
- * - （それ以外の相対っぽいのはそのまま：ここで推測して壊すよりマシ）
- */
 function normalizeMaybeUrl(url: string) {
   const s = url.trim();
   if (!s) return s;
@@ -453,12 +465,13 @@ function normalizeMaybeUrl(url: string) {
   return s;
 }
 
-/**
- * Supabase public URL → render/image へ変換して軽量化（対応してない/変換不能ならそのまま）
- * /storage/v1/object/public/bucket/path.jpg
- *   → /storage/v1/render/image/public/bucket/path.jpg?width=120&quality=45
- */
-function toSupabaseThumbUrl(url: string, width = 120, height?: number, quality = 45, resize: "cover" | "contain" = "cover") {
+function toSupabaseThumbUrl(
+  url: string,
+  width = 120,
+  height?: number,
+  quality = 55,
+  resize: "cover" | "contain" = "cover"
+) {
   try {
     const u0 = normalizeMaybeUrl(url);
     const u = new URL(u0);
@@ -467,32 +480,131 @@ function toSupabaseThumbUrl(url: string, width = 120, height?: number, quality =
     const needle = "/storage/v1/object/public/";
     if (!p.includes(needle)) return u.toString();
 
-    const rest = p.split(needle)[1]; // bucket/path...
+    const rest = p.split(needle)[1];
     const renderPath = `/storage/v1/render/image/public/${rest}`;
     const out = new URL(u.origin + renderPath);
 
     out.searchParams.set("width", String(width));
     if (height != null) out.searchParams.set("height", String(height));
-
-    // ✅ ここが重要：正方形にクロップしたいなら cover
     out.searchParams.set("resize", resize);
-
     out.searchParams.set("quality", String(quality));
-    // out.searchParams.set("format", "webp"); // もし使える環境ならONでもOK
-
     return out.toString();
   } catch {
     return url;
   }
 }
 
+function pickBestPinUrl(p: PostRow): string | null {
+  if (p.cover_pin_url && typeof p.cover_pin_url === "string") return p.cover_pin_url;
 
-/**
- * ✅ “縮小して収めるピン”
- * - 背景画像で描画（壊れた画像アイコンを出さない）
- * - contain（トリミングしない）
- */
-function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
+  const a0 = Array.isArray(p.image_assets) && p.image_assets.length ? p.image_assets[0] : null;
+  if (a0 && typeof a0.pin === "string" && a0.pin) return a0.pin;
+
+  const v0 = Array.isArray(p.image_variants) && p.image_variants.length ? p.image_variants[0] : null;
+  if (v0 && typeof v0.thumb === "string" && v0.thumb) return v0.thumb;
+
+  const u0 = Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
+  if (u0 && typeof u0 === "string") return u0;
+
+  return null;
+}
+
+function pickBestSquareUrl(p: PostRow): string | null {
+  if (p.cover_square_url) return p.cover_square_url;
+
+  const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
+  if (assets[0]?.square) return assets[0].square ?? null;
+
+  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
+  if (variants[0]?.thumb) return variants[0].thumb ?? null;
+
+  const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
+  return legacy[0] ?? null;
+}
+
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+function scoreToLevel(maxScore: number | null) {
+  if (maxScore === null || !Number.isFinite(maxScore)) return 0;
+  if (maxScore <= 7) return 1;
+  const v = clamp(maxScore, 7, 10);
+  const step = 0.3;
+  const idx = Math.floor((v - 7) / step) + 2;
+  return clamp(idx, 2, 11);
+}
+function levelToRingColor(level: number) {
+  if (level === 0) return "#e2e8f0";
+  if (level === 1) return "#fef08a";
+  const palette = [
+    "#fde047",
+    "#fcd34d",
+    "#fbbf24",
+    "#fdba74",
+    "#fb923c",
+    "#f97316",
+    "#f87171",
+    "#ef4444",
+    "#dc2626",
+    "#b91c1c",
+  ];
+  return palette[clamp(level - 2, 0, palette.length - 1)];
+}
+
+function formatYen(n: number) {
+  try {
+    return new Intl.NumberFormat("ja-JP").format(n);
+  } catch {
+    return String(n);
+  }
+}
+function formatPriceYenOrRange(price_yen: number | null, price_range: string | null): string | null {
+  if (typeof price_yen === "number" && Number.isFinite(price_yen)) {
+    return `¥${formatYen(Math.max(0, Math.floor(price_yen)))}`;
+  }
+  if (price_range) {
+    switch (price_range) {
+      case "~999":
+        return "〜¥999";
+      case "1000-1999":
+        return "¥1,000〜¥1,999";
+      case "2000-2999":
+        return "¥2,000〜¥2,999";
+      case "3000-3999":
+        return "¥3,000〜¥3,999";
+      case "4000-4999":
+        return "¥4,000〜¥4,999";
+      case "5000-6999":
+        return "¥5,000〜¥6,999";
+      case "7000-9999":
+        return "¥7,000〜¥9,999";
+      case "10000+":
+        return "¥10,000〜";
+      default:
+        return price_range;
+    }
+  }
+  return null;
+}
+
+function GoogleMark({ size = 16 }: { size?: number }) {
+  return `
+<svg viewBox="0 0 48 48" aria-hidden="true" width="${size}" height="${size}">
+  <path fill="#EA4335" d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z"/>
+  <path fill="#FBBC04" d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z"/>
+  <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"/>
+</svg>`.trim();
+}
+
+function makeGoogleMapsUrl(placeId: string | null, address: string | null, lat?: number | null, lng?: number | null) {
+  if (placeId) return `https://www.google.com/maps/place/?q=place_id:${placeId}`;
+  if (address) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  if (typeof lat === "number" && typeof lng === "number") return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  return null;
+}
+
+function makePhotoPinContent(imageUrl: string | null, ringColor: string, selected?: boolean) {
   const wrap = document.createElement("div");
   wrap.style.position = "relative";
   wrap.style.width = "44px";
@@ -501,21 +613,23 @@ function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
   wrap.style.overflow = "hidden";
   wrap.style.cursor = "pointer";
   wrap.style.background = "linear-gradient(180deg,#fff,#f3f4f6)";
-  wrap.style.border = highlight ? "3px solid rgba(234,88,12,0.95)" : "2px solid rgba(255,255,255,0.95)";
-  wrap.style.boxShadow = highlight ? "0 10px 26px rgba(234,88,12,0.30)" : "0 6px 18px rgba(0,0,0,0.20)";
+  wrap.style.border = `3px solid ${ringColor}`;
+  wrap.style.boxShadow = "0 6px 18px rgba(0,0,0,0.20)";
   wrap.style.transform = "translateZ(0)";
 
-  // 内側フレーム：ここで“縮小して見える”感じを作る
+  wrap.dataset.selected = selected ? "1" : "0";
+  wrap.style.outline = selected ? "3px solid rgba(234,88,12,0.95)" : "0px solid transparent";
+  wrap.style.outlineOffset = selected ? "2px" : "0px";
+
   const inner = document.createElement("div");
   inner.style.position = "absolute";
-  inner.style.inset = "4px"; // ← 3〜6で好み調整
+  inner.style.inset = "4px";
   inner.style.borderRadius = "9999px";
   inner.style.overflow = "hidden";
   inner.style.background = "rgba(255,255,255,0.78)";
   inner.style.boxShadow = "inset 0 0 0 1px rgba(0,0,0,0.04)";
   wrap.appendChild(inner);
 
-  // 実際の“画像面”は background で描画（contain）
   const face = document.createElement("div");
   face.style.position = "absolute";
   face.style.inset = "0px";
@@ -523,23 +637,17 @@ function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
   face.style.backgroundRepeat = "no-repeat";
   face.style.backgroundPosition = "center";
   face.style.backgroundSize = "contain";
-  // ほんの少し余白（画像がギリギリまで来ないように）
   face.style.padding = "2px";
   face.style.boxSizing = "border-box";
   inner.appendChild(face);
 
   const fallback = fallbackPinSvgDataUrl();
-
-  // いったんフォールバックを入れておく
   face.style.backgroundImage = `url("${fallback}")`;
 
-  // imageUrl があれば “thumb” を試す（失敗時はフォールバックのまま）
   if (imageUrl) {
     const raw = normalizeMaybeUrl(imageUrl);
     const thumb = toSupabaseThumbUrl(raw, 120, 120, 45, "cover");
 
-
-    // preload して成功したら background に反映
     const probe = new Image();
     probe.decoding = "async";
     probe.referrerPolicy = "no-referrer";
@@ -547,7 +655,6 @@ function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
       face.style.backgroundImage = `url("${thumb}")`;
     };
     probe.onerror = () => {
-      // 失敗時はフォールバック維持
       face.style.backgroundImage = `url("${fallback}")`;
     };
     probe.src = thumb;
@@ -556,24 +663,269 @@ function makePhotoPinContent(imageUrl: string | null, highlight?: boolean) {
   return wrap;
 }
 
-/** ✅ 新旧混在でも安全に「ピン向けの正方形URL」を選ぶ */
-function pickBestPinUrl(p: PostRow): string | null {
-  // 1) cover_pin_url（最速・最優先）
-  if (p.cover_pin_url && typeof p.cover_pin_url === "string") return p.cover_pin_url;
+function setSelectedStyle(el: HTMLDivElement, selected: boolean) {
+  const cur = el.dataset.selected === "1";
+  if (cur === selected) return;
+  el.dataset.selected = selected ? "1" : "0";
+  el.style.outline = selected ? "3px solid rgba(234,88,12,0.95)" : "0px solid transparent";
+  el.style.outlineOffset = selected ? "2px" : "0px";
+}
 
-  // 2) image_assets[0].pin（新方式）
-  const a0 = Array.isArray(p.image_assets) && p.image_assets.length ? p.image_assets[0] : null;
-  if (a0 && typeof a0.pin === "string" && a0.pin) return a0.pin;
+/** ✅ InfoWindow: “スクロールなし”徹底のコンパクト版 */
+function makeInfoWindowContent(pin: PlacePin) {
+  const wrap = document.createElement("div");
 
-  // 3) 互換：image_variants[0].thumb（thumb = square運用でもOK）
-  const v0 = Array.isArray(p.image_variants) && p.image_variants.length ? p.image_variants[0] : null;
-  if (v0 && typeof v0.thumb === "string" && v0.thumb) return v0.thumb;
+  // ✅ 画面幅追従：横スクロールを潰す
+  wrap.style.width = "min(78vw, 248px)";
+  wrap.style.maxWidth = "min(78vw, 248px)";
+  wrap.style.boxSizing = "border-box";
+  wrap.style.overflow = "hidden";
+  wrap.style.padding = "0";
+  wrap.style.margin = "0";
+  wrap.style.fontFamily =
+    'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+  wrap.style.wordBreak = "break-word";
 
-  // 4) 旧：image_urls[0]（縦長の可能性あり、最終手段）
-  const u0 = Array.isArray(p.image_urls) && p.image_urls.length ? (p.image_urls[0] ?? null) : null;
-  if (u0 && typeof u0 === "string") return u0;
+  // Title
+  const title = document.createElement("div");
+  title.textContent = pin.place_name;
+  title.style.fontWeight = "900";
+  title.style.fontSize = "12px";
+  title.style.lineHeight = "1.2";
+  title.style.margin = "0 0 2px 0";
+  title.style.overflow = "hidden";
+  title.style.textOverflow = "ellipsis";
+  title.style.whiteSpace = "nowrap";
+  wrap.appendChild(title);
 
-  return null;
+  // Address (1 line)
+  if (pin.place_address) {
+    const addr = document.createElement("div");
+    addr.textContent = pin.place_address;
+    addr.style.color = "#6b7280";
+    addr.style.fontSize = "10px";
+    addr.style.lineHeight = "1.2";
+    addr.style.marginBottom = "6px";
+    addr.style.overflow = "hidden";
+    addr.style.textOverflow = "ellipsis";
+    addr.style.whiteSpace = "nowrap";
+    wrap.appendChild(addr);
+  }
+
+  // ✅ Square media but smaller (prevents vertical scroll)
+  const media = document.createElement("div");
+  media.style.position = "relative";
+  media.style.width = "100%";
+  media.style.height = "min(46vw, 148px)"; // ★小さくして縦スクロールを潰す
+  media.style.borderRadius = "14px";
+  media.style.overflow = "hidden";
+  media.style.background = "linear-gradient(180deg,#fff,#f3f4f6)";
+  media.style.border = "1px solid rgba(0,0,0,0.08)";
+  media.style.marginBottom = "6px";
+
+  const imgLayer = document.createElement("div");
+  imgLayer.style.position = "absolute";
+  imgLayer.style.inset = "0";
+  imgLayer.style.backgroundRepeat = "no-repeat";
+  imgLayer.style.backgroundPosition = "center";
+  imgLayer.style.backgroundSize = "cover";
+
+  const img = pin.latest_image_url
+    ? toSupabaseThumbUrl(normalizeMaybeUrl(pin.latest_image_url), 560, 560, 58, "cover")
+    : null;
+  imgLayer.style.backgroundImage = `url("${img ?? fallbackPinSvgDataUrl()}")`;
+  media.appendChild(imgLayer);
+
+  // subtle overlay
+  const overlay = document.createElement("div");
+  overlay.style.position = "absolute";
+  overlay.style.inset = "0";
+  overlay.style.background = "linear-gradient(180deg, rgba(0,0,0,0.18), rgba(0,0,0,0.06) 38%, rgba(0,0,0,0.12))";
+  overlay.style.pointerEvents = "none";
+  media.appendChild(overlay);
+
+  // Avatar (top-left)
+  const avatarWrap = document.createElement("div");
+  avatarWrap.style.position = "absolute";
+  avatarWrap.style.left = "8px";
+  avatarWrap.style.top = "8px";
+  avatarWrap.style.width = "28px";
+  avatarWrap.style.height = "28px";
+  avatarWrap.style.borderRadius = "9999px";
+  avatarWrap.style.overflow = "hidden";
+  avatarWrap.style.background = "rgba(255,255,255,0.96)";
+  avatarWrap.style.border = "1px solid rgba(0,0,0,0.10)";
+  avatarWrap.style.boxShadow = "0 5px 14px rgba(0,0,0,0.16)";
+  avatarWrap.style.display = "grid";
+  avatarWrap.style.placeItems = "center";
+
+  if (pin.latest_avatar_url) {
+    const av = document.createElement("img");
+    av.src = pin.latest_avatar_url;
+    av.alt = "";
+    av.decoding = "async";
+    av.loading = "lazy";
+    av.style.width = "100%";
+    av.style.height = "100%";
+    av.style.objectFit = "cover";
+    avatarWrap.appendChild(av);
+  } else {
+    const initial = (pin.latest_display_name ?? "U").slice(0, 1).toUpperCase();
+    const t = document.createElement("div");
+    t.textContent = initial;
+    t.style.fontSize = "11px";
+    t.style.fontWeight = "900";
+    t.style.color = "#9a3412";
+    t.style.background = "rgba(255,237,213,0.95)";
+    t.style.width = "100%";
+    t.style.height = "100%";
+    t.style.display = "grid";
+    t.style.placeItems = "center";
+    avatarWrap.appendChild(t);
+  }
+  media.appendChild(avatarWrap);
+
+  // Name chip (compact)
+  const nameChip = document.createElement("div");
+  nameChip.textContent = pin.latest_display_name ?? "ユーザー";
+  nameChip.style.position = "absolute";
+  nameChip.style.left = "42px";
+  nameChip.style.top = "9px";
+  nameChip.style.maxWidth = "calc(100% - 50px)";
+  nameChip.style.padding = "5px 8px";
+  nameChip.style.borderRadius = "9999px";
+  nameChip.style.background = "rgba(17,24,39,0.42)";
+  nameChip.style.backdropFilter = "blur(8px)";
+  nameChip.style.color = "rgba(255,255,255,0.95)";
+  nameChip.style.fontSize = "10px";
+  nameChip.style.fontWeight = "900";
+  nameChip.style.whiteSpace = "nowrap";
+  nameChip.style.overflow = "hidden";
+  nameChip.style.textOverflow = "ellipsis";
+  media.appendChild(nameChip);
+
+  wrap.appendChild(media);
+
+  // Caption (max 2 lines)
+  if (pin.latest_content) {
+    const cap = document.createElement("div");
+    cap.textContent = pin.latest_content;
+    cap.style.fontSize = "11px";
+    cap.style.color = "#111827";
+    cap.style.fontWeight = "700";
+    cap.style.lineHeight = "1.25";
+    cap.style.marginBottom = "6px";
+    // clamp 2 lines
+    (cap.style as any).display = "-webkit-box";
+    (cap.style as any).WebkitLineClamp = "2";
+    (cap.style as any).WebkitBoxOrient = "vertical";
+    cap.style.overflow = "hidden";
+    wrap.appendChild(cap);
+  }
+
+  // ✅ compact meta chips (no big cards)
+  const metaRow = document.createElement("div");
+  metaRow.style.display = "flex";
+  metaRow.style.gap = "6px";
+  metaRow.style.marginBottom = "6px";
+
+  const chip = (label: string, value: string) => {
+    const c = document.createElement("div");
+    c.style.flex = "1";
+    c.style.minWidth = "0";
+    c.style.borderRadius = "12px";
+    c.style.padding = "7px 9px";
+    c.style.border = "1px solid rgba(0,0,0,0.08)";
+    c.style.background = "rgba(255,255,255,0.82)";
+    c.style.boxSizing = "border-box";
+
+    const line = document.createElement("div");
+    line.style.display = "flex";
+    line.style.alignItems = "baseline";
+    line.style.justifyContent = "space-between";
+    line.style.gap = "8px";
+
+    const l = document.createElement("div");
+    l.textContent = label;
+    l.style.fontSize = "9px";
+    l.style.fontWeight = "900";
+    l.style.color = "#6b7280";
+    l.style.whiteSpace = "nowrap";
+
+    const v = document.createElement("div");
+    v.textContent = value;
+    v.style.fontSize = "10px";
+    v.style.fontWeight = "900";
+    v.style.color = "#111827";
+    v.style.whiteSpace = "nowrap";
+    v.style.overflow = "hidden";
+    v.style.textOverflow = "ellipsis";
+
+    line.appendChild(l);
+    line.appendChild(v);
+    c.appendChild(line);
+    return c;
+  };
+
+  const priceText = formatPriceYenOrRange(pin.latest_price_yen, pin.latest_price_range) ?? "—";
+  const recText =
+    pin.latest_recommend_score != null && Number.isFinite(pin.latest_recommend_score)
+      ? `${Number(pin.latest_recommend_score).toFixed(1)}/10`
+      : "—";
+
+  metaRow.appendChild(chip("価格", priceText));
+  metaRow.appendChild(chip("おすすめ", recText));
+  wrap.appendChild(metaRow);
+
+  // Buttons row (compact height)
+  const btnRow = document.createElement("div");
+  btnRow.style.display = "flex";
+  btnRow.style.gap = "6px";
+
+  const btnPost = document.createElement("button");
+  btnPost.textContent = "投稿";
+  btnPost.type = "button";
+  btnPost.style.flex = "1";
+  btnPost.style.borderRadius = "12px";
+  btnPost.style.padding = "9px 10px";
+  btnPost.style.fontSize = "11px";
+  btnPost.style.fontWeight = "900";
+  btnPost.style.border = "1px solid rgba(0,0,0,0.10)";
+  btnPost.style.background = "#111827";
+  btnPost.style.color = "white";
+  btnPost.style.cursor = "pointer";
+
+  const mapsUrl = makeGoogleMapsUrl(pin.place_id, pin.place_address, pin.lat, pin.lng);
+  const btnG = document.createElement("a");
+  btnG.href = mapsUrl ?? "#";
+  btnG.target = "_blank";
+  btnG.rel = "noopener noreferrer";
+  btnG.style.flex = "1";
+  btnG.style.borderRadius = "12px";
+  btnG.style.padding = "9px 10px";
+  btnG.style.fontSize = "11px";
+  btnG.style.fontWeight = "900";
+  btnG.style.border = "1px solid rgba(0,0,0,0.10)";
+  btnG.style.background = "rgba(255,255,255,0.88)";
+  btnG.style.color = "#111827";
+  btnG.style.cursor = "pointer";
+  btnG.style.textDecoration = "none";
+  btnG.style.display = "inline-flex";
+  btnG.style.alignItems = "center";
+  btnG.style.justifyContent = "center";
+  btnG.style.gap = "6px";
+  btnG.innerHTML = `${GoogleMark({ size: 14 })}<span>Maps</span>`;
+
+  if (!mapsUrl) {
+    btnG.style.opacity = "0.5";
+    btnG.style.pointerEvents = "none";
+  }
+
+  btnRow.appendChild(btnPost);
+  btnRow.appendChild(btnG);
+  wrap.appendChild(btnRow);
+
+  return { wrap, btnPost };
 }
 
 function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
@@ -583,8 +935,10 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const infoRef = useRef<any>(null);
+
   const markersRef = useRef<any[]>([]);
   const markerByPlaceIdRef = useRef<Map<string, any>>(new Map());
+  const contentByPlaceIdRef = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const gmapsRef = useRef<{ GMap: any; AdvancedMarkerElement: any; InfoWindow: any } | null>(null);
 
@@ -619,11 +973,10 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
         return;
       }
 
-      // ✅ 新: image_assets / cover_* / image_variants を取る（既存も残す）
       const { data: posts, error: poErr } = await supabase
         .from("posts")
         .select(
-          "id, user_id, place_id, place_name, place_address, created_at, image_urls, image_variants, image_assets, cover_pin_url, cover_square_url, cover_full_url"
+          "id, user_id, content, place_id, place_name, place_address, created_at, image_urls, image_variants, image_assets, cover_pin_url, cover_square_url, cover_full_url, recommend_score, price_yen, price_range"
         )
         .eq("user_id", userId)
         .not("place_id", "is", null)
@@ -659,33 +1012,66 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
       const placeById = new Map<string, PlaceRow>();
       ((places as PlaceRow[] | null) ?? []).forEach((p) => placeById.set(p.place_id, p));
 
+      // profiles: id = posts.user_id
+      const userIds = Array.from(new Set(postRows.map((p) => p.user_id).filter(Boolean)));
+      const profileById = new Map<string, ProfileLite>();
+
+      if (userIds.length) {
+        const { data: profs, error: prErr } = await supabase
+          .from("profiles")
+          .select("id, display_name, avatar_url")
+          .in("id", userIds)
+          .limit(1000);
+
+        if (!prErr) {
+          ((profs as ProfileLite[] | null) ?? []).forEach((x) => profileById.set(x.id, x));
+        }
+      }
+
       const pinByPlace = new Map<string, PlacePin>();
 
       for (const p of postRows) {
         const pid = p.place_id!;
         const plc = placeById.get(pid);
         if (!plc || plc.lat == null || plc.lng == null) continue;
+        if (pinByPlace.has(pid)) continue;
 
-        // ✅ ここが本体：pin用正方形を優先選択
-        const img0 = pickBestPinUrl(p);
+        const pinImg = pickBestPinUrl(p);
+        const squareImg = pickBestSquareUrl(p);
 
-        if (!pinByPlace.has(pid)) {
-          pinByPlace.set(pid, {
-            place_id: pid,
-            lat: plc.lat,
-            lng: plc.lng,
-            place_name: p.place_name || plc.name || "(no name)",
-            place_address: p.place_address || plc.address || "",
-            latest_post_id: p.id,
-            latest_image_url: img0 || plc.photo_url || null,
-          });
-        }
+        const recNum = p.recommend_score == null ? null : Number(p.recommend_score);
+        const latestRecommendScore = Number.isFinite(recNum as number) ? (recNum as number) : null;
+
+        const priceNum = p.price_yen == null ? null : Number(p.price_yen);
+        const latestPriceYen = Number.isFinite(priceNum as number) ? (priceNum as number) : null;
+
+        const latestPriceRange = p.price_range ?? null;
+
+        const prof = profileById.get(p.user_id) ?? null;
+
+        pinByPlace.set(pid, {
+          place_id: pid,
+          lat: plc.lat,
+          lng: plc.lng,
+          place_name: p.place_name || plc.name || "(no name)",
+          place_address: p.place_address || plc.address || "",
+
+          latest_post_id: p.id,
+          latest_image_url: squareImg || pinImg || plc.photo_url || null,
+
+          latest_user_id: p.user_id,
+          latest_display_name: prof?.display_name ?? null,
+          latest_avatar_url: prof?.avatar_url ?? null,
+
+          latest_content: p.content ?? null,
+          latest_recommend_score: latestRecommendScore,
+          latest_price_yen: latestPriceYen,
+          latest_price_range: latestPriceRange,
+        });
       }
 
-      const pinsSorted = Array.from(pinByPlace.values());
-
       if (cancelled) return;
-      setPins(pinsSorted);
+      setPins(Array.from(pinByPlace.values()));
       setStatus("ready");
     }
 
@@ -747,6 +1133,7 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
       clickableIcons: false,
     });
 
+    // ✅ ここはそのまま（中身を小さくしたのでスクロールが出ない）
     infoRef.current = new InfoWindow();
   }, [gmapsReady, mapId]);
 
@@ -756,39 +1143,10 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
 
     const marker = markerByPlaceIdRef.current.get(pin.place_id);
 
-    const wrap = document.createElement("div");
-    wrap.style.minWidth = "240px";
-
-    const title = document.createElement("div");
-    title.textContent = pin.place_name;
-    title.style.fontWeight = "900";
-    title.style.fontSize = "14px";
-    title.style.marginBottom = "6px";
-    wrap.appendChild(title);
-
-    if (pin.place_address) {
-      const addr = document.createElement("div");
-      addr.textContent = pin.place_address;
-      addr.style.color = "#374151";
-      addr.style.fontSize = "12px";
-      addr.style.marginBottom = "10px";
-      wrap.appendChild(addr);
-    }
-
-    const btn = document.createElement("button");
-    btn.textContent = "投稿を見る";
-    btn.style.borderRadius = "12px";
-    btn.style.padding = "8px 10px";
-    btn.style.fontSize = "12px";
-    btn.style.fontWeight = "900";
-    btn.style.border = "1px solid rgba(0,0,0,0.10)";
-    btn.style.background = "#111827";
-    btn.style.color = "white";
-    btn.style.cursor = "pointer";
-    btn.onclick = () => {
+    const { wrap, btnPost } = makeInfoWindowContent(pin);
+    btnPost.onclick = () => {
       if (pin.latest_post_id) router.push(`/posts/${pin.latest_post_id}`);
     };
-    wrap.appendChild(btn);
 
     try {
       infoRef.current?.setContent(wrap);
@@ -811,6 +1169,7 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
     }
     markersRef.current = [];
     markerByPlaceIdRef.current = new Map();
+    contentByPlaceIdRef.current = new Map();
     try {
       infoRef.current?.close();
     } catch {}
@@ -820,8 +1179,10 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
     const bounds = new google.maps.LatLngBounds();
 
     for (const pin of pins) {
-      const highlight = selectedPlaceId === pin.place_id;
-      const content = makePhotoPinContent(pin.latest_image_url, highlight);
+      const level = scoreToLevel(pin.latest_recommend_score);
+      const ringColor = levelToRingColor(level);
+
+      const content = makePhotoPinContent(pin.latest_image_url, ringColor, false) as HTMLDivElement;
 
       const marker = new libs.AdvancedMarkerElement({
         map,
@@ -829,6 +1190,9 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
         content,
       });
 
+      contentByPlaceIdRef.current.set(pin.place_id, content);
+
+      // ✅ 1回タップで即：選択＋吹き出し
       content.addEventListener("click", () => {
         setSelectedPlaceId(pin.place_id);
         openInfoForPin(pin);
@@ -844,7 +1208,15 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
     }
 
     map.fitBounds(bounds, 60);
-  }, [pins, selectedPlaceId, router]);
+  }, [pins, router]);
+
+  useEffect(() => {
+    const m = contentByPlaceIdRef.current;
+    if (!m.size) return;
+    for (const [pid, el] of m.entries()) {
+      setSelectedStyle(el, pid === selectedPlaceId);
+    }
+  }, [selectedPlaceId]);
 
   return (
     <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
@@ -855,7 +1227,11 @@ function ProfilePlacesMap({ userId }: { userId: string; scope: Scope }) {
         </div>
       </div>
 
-      <div ref={mapDivRef} className="mt-3 w-full overflow-hidden rounded-2xl bg-slate-100" style={{ height: "420px" }} />
+      <div
+        ref={mapDivRef}
+        className="mt-3 w-full overflow-hidden rounded-2xl bg-slate-100"
+        style={{ height: "420px" }}
+      />
       <div className="mt-2 text-[11px] text-slate-500">
         ピンをタップで詳細、<span className="font-semibold">ダブルタップで投稿へ</span>
       </div>
@@ -1008,7 +1384,8 @@ export default function ProfileYearStats({
                   </div>
                   {data.totals.posts <= 3 ? (
                     <div className="mt-2 text-[11px] font-semibold text-slate-600">
-                      あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span> 投稿でランキングに参加できます
+                      あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span>{" "}
+                      投稿でランキングに参加できます
                     </div>
                   ) : null}
                 </div>
@@ -1052,12 +1429,13 @@ export default function ProfileYearStats({
 
                     {data.totals.posts <= 3 ? (
                       <div className="mt-2 text-[11px] font-semibold text-slate-600">
-                        あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span> 投稿でランキングに参加できます
+                        あと <span className="font-black text-slate-900">{Math.max(0, 4 - data.totals.posts)}</span>{" "}
+                        投稿でランキングに参加できます
                       </div>
                     ) : null}
-                  </div>
 
-                  <ProfilePlacesMap userId={userId} scope={scope} />
+                    <ProfilePlacesMap userId={userId} scope={scope} />
+                  </div>
                 </div>
 
                 <div className="rounded-2xl border border-black/[.06] bg-white/70 p-4">
