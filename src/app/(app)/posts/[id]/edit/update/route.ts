@@ -1,201 +1,110 @@
-// src/app/(app)/profile/update/route.ts
+// src/app/(app)/posts/[id]/edit/update/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// username は保存時に lower-case 正規化して一意運用する前提
-const USERNAME_RE = /^[a-z0-9._]{3,30}$/;
+type Payload = {
+  content?: string | null;
+  visited_on?: string | null;
+  recommend_score?: number | null;
+  price_yen?: number | null;
+  price_range?: string | null;
 
-function trimOrNull(v: FormDataEntryValue | null): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim();
-  return t.length ? t : null;
+  place_id?: string | null;
+  place_name?: string | null;
+  place_address?: string | null;
+
+  // 画像は「送られてきた時だけ更新」したいので optional のまま
+  // 変更なし: このキー自体を送らない
+  // 削除したい: null / [] を明示的に送る
+  image_variants?: any | null;
+  image_urls?: any | null;
+};
+
+function finiteNumberOrNull(v: any): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-function isImageFile(file: File) {
-  const type = (file.type || "").toLowerCase();
-  return type.startsWith("image/");
-}
+// ✅ Next 16: context.params が Promise になってるので await する
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await context.params;
 
-function safeExtFromFile(file: File) {
-  const type = (file.type || "").toLowerCase();
-  const byType = type.split("/")[1] || "";
-  const byName = (file.name.split(".").pop() || "").toLowerCase();
-  const raw = (byType || byName || "jpg").replace(/[^a-z0-9]/g, "");
-  return raw || "jpg";
-}
+    const supabase = await createClient();
 
-export async function POST(req: Request) {
-  const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  // 認証
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: "Not logged in" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
+    }
 
-  if (!user) {
-    // この route は form POST で叩かれる想定なので redirect でOK
-    return NextResponse.redirect(new URL("/auth/login", req.url));
-  }
+    // JSON受信（クライアントが application/json を送っている前提）
+    const payload = (await req.json()) as Payload;
 
-  // フォーム取得
-  const form = await req.formData();
+    // 対象投稿の存在確認 + 自分の投稿かチェック
+    const { data: post, error: getErr } = await supabase
+      .from("posts")
+      .select("id,user_id")
+      .eq("id", id)
+      .maybeSingle();
 
-  // 入力（空欄は null 扱い＝クリア）
-  const display_name = trimOrNull(form.get("display_name"));
-  const bio = trimOrNull(form.get("bio"));
+    if (getErr || !post) {
+      return NextResponse.json(
+        { ok: false, error: "Not found" },
+        { status: 404, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    if (post.user_id !== user.id) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden" },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
+      );
+    }
 
-  // 公開 / 非公開（チェックボックス）
-  // チェックされていれば値が入る → true / 無ければ false
-  const is_public = form.get("is_public") != null;
+    // 「送られてきた項目だけ」更新
+    const patch: Record<string, any> = {};
 
-  // username（@は保存しない、lower-caseに正規化）
-  const rawUsername = trimOrNull(form.get("username"));
-  let username: string | null = rawUsername ? rawUsername.replace(/^@+/, "") : null;
-  username = username ? username.toLowerCase() : null;
+    if ("content" in payload) patch.content = payload.content ?? null;
+    if ("visited_on" in payload) patch.visited_on = payload.visited_on ?? null;
 
-  if (username && !USERNAME_RE.test(username)) {
+    if ("recommend_score" in payload) patch.recommend_score = finiteNumberOrNull(payload.recommend_score);
+    if ("price_yen" in payload) patch.price_yen = finiteNumberOrNull(payload.price_yen);
+    if ("price_range" in payload) patch.price_range = payload.price_range ?? null;
+
+    if ("place_id" in payload) patch.place_id = payload.place_id ?? null;
+    if ("place_name" in payload) patch.place_name = payload.place_name ?? null;
+    if ("place_address" in payload) patch.place_address = payload.place_address ?? null;
+
+    // ⭐画像：送られてきた時だけ更新（未送信なら既存値保持）
+    if ("image_variants" in payload) patch.image_variants = payload.image_variants;
+    if ("image_urls" in payload) patch.image_urls = payload.image_urls;
+
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No fields to update" },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const { error: upErr } = await supabase.from("posts").update(patch).eq("id", id);
+
+    if (upErr) {
+      return NextResponse.json(
+        { ok: false, error: upErr.message },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  } catch (e: any) {
+    console.error("[posts/edit/update] unhandled", e);
     return NextResponse.json(
-      { ok: false, error: "ユーザーIDの形式が不正です（3〜30文字、半角英数・._）。" },
-      { status: 400 }
+      { ok: false, error: e?.message ?? String(e) },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
-
-  const avatarFile = form.get("avatar") as File | null;
-  const headerFile = form.get("header_image") as File | null;
-
-  // 現在のプロフィール取得（自分と同じ名前なら「使用中」でもOKにするため）
-  const { data: currentProfile } = await supabase
-    .from("profiles")
-    .select("username, avatar_url, is_public, header_image_url")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  // username の空き確認（RPC → フォールバック）
-  // ※ 重要: ilike は "_" がワイルドカードになるので危険。eq でチェックする。
-  if (username && username !== (currentProfile?.username ?? null)) {
-    let available: boolean | null = null;
-
-    // ① RPC を試す（RPC 側も lower-case 前提で実装されていると嬉しい）
-    const { data: rpcOk, error: rpcErr } = await supabase.rpc("is_username_available", {
-      in_name: username,
-    });
-
-    if (!rpcErr && typeof rpcOk === "boolean") {
-      available = rpcOk;
-    } else {
-      // ② フォールバック（RPC未導入でも最低限の重複チェック）
-      const { data: used, error: qErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("username", username)
-        .limit(1);
-
-      if (!qErr) {
-        available = !(used && used.length > 0);
-      }
-    }
-
-    if (available === false) {
-      return NextResponse.json({ ok: false, error: "このユーザーIDは使用できません。" }, { status: 409 });
-    }
-  }
-
-  // アイコン URL（既存値をベース）
-  let avatarUrl: string | null =
-    (currentProfile?.avatar_url as string | null) ?? ((user.user_metadata as any)?.avatar_url ?? null);
-
-  // ヘッダー URL（既存値をベース）
-  let headerImageUrl: string | null = (currentProfile?.header_image_url as string | null) ?? null;
-
-  // アイコン画像アップロード
-  if (avatarFile && avatarFile.size > 0) {
-    if (!isImageFile(avatarFile)) {
-      return NextResponse.json({ ok: false, error: "アイコン画像が不正です（image/* のみ）。" }, { status: 400 });
-    }
-
-    const contentType = avatarFile.type || "image/jpeg";
-    const ext = safeExtFromFile(avatarFile);
-    const path = `${user.id}/avatar.${ext}`;
-
-    const { error: uploadError } = await supabase.storage.from("avatars").upload(path, avatarFile, {
-      upsert: true,
-      contentType,
-    });
-
-    if (uploadError) {
-      return NextResponse.json(
-        { ok: false, error: `画像のアップロードに失敗しました: ${uploadError.message}` },
-        { status: 500 }
-      );
-    }
-
-    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
-    avatarUrl = pub.publicUrl;
-  }
-
-  // ヘッダー画像アップロード
-  if (headerFile && headerFile.size > 0) {
-    if (!isImageFile(headerFile)) {
-      return NextResponse.json({ ok: false, error: "ホーム画像が不正です（image/* のみ）。" }, { status: 400 });
-    }
-
-    const contentType = headerFile.type || "image/jpeg";
-    const ext = safeExtFromFile(headerFile);
-    const path = `${user.id}/header.${ext}`;
-
-    const { error: headerUploadError } = await supabase.storage.from("avatars").upload(path, headerFile, {
-      upsert: true,
-      contentType,
-    });
-
-    if (headerUploadError) {
-      return NextResponse.json(
-        { ok: false, error: `ホーム画像のアップロードに失敗しました: ${headerUploadError.message}` },
-        { status: 500 }
-      );
-    }
-
-    const { data: headerPub } = supabase.storage.from("avatars").getPublicUrl(path);
-    headerImageUrl = headerPub.publicUrl;
-  }
-
-  // 1) user_metadata を更新（display_name / bio / avatar_url）
-  // 空欄→null も “クリア” として反映させたいのでそのまま入れる
-  const { error: authErr } = await supabase.auth.updateUser({
-    data: {
-      display_name,
-      bio,
-      avatar_url: avatarUrl,
-    },
-  });
-
-  if (authErr) {
-    return NextResponse.json({ ok: false, error: `認証情報の更新に失敗しました: ${authErr.message}` }, { status: 500 });
-  }
-
-  // 2) profiles を更新（display_name / bio / username / is_public / header_image_url 等）
-  // 空欄→null をDBにも反映（= クリア可能）
-  const patch: Record<string, any> = {
-    id: user.id,
-    display_name, // null OK
-    bio, // null OK
-    username, // null OK
-    is_public, // 必ず boolean
-    updated_at: new Date().toISOString(),
-  };
-
-  // URL類は既存値 or アップロード後で non-null のものだけ入れる（勝手に消さない）
-  if (avatarUrl !== null) patch.avatar_url = avatarUrl;
-  if (headerImageUrl !== null) patch.header_image_url = headerImageUrl;
-
-  const { error: upsertErr } = await supabase.from("profiles").upsert(patch, {
-    onConflict: "id",
-  });
-
-  if (upsertErr) {
-    return NextResponse.json({ ok: false, error: `プロフィール更新に失敗しました: ${upsertErr.message}` }, { status: 500 });
-  }
-
-  // 正常終了
-  return NextResponse.redirect(new URL("/profile", req.url));
 }

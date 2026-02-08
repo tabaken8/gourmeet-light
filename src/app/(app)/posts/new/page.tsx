@@ -1009,7 +1009,6 @@ export default function NewPostPage() {
               </div>
 
               <div className="text-[11px] text-slate-500">
-                ※ places テーブルのカラムに合わせて <strong>place_id / name / address</strong> だけ先に保存しています（FK対策）。
               </div>
             </div>
           </Section>
