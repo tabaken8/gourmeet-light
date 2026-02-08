@@ -15,18 +15,11 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 type NotifType = "like" | "want" | "comment" | "reply" | "follow";
 
 function appOrigin() {
-  // もう本番で gourmeet.jp にしてる前提
   return process.env.NEXT_PUBLIC_SITE_URL ?? "https://gourmeet.jp";
 }
 
 function extractNotificationId(body: any): string | null {
-  return (
-    body?.record?.id ??
-    body?.new?.id ??
-    body?.data?.id ??
-    body?.id ??
-    null
-  );
+  return body?.record?.id ?? body?.new?.id ?? body?.data?.id ?? body?.id ?? null;
 }
 
 function escapeHtml(s: string) {
@@ -54,30 +47,62 @@ function labelForType(t: NotifType) {
 }
 
 function berealStyleLine(t: NotifType, actorName: string, placeName?: string | null) {
-  // “短く・行動を促す” BeRealっぽさ寄せ
+  const place = placeName ? ` @ ${placeName}` : "";
   switch (t) {
     case "follow":
       return `⏰ Time to Gourmeet. ${actorName} があなたをフォロー！`;
     case "comment":
-      return `⏰ Time to Gourmeet. ${actorName} からコメントが届いた！`;
+      return `⏰ Time to Gourmeet. ${actorName} からコメントが届いた！${place}`;
     case "reply":
-      return `⏰ Time to Gourmeet. ${actorName} から返信が届いた！`;
+      return `⏰ Time to Gourmeet. ${actorName} から返信が届いた！${place}`;
     case "like":
-      return `✨ ${actorName} がいいねしたよ`;
+      return `💛 ${actorName} がいいねしたよ${place}`;
     case "want":
-      return `✨ ${actorName} が「行きたい！」したよ`;
+      return `✨ ${actorName} が「行きたい！」したよ${place}`;
   }
 }
 
-function buildSubject(t: NotifType, actorName: string) {
-  // 件名は短め＋アクション
+function buildSubject(t: NotifType, actorName: string, placeName?: string | null) {
   const core =
     t === "follow" ? "フォローされた" :
     t === "comment" ? "コメントが届いた" :
     t === "reply" ? "返信が届いた" :
-    t === "like" ? "いいね" :
-    "行きたい！";
-  return `Gourmeet｜${actorName}から${core}`;
+    t === "like" ? "いいねされた" :
+    "「行きたい！」された";
+  const tail = placeName ? `｜${placeName}` : "";
+  return `Gourmeet｜${actorName}に${core}${tail}`;
+}
+
+/**
+ * ✅ いいね連打・付け直しでメール爆撃を防ぐ簡易クールダウン
+ * - 同じ user_id（受信者）× actor_id（した人）× post_id × type が
+ *   例えば15分以内に "sent" になってたら今回の送信をスキップ
+ * - DB変更なしで実現できる
+ */
+async function shouldCooldownLike(opts: {
+  user_id: string;
+  actor_id: string | null;
+  post_id: string | null;
+  type: NotifType;
+  cooldownMinutes: number;
+}) {
+  const { user_id, actor_id, post_id, type, cooldownMinutes } = opts;
+  if (!actor_id || !post_id) return false; // 判定できないなら送る（likeは通常両方ある）
+
+  const since = new Date(Date.now() - cooldownMinutes * 60 * 1000).toISOString();
+
+  const { data } = await supabaseAdmin
+    .from("notifications")
+    .select("id")
+    .eq("user_id", user_id)
+    .eq("actor_id", actor_id)
+    .eq("post_id", post_id)
+    .eq("type", type)
+    .eq("email_status", "sent")
+    .gte("email_sent_at", since)
+    .limit(1);
+
+  return (data?.length ?? 0) > 0;
 }
 
 export async function POST(req: Request) {
@@ -106,8 +131,8 @@ export async function POST(req: Request) {
 
   const t = n.type as NotifType;
 
-  // 2) 送るタイプ（本番のおすすめ：follow/comment/reply）
-  const sendable: NotifType[] = ["follow", "comment", "reply"];
+  // ✅ 送信対象に like を追加（want も送りたければここに）
+  const sendable: NotifType[] = ["follow", "comment", "reply", "like"];
   if (!sendable.includes(t)) {
     await supabaseAdmin
       .from("notifications")
@@ -116,7 +141,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, skipped: `type=${t}` });
   }
 
-  // 3) 宛先メール
+  // ✅ like は爆撃防止（例：15分クールダウン）
+  if (t === "like") {
+    const cooled = await shouldCooldownLike({
+      user_id: n.user_id,
+      actor_id: n.actor_id,
+      post_id: n.post_id,
+      type: "like",
+      cooldownMinutes: 15,
+    });
+    if (cooled) {
+      await supabaseAdmin
+        .from("notifications")
+        .update({ email_status: "skipped", email_fail_reason: "cooldown_like_15m" })
+        .eq("id", notificationId);
+      return NextResponse.json({ ok: true, skipped: "cooldown_like_15m" });
+    }
+  }
+
+  // 2) 宛先メール
   const { data: userRes, error: uErr } =
     await supabaseAdmin.auth.admin.getUserById(n.user_id);
 
@@ -129,7 +172,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "no recipient email" }, { status: 400 });
   }
 
-  // 4) actor / post / comment（JOINせず個別取得＝型が壊れない）
+  // 3) actor / post / comment（JOINせず個別取得）
   let actorName = "だれか";
   if (n.actor_id) {
     const { data: actor } = await supabaseAdmin
@@ -162,35 +205,31 @@ export async function POST(req: Request) {
     commentBody = c?.body ?? null;
   }
 
-  // 5) リンク
+  // 4) リンク
   const notificationsUrl = `${appOrigin()}/notifications`;
-  const settingsUrl = `${appOrigin()}/settings/notifications`; // ←無ければ /settings にしてOK
-  const mapsUrl = placeId
-    ? `https://www.google.com/maps/place/?q=place_id:${placeId}`
-    : null;
+  const settingsUrl = `${appOrigin()}/settings/notifications`; // 無ければ /settings でもOK
+  const mapsUrl = placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : null;
 
-  // 6) 文面（BeRealっぽく短く）
+  // 5) 文面
   const headline = berealStyleLine(t, actorName, placeName);
-  const subject = buildSubject(t, actorName);
+  const subject = buildSubject(t, actorName, placeName);
 
   const commentPreview = commentBody
     ? commentBody.slice(0, 140) + (commentBody.length > 140 ? "…" : "")
     : null;
 
-  // text（プレーンテキスト）
-  const textLines = [
+  const text = [
     headline,
     placeName ? `場所：${placeName}` : null,
     commentPreview ? `\n“${commentPreview}”` : null,
     `\n確認する：${notificationsUrl}`,
     mapsUrl ? `Google Maps：${mapsUrl}` : null,
     `\n通知設定：${settingsUrl}`,
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-  const text = textLines.join("\n");
-
-  // html（軽量・インラインCSS・ボタン）
-  const safeActor = escapeHtml(actorName);
+  const safeHeadline = escapeHtml(headline);
   const safePlace = placeName ? escapeHtml(placeName) : "";
   const safeComment = commentPreview ? escapeHtml(commentPreview) : "";
 
@@ -199,7 +238,7 @@ export async function POST(req: Request) {
     <div style="max-width:560px;margin:0 auto;border:1px solid #eee;border-radius:16px;overflow:hidden">
       <div style="background:#fff7ed;padding:16px 18px">
         <div style="font-size:12px;letter-spacing:.18em;color:#f97316;font-weight:700">GOURMEET</div>
-        <div style="font-size:18px;margin-top:6px;font-weight:800;color:#111">${escapeHtml(headline)}</div>
+        <div style="font-size:18px;margin-top:6px;font-weight:800;color:#111">${safeHeadline}</div>
       </div>
 
       <div style="padding:18px">
@@ -216,9 +255,7 @@ export async function POST(req: Request) {
              style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:10px 14px;border-radius:12px;font-weight:700">
             今すぐ見る →
           </a>
-          ${mapsUrl ? `
-            <a href="${mapsUrl}" style="margin-left:10px;color:#111;text-decoration:underline;font-size:13px">Maps</a>
-          ` : ""}
+          ${mapsUrl ? `<a href="${mapsUrl}" style="margin-left:10px;color:#111;text-decoration:underline;font-size:13px">Maps</a>` : ""}
         </div>
 
         <div style="margin-top:18px;font-size:12px;color:#666">
@@ -231,8 +268,7 @@ export async function POST(req: Request) {
   </div>
   `.trim();
 
-  // 7) 送信（List-Unsubscribe を入れて“迷惑メール扱い”を減らす助けに）
-  // ※ settingsUrl が実在するのが前提。無ければ /settings に寄せてOK
+  // 6) 送信
   try {
     await resend.emails.send({
       from: process.env.RESEND_FROM!,
@@ -241,6 +277,7 @@ export async function POST(req: Request) {
       text,
       html,
       headers: {
+        // 迷惑メール扱いを減らす助け（通知設定へ誘導）
         "List-Unsubscribe": `<${settingsUrl}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
