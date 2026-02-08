@@ -121,6 +121,36 @@ function getFirstSquareThumb(p: PostRow): string | null {
   return legacy[0] ?? null;
 }
 
+/**
+ * ✅ place_address から「都道府県 + 市区町村」だけ抜く
+ * 例:
+ *  "日本、〒144-0041 東京都大田区羽田空港３丁目３−２" -> "東京都大田区"
+ *  "〒150-0002 東京都渋谷区渋谷1-1-1" -> "東京都渋谷区"
+ *  "神奈川県横浜市西区..." -> "神奈川県横浜市"
+ */
+function extractPrefCity(address: string | null | undefined): string | null {
+  if (!address) return null;
+
+  // 1) ノイズ除去（先頭の "日本、" と 郵便番号）
+  const s = address
+    .replace(/^日本[、,\s]*/u, "")
+    .replace(/〒\s*\d{3}-?\d{4}\s*/u, "")
+    .trim();
+
+  // 2) 都道府県 + (市/区/町/村) までを抽出
+  // - 都道府県: 東京都/北海道/大阪府/京都府/xx県
+  // - 市区町村: "港区" "大田区" "横浜市" "札幌市" など
+  const m = s.match(
+    /(東京都|北海道|大阪府|京都府|.{2,3}県)([^0-9\s,、]{1,20}?(市|区|町|村))/u
+  );
+
+  if (!m) return null;
+
+  const pref = m[1];
+  const city = m[2];
+  return `${pref}${city}`;
+}
+
 function GoogleMark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className={className}>
@@ -499,11 +529,15 @@ export default function TimelineFeed({
         const initial = (display || "U").slice(0, 1).toUpperCase();
 
         const mapUrl = p.place_id
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_name ?? "place")}&query_place_id=${encodeURIComponent(p.place_id)}`
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+              p.place_name ?? "place"
+            )}&query_place_id=${encodeURIComponent(p.place_id)}`
           : p.place_address
           ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
           : null;
 
+        // ✅ 追加: 都道府県+市区町村ラベル
+        const areaLabel = extractPrefCity(p.place_address);
 
         // ✅ 正方形URL配列（friends timelineは統一のため squareのみ）
         const timelineImageUrls = getTimelineSquareUrls(p);
@@ -575,17 +609,27 @@ export default function TimelineFeed({
                     {p.place_name ? (
                       <div className="gm-chip inline-flex items-center gap-1 px-2 py-1 text-[11px] text-slate-800">
                         <MapPin size={13} className="opacity-70" />
+
                         {mapUrl ? (
                           <a
                             href={mapUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="max-w-[240px] truncate hover:underline"
+                            className="max-w-[280px] truncate hover:underline"
+                            title={p.place_address ?? undefined}
                           >
                             {p.place_name}
+                            {areaLabel ? (
+                              <span className="ml-2 text-slate-500">{areaLabel}</span>
+                            ) : null}
                           </a>
                         ) : (
-                          <span className="max-w-[240px] truncate">{p.place_name}</span>
+                          <span className="max-w-[280px] truncate" title={p.place_address ?? undefined}>
+                            {p.place_name}
+                            {areaLabel ? (
+                              <span className="ml-2 text-slate-500">({areaLabel})</span>
+                            ) : null}
+                          </span>
                         )}
                       </div>
                     ) : null}
@@ -647,7 +691,7 @@ export default function TimelineFeed({
                       eager={false}
                       preloadNeighbors={true}
                       fit="cover"
-                      aspect="square"   // ★これがないと square枠にならない
+                      aspect="square" // ★これがないと square枠にならない
                     />
                   </Link>
                 )}
@@ -685,7 +729,12 @@ export default function TimelineFeed({
               {/* Right panel (PC) */}
               <aside className="hidden md:block p-4">
                 {p.place_id ? (
-                  <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={8} maxThumbs={8} />
+                  <PlacePhotoGallery
+                    placeId={p.place_id}
+                    placeName={p.place_name}
+                    per={8}
+                    maxThumbs={8}
+                  />
                 ) : (
                   <div className="text-xs text-slate-400">写真を取得できませんでした</div>
                 )}
