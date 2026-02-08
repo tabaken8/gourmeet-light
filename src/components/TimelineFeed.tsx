@@ -499,10 +499,11 @@ export default function TimelineFeed({
         const initial = (display || "U").slice(0, 1).toUpperCase();
 
         const mapUrl = p.place_id
-          ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_name ?? "place")}&query_place_id=${encodeURIComponent(p.place_id)}`
           : p.place_address
           ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
           : null;
+
 
         // ✅ 正方形URL配列（friends timelineは統一のため squareのみ）
         const timelineImageUrls = getTimelineSquareUrls(p);
