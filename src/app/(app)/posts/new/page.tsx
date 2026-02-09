@@ -120,7 +120,11 @@ async function canvasToFile(
   opts: { mime: string; quality: number; ext: string }
 ): Promise<File> {
   const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), opts.mime, opts.quality);
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
+      opts.mime,
+      opts.quality
+    );
   });
   return new File([blob], `${nameBase}.${opts.ext}`, { type: opts.mime });
 }
@@ -145,7 +149,6 @@ function cropCenterSquare(bitmap: ImageBitmap) {
 
   return canvas;
 }
-
 
 /** 長辺指定で（アスペクト維持で）縮小キャンバスを作る */
 function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
@@ -253,7 +256,11 @@ async function prepareImage(file: File): Promise<PreparedImage> {
 }
 
 /** 同時実行数を制限する簡易プール */
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>) {
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, idx: number) => Promise<R>
+) {
   const results: R[] = new Array(items.length);
   let i = 0;
 
@@ -308,7 +315,11 @@ function ProgressPill({ ok, label }: { ok: boolean; label: string }) {
         ok ? "border-orange-200 bg-orange-50 text-orange-700" : "border-slate-200 bg-white text-slate-500",
       ].join(" ")}
     >
-      {ok ? <Check className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5 rounded-full border border-slate-300" />}
+      {ok ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <span className="h-3.5 w-3.5 rounded-full border border-slate-300" />
+      )}
       <span>{label}</span>
     </div>
   );
@@ -377,7 +388,8 @@ export default function NewPostPage() {
   // 価格
   const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
-  const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
+  const [priceRange, setPriceRange] =
+    useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
 
   // 来店日（任意）
   const [visitedOn, setVisitedOn] = useState<string>("");
@@ -398,8 +410,22 @@ export default function NewPostPage() {
       try {
         setIsSearchingPlace(true);
         const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
-        const data = await res.json();
-        setPlaceResults((data.results ?? []).slice(0, 6));
+        const data = await res.json().catch(() => ({}));
+
+        // ✅ Google Places TextSearch の結果を PlaceResult に整形
+        const normalized: PlaceResult[] = Array.isArray(data?.results)
+          ? data.results
+              .map((r: any) => ({
+                place_id: r?.place_id ?? "",
+                name: r?.name ?? "",
+                formatted_address:
+                  r?.formatted_address ?? r?.vicinity ?? r?.formattedAddress ?? "",
+              }))
+              .filter((r: PlaceResult) => r.place_id && r.name)
+              .slice(0, 6)
+          : [];
+
+        setPlaceResults(normalized);
       } catch (e) {
         console.error(e);
       } finally {
@@ -490,7 +516,8 @@ export default function NewPostPage() {
   const isContentComplete = content.trim().length > 0;
   const isPhotoComplete = imgs.length > 0;
   const isRecommendComplete = recommendSelected;
-  const isAllRequiredComplete = isPhotoComplete && isRecommendComplete && isPriceComplete && isContentComplete;
+  const isAllRequiredComplete =
+    isPhotoComplete && isRecommendComplete && isPriceComplete && isContentComplete;
 
   const progressRow = (
     <div className="flex flex-wrap gap-2">
@@ -526,28 +553,24 @@ export default function NewPostPage() {
   );
 
   /**
-   * ✅ places upsert（スキーマ一致）
-   * - places: place_id (PK), name, address, lat, lng, photo_url, place_types, primary_type, updated_at
+   * ✅ places ensure（投稿時に lat/lng まで埋める）
+   * - /api/places/ensure が Place Details を叩いて places を upsert する前提
+   * - 成功したら place_id を返す
    */
-  const upsertPlaceIfNeeded = async (): Promise<string | null> => {
+  const ensurePlaceWithLatLngIfNeeded = async (): Promise<string | null> => {
     if (!selectedPlace?.place_id) return null;
 
-    // /api/places が lat/lng/types/photo_url を返してない場合もあるので、
-    // ここでは最低限 "place_id/name/address" だけ upsert する（存在するカラムのみ）
-    const payload = {
-      place_id: selectedPlace.place_id,
-      name: selectedPlace.name ?? null,
-      address: selectedPlace.formatted_address ?? null,
-      updated_at: new Date().toISOString(),
-    };
+    const res = await fetch("/api/places/ensure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ placeId: selectedPlace.place_id }),
+    });
 
-    const { error } = await supabase
-      .from("places")
-      .upsert(payload, { onConflict: "place_id" });
-
-    if (error) {
-      throw new Error(`places upsert failed: ${error.message}`);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j?.error ?? "places の ensure に失敗しました");
     }
+
     return selectedPlace.place_id;
   };
 
@@ -556,15 +579,16 @@ export default function NewPostPage() {
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
     if (!imgs.length) return setMsg("写真を追加してください。");
     if (!recommendSelected) return setMsg("おすすめ度を選んでください。");
-    if (!isPriceComplete) return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
+    if (!isPriceComplete)
+      return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
     if (!content.trim()) return setMsg("本文を入力してください。");
 
     setBusy(true);
     setMsg(null);
 
     try {
-      // ✅ 先に places を upsert（FK回避）
-      const ensuredPlaceId = await upsertPlaceIfNeeded();
+      // ✅ 投稿時点で places を ensure（lat/lngまで埋める）
+      const ensuredPlaceId = await ensurePlaceWithLatLngIfNeeded();
 
       const CACHE = "31536000"; // 1年
       const bucket = supabase.storage.from("post-images");
@@ -616,7 +640,7 @@ export default function NewPostPage() {
 
       const visited_on = visitedOn ? visitedOn : null;
 
-      const place_id = ensuredPlaceId; // ✅ upsert 済み or null
+      const place_id = ensuredPlaceId; // ✅ ensure済み or null
       const place_name = selectedPlace?.name ?? null;
       const place_address = selectedPlace?.formatted_address ?? null;
 
@@ -661,7 +685,9 @@ export default function NewPostPage() {
     <main className="min-h-screen bg-orange-50 text-slate-800">
       <div className="w-full pb-32 pt-6">
         <header className="border-b border-orange-100 bg-white/70 p-3 backdrop-blur">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">New Post</h1>
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+            New Post
+          </h1>
           <p className="mt-1 text-sm text-slate-600">いまの “おいしい” を、写真と一緒にふわっと残す。</p>
           <div className="mt-3">{progressRow}</div>
         </header>
@@ -709,7 +735,9 @@ export default function NewPostPage() {
               tabIndex={0}
               className={[
                 "cursor-pointer rounded-2xl border-2 border-dashed p-4 transition",
-                imgs.length ? "border-orange-100 bg-orange-50/40 hover:bg-orange-50/60" : "border-orange-200 bg-orange-50/60 hover:bg-orange-50",
+                imgs.length
+                  ? "border-orange-100 bg-orange-50/40 hover:bg-orange-50/60"
+                  : "border-orange-200 bg-orange-50/60 hover:bg-orange-50",
               ].join(" ")}
             >
               <div className="flex items-center gap-3">
@@ -721,8 +749,12 @@ export default function NewPostPage() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">{imgs.length ? "写真を追加する" : "ここに写真を追加"}</div>
-                  <div className="mt-0.5 text-[12px] text-slate-500">{processing ? "変換 / 生成中…" : "タップして選択、またはドラッグ＆ドロップ"}</div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    {imgs.length ? "写真を追加する" : "ここに写真を追加"}
+                  </div>
+                  <div className="mt-0.5 text-[12px] text-slate-500">
+                    {processing ? "変換 / 生成中…" : "タップして選択、またはドラッグ＆ドロップ"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -747,7 +779,11 @@ export default function NewPostPage() {
                   {imgs.map((img) => (
                     <div key={img.id} className="relative shrink-0">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img.previewUrl} alt={img.label} className="h-24 w-24 rounded-2xl object-cover shadow-sm" />
+                      <img
+                        src={img.previewUrl}
+                        alt={img.label}
+                        className="h-24 w-24 rounded-2xl object-cover shadow-sm"
+                      />
                       <button
                         type="button"
                         onClick={() => removeImage(img.id)}
@@ -883,7 +919,9 @@ export default function NewPostPage() {
                 </div>
               )}
 
-              {priceMode === "exact" && !isPriceComplete && <div className="text-[12px] text-slate-500">実額を入力してください。</div>}
+              {priceMode === "exact" && !isPriceComplete && (
+                <div className="text-[12px] text-slate-500">実額を入力してください。</div>
+              )}
             </div>
           </Section>
 
@@ -1008,8 +1046,7 @@ export default function NewPostPage() {
                 )}
               </div>
 
-              <div className="text-[11px] text-slate-500">
-              </div>
+              <div className="text-[11px] text-slate-500" />
             </div>
           </Section>
 
@@ -1025,7 +1062,9 @@ export default function NewPostPage() {
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-700">{isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}</div>
+              <div className="text-[12px] font-semibold text-slate-700">
+                {isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}
+              </div>
               <div className="mt-1">{progressRow}</div>
             </div>
 
@@ -1035,7 +1074,9 @@ export default function NewPostPage() {
               disabled={busy || processing || !isAllRequiredComplete}
               className={[
                 "inline-flex h-11 shrink-0 items-center justify-center rounded-full px-6 text-sm font-bold shadow-sm transition",
-                busy || processing || !isAllRequiredComplete ? "bg-orange-200 text-white opacity-80" : "bg-orange-600 text-white hover:bg-orange-700",
+                busy || processing || !isAllRequiredComplete
+                  ? "bg-orange-200 text-white opacity-80"
+                  : "bg-orange-600 text-white hover:bg-orange-700",
               ].join(" ")}
             >
               {processing ? "画像生成中…" : busy ? "投稿中…" : "投稿する"}
