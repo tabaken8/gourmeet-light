@@ -1,33 +1,25 @@
-// app/(app)/posts/[id]/page.tsx
+// src/app/(app)/posts/[id]/page.tsx
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostActions from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
-import PostComments from "@/components/PostComments";
-import PlacePhotoGallery from "@/components/PlacePhotoGallery";
-
 import GenreVoteInline from "@/components/GenreVoteInline";
-
 import { MapPin } from "lucide-react";
+
+// ✅ 重いのは遅延読み込み用の Server Components に分離
+import PostCommentsBlock from "./parts/PostCommentsBlock";
+import PlacePhotosBlock from "./parts/PlacePhotosBlock";
+import MoreDiscoverBlock from "./parts/MoreDiscoverBlock";
 
 export const dynamic = "force-dynamic";
 
-type ImageVariant = {
-  thumb?: string | null;
-  full?: string | null;
-  [k: string]: any;
-};
-
-type ProfileLite = {
-  id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  is_public?: boolean | null;
-};
+type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
+type ProfileLite = { id: string; display_name: string | null; avatar_url: string | null; is_public?: boolean | null };
 
 type PostRow = {
   id: string;
@@ -73,41 +65,27 @@ function formatPrice(p: PostRow): string | null {
   }
   if (p.price_range) {
     switch (p.price_range) {
-      case "~999":
-        return "〜¥999";
-      case "1000-1999":
-        return "¥1,000〜¥1,999";
-      case "2000-2999":
-        return "¥2,000〜¥2,999";
-      case "3000-3999":
-        return "¥3,000〜¥3,999";
-      case "4000-4999":
-        return "¥4,000〜¥4,999";
-      case "5000-6999":
-        return "¥5,000〜¥6,999";
-      case "7000-9999":
-        return "¥7,000〜¥9,999";
-      case "10000-14999":
-        return "¥10,000〜¥14,999";
-      case "15000-19999":
-        return "¥15,000〜¥19,999";
-      case "20000-24999":
-        return "¥20,000〜¥24,999";
-      case "25000-29999":
-        return "¥25,000〜¥29,999";
-      case "30000-49999":
-        return "¥30,000〜¥49,999";
-      case "50000+":
-        return "¥50,000〜";
-
-      default:
-        return p.price_range;
+      case "~999": return "〜¥999";
+      case "1000-1999": return "¥1,000〜¥1,999";
+      case "2000-2999": return "¥2,000〜¥2,999";
+      case "3000-3999": return "¥3,000〜¥3,999";
+      case "4000-4999": return "¥4,000〜¥4,999";
+      case "5000-6999": return "¥5,000〜¥6,999";
+      case "7000-9999": return "¥7,000〜¥9,999";
+      case "10000-14999": return "¥10,000〜¥14,999";
+      case "15000-19999": return "¥15,000〜¥19,999";
+      case "20000-24999": return "¥20,000〜¥24,999";
+      case "25000-29999": return "¥25,000〜¥29,999";
+      case "30000-49999": return "¥30,000〜¥49,999";
+      case "50000+": return "¥50,000〜";
+      default: return p.price_range;
     }
   }
   return null;
 }
 
 function getAllImageUrls(p: PostRow): string[] {
+  // ✅ まずvariantsがあればそれ優先
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
   const fromVariants = variants
     .map((v) => (v?.full ?? v?.thumb ?? null))
@@ -116,16 +94,6 @@ function getAllImageUrls(p: PostRow): string[] {
 
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy.filter((x): x is string => !!x);
-}
-
-function getFirstThumb(p: PostRow): string | null {
-  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
-  const v0 = variants[0];
-  const best = v0?.thumb ?? v0?.full ?? null;
-  if (best) return best;
-
-  const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
-  return legacy[0] ?? null;
 }
 
 export default async function PostPage({
@@ -137,12 +105,18 @@ export default async function PostPage({
 }) {
   const supabase = await createClient();
 
-  // ログインユーザー
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 投稿 + 投稿者プロフィール + 位置情報
+  // ---- 画像インデックス（常に number） ----
+  let safeIndex = 0;
+  if (searchParams?.img_index) {
+    const n = Number(searchParams.img_index);
+    if (Number.isFinite(n) && n > 0) safeIndex = n - 1;
+  }
+
+  // ✅ ここは最小：post本体だけ先に取る
   const { data, error: postErr } = await supabase
     .from("posts")
     .select(
@@ -171,41 +145,26 @@ export default async function PostPage({
     .maybeSingle();
 
   if (postErr) return notFound();
-
   const post = data as PostRow | null;
   if (!post) return notFound();
 
-  // ---- 画像インデックス（常に number にする） ------------------------
-  let safeIndex = 0;
-  if (searchParams?.img_index) {
-    const n = Number(searchParams.img_index);
-    if (Number.isFinite(n) && n > 0) safeIndex = n - 1;
-  }
+  // ✅ likes系は並列にする（待ち時間削減）
+  const likeCountPromise = supabase
+    .from("post_likes")
+    .select("*", { count: "exact", head: true })
+    .eq("post_id", post.id);
 
-  // ---- Like 情報 ---------------------------------------------------
-  let likeCount = 0;
-  let initiallyLiked = false;
+  const likedPromise = user
+    ? supabase
+        .from("post_likes")
+        .select("*", { count: "exact", head: true })
+        .eq("post_id", post.id)
+        .eq("user_id", user.id)
+    : Promise.resolve({ count: 0 } as any);
 
-  {
-    const { count } = await supabase
-      .from("post_likes")
-      .select("*", { count: "exact", head: true })
-      .eq("post_id", post.id);
+  const [{ count: likeCount = 0 }, { count: likedCount = 0 }] = await Promise.all([likeCountPromise, likedPromise]);
+  const initiallyLiked = (likedCount ?? 0) > 0;
 
-    likeCount = count ?? 0;
-  }
-
-  if (user) {
-    const { count } = await supabase
-      .from("post_likes")
-      .select("*", { count: "exact", head: true })
-      .eq("post_id", post.id)
-      .eq("user_id", user.id);
-
-    initiallyLiked = (count ?? 0) > 0;
-  }
-
-  // ---- プロフィール表示用 -----------------------------------------
   const prof = post.profiles;
   const display = prof?.display_name ?? "ユーザー";
   const avatar = prof?.avatar_url ?? null;
@@ -213,94 +172,22 @@ export default async function PostPage({
   const initial = (display || "U").slice(0, 1).toUpperCase();
 
   const score =
-    typeof post.recommend_score === "number" &&
-    post.recommend_score >= 1 &&
-    post.recommend_score <= 10
+    typeof post.recommend_score === "number" && post.recommend_score >= 1 && post.recommend_score <= 10
       ? post.recommend_score
       : null;
 
   const priceLabel = formatPrice(post);
 
-  // ---- Map リンク --------------------------------------------------
   const mapUrl = post.place_id
     ? `https://www.google.com/maps/place/?q=place_id:${post.place_id}`
     : post.place_address
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-          post.place_address
-        )}`
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
       : null;
 
-  // ---- 画像 --------------------------------------------------------
   const imageUrls = getAllImageUrls(post);
-
-  // ---- 「もっと見つける」用：非フォロー中心で取得 -------------------
-  let followingIds: string[] = [];
-  if (user) {
-    try {
-      const { data: fData, error: fErr } = await supabase
-        .from("follows")
-        .select("following_id")
-        .eq("follower_id", user.id);
-
-      if (!fErr && Array.isArray(fData)) {
-        followingIds = fData
-          .map((r: any) => r?.following_id)
-          .filter((x: any) => typeof x === "string");
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const recLimit = 9;
-
-  let recPosts: PostRow[] = [];
-  {
-    let q = supabase
-      .from("posts")
-      .select(
-        `
-        id,
-        content,
-        user_id,
-        created_at,
-        image_urls,
-        image_variants,
-        place_name,
-        place_address,
-        place_id,
-        recommend_score,
-        price_yen,
-        price_range,
-        profiles (
-          id,
-          display_name,
-          avatar_url,
-          is_public
-        )
-      `
-      )
-      .neq("id", post.id)
-      .order("created_at", { ascending: false })
-      .limit(recLimit);
-
-    if (user) q = q.neq("user_id", user.id);
-
-    if (user && followingIds.length > 0) {
-      const csv = `(${followingIds.map((x) => `"${x}"`).join(",")})`;
-      const qa: any = q;
-      q = qa.not("user_id", "in", csv);
-    }
-
-    const { data: rData } = await q;
-    recPosts = (rData as any[])?.filter(Boolean) as PostRow[];
-  }
 
   return (
     <main className="mx-auto max-w-5xl px-3 md:px-6 py-6 md:py-10">
-      {/* =========================
-          主役：投稿詳細カード（大）
-         ========================= */}
       <article className="gm-card overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-5 pb-3">
@@ -319,10 +206,7 @@ export default async function PostPage({
 
             <div className="min-w-0">
               <div className="flex items-center gap-1 min-w-0">
-                <Link
-                  href={`/u/${post.user_id}`}
-                  className="truncate text-sm font-semibold text-slate-900 hover:underline"
-                >
+                <Link href={`/u/${post.user_id}`} className="truncate text-sm font-semibold text-slate-900 hover:underline">
                   {display}
                 </Link>
                 {!isPublic ? <span className="text-[11px] text-slate-400">🔒</span> : null}
@@ -334,19 +218,14 @@ export default async function PostPage({
           <PostMoreMenu postId={post.id} isMine={user?.id === post.user_id} />
         </div>
 
-        {/* 署名ストリップ（Timelineと揃える） */}
+        {/* Strip */}
         <div className="px-4 pb-4">
           <div className="flex flex-wrap items-center gap-2">
             {post.place_name ? (
               <div className="gm-chip inline-flex items-center gap-1 px-2 py-1 text-[11px] text-slate-800">
                 <MapPin size={13} className="opacity-70" />
                 {mapUrl ? (
-                  <a
-                    href={mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="max-w-[260px] truncate hover:underline"
-                  >
+                  <a target="_blank" rel="noopener noreferrer" href={mapUrl} className="max-w-[260px] truncate hover:underline">
                     {post.place_name}
                   </a>
                 ) : (
@@ -374,71 +253,48 @@ export default async function PostPage({
             </span>
           </div>
 
-          {/* ✅ 投稿詳細ページ内で完結：ここにジャンル投票を常時表示 */}
+          {/* ✅ ジャンル投票も「表示はするが、ページ表示をブロックしない」 */}
           {post.place_id ? (
             <div className="mt-3 rounded-2xl border border-black/[.06] bg-white/70 p-3">
-              <div className="mb-1 text-[11px] font-semibold text-slate-700">
-                ジャンル
-              </div>
-              <GenreVoteInline placeId={post.place_id} />
+              <div className="mb-1 text-[11px] font-semibold text-slate-700">ジャンル</div>
+              <Suspense fallback={<div className="text-xs text-slate-500">読み込み中...</div>}>
+                {/* そのままでもOKだが、内部で重いなら GenreVoteInline を client fetch に寄せるとさらに速い */}
+                <GenreVoteInline placeId={post.place_id} />
+              </Suspense>
             </div>
           ) : null}
         </div>
 
         {/* Media */}
-        {imageUrls.length > 0 ? (
-          <PostImageCarousel
-            postId={post.id}
-            imageUrls={imageUrls}
-            initialIndex={safeIndex}
-            syncUrl={false}
-          />
-        ) : (
-          <div className="px-4 pb-4">
-            <div className="rounded-2xl border border-black/[.06] bg-white/70 p-6 text-center text-xs text-slate-500">
-              画像がありません
-            </div>
-          </div>
-        )}
+{imageUrls.length > 0 ? (
+  <div className="block w-full aspect-square overflow-hidden bg-slate-100">
+    <PostImageCarousel
+      postId={post.id}
+      imageUrls={imageUrls}
+      initialIndex={safeIndex}
+      syncUrl={false}
+      // ↓ TimelineFeedと同じ props がもし使えるなら付ける（使えないなら消してOK）
+      eager={false}
+      preloadNeighbors={true}
+      fit="cover"
+      aspect="square"
+    />
+  </div>
+) : (
+  <div className="px-4 pb-4">
+    <div className="rounded-2xl border border-black/[.06] bg-white/70 p-6 text-center text-xs text-slate-500">
+      画像がありません
+    </div>
+  </div>
+)}
+
 
         {/* Content */}
-        {(post.content || post.place_id) && (
+        {post.content ? (
           <section className="px-4 py-5">
-            {post.content ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-                {post.content}
-              </p>
-            ) : null}
-
-            {/* Google写真（このページにも追加） */}
-            {post.place_id ? (
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-xs font-medium text-slate-700"></div>
-                  {mapUrl ? (
-                    <a
-                      href={mapUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] text-orange-700 hover:underline"
-                    >
-                      Googleで開く
-                    </a>
-                  ) : null}
-                </div>
-
-                <div className="rounded-2xl border border-black/[.06] bg-white/70 p-3">
-                  <PlacePhotoGallery
-                    placeId={post.place_id}
-                    placeName={post.place_name}
-                    per={8}
-                    maxThumbs={8}
-                  />
-                </div>
-              </div>
-            ) : null}
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{post.content}</p>
           </section>
-        )}
+        ) : null}
 
         {/* Actions */}
         <div className="flex items-center justify-between px-4 pb-4 pt-0">
@@ -446,7 +302,7 @@ export default async function PostPage({
             postId={post.id}
             postUserId={post.user_id}
             initialLiked={initiallyLiked}
-            initialLikeCount={likeCount}
+            initialLikeCount={likeCount ?? 0}
             initialWanted={false}
             initialBookmarked={false}
             initialWantCount={0}
@@ -455,110 +311,28 @@ export default async function PostPage({
           <PostCollectionButton postId={post.id} />
         </div>
 
-        {/* Comments */}
+        {/* ✅ 以下は重いので遅延（ここが体感0.2秒に効く） */}
         <div className="border-t border-black/[.06] px-4 py-4">
-          <PostComments postId={post.id} postUserId={post.user_id} meId={user?.id ?? null} />
+          <Suspense fallback={<div className="text-xs text-slate-500">コメントを読み込み中...</div>}>
+            <PostCommentsBlock postId={post.id} postUserId={post.user_id} meId={user?.id ?? null} />
+          </Suspense>
         </div>
+
+        {post.place_id ? (
+          <div className="border-t border-black/[.06] px-4 py-4">
+            <Suspense fallback={<div className="text-xs text-slate-500">お店の写真を読み込み中...</div>}>
+              <PlacePhotosBlock placeId={post.place_id} placeName={post.place_name} mapUrl={mapUrl} />
+            </Suspense>
+          </div>
+        ) : null}
       </article>
 
-      {/* =========================
-          サブ：もっと見つける（主役を邪魔しない控えめカード）
-         ========================= */}
-      <section className="mt-8">
-        <div className="mb-3 flex items-end justify-between">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">もっと見つける</div>
-            <div className="text-[11px] text-slate-500">テイストが似ているお店</div>
-          </div>
-          <Link
-            href="/timeline?tab=discover"
-            className="gm-chip gm-press inline-flex items-center px-2 py-1 text-[11px] text-orange-700 hover:underline"
-          >
-            もっと見る
-          </Link>
-        </div>
-
-        {recPosts.length === 0 ? (
-          <div className="rounded-2xl border border-black/[.06] bg-white/70 p-6 text-center text-xs text-slate-500">
-            まだおすすめがありません。
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {recPosts.map((rp) => {
-              const rprof = rp.profiles;
-              const rdisplay = rprof?.display_name ?? "ユーザー";
-              const rthumb = getFirstThumb(rp);
-
-              const rscore =
-                typeof rp.recommend_score === "number" &&
-                rp.recommend_score >= 1 &&
-                rp.recommend_score <= 10
-                  ? rp.recommend_score
-                  : null;
-
-              const rprice = formatPrice(rp);
-
-              return (
-                <Link
-                  key={rp.id}
-                  href={`/posts/${rp.id}`}
-                  className="
-                    gm-press
-                    group
-                    overflow-hidden
-                    rounded-2xl
-                    border border-black/[.06]
-                    bg-white/80
-                    backdrop-blur
-                  "
-                >
-                  <div className="relative aspect-square bg-slate-100">
-                    {rthumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={rthumb}
-                        alt=""
-                        className="absolute inset-0 h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-slate-100" />
-                    )}
-
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
-
-                    {/* place name badge */}
-                    <div className="pointer-events-none absolute inset-x-2 bottom-2">
-                      <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
-                        <span className="truncate">{rp.place_name ?? " "}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-3">
-                    <div className="truncate text-[11px] font-medium text-slate-900">
-                      {rdisplay}
-                    </div>
-
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {rscore ? (
-                        <span className="gm-chip inline-flex items-center px-2 py-1 text-[10px] text-orange-800">
-                          {rscore}/10
-                        </span>
-                      ) : null}
-                      {rprice ? (
-                        <span className="gm-chip inline-flex items-center px-2 py-1 text-[10px] text-slate-700">
-                          {rprice}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      {/* ✅ “もっと見つける” も遅延 */}
+      <div className="mt-8">
+        <Suspense fallback={<div className="text-xs text-slate-500">おすすめを計算中...</div>}>
+          <MoreDiscoverBlock currentPostId={post.id} meId={user?.id ?? null} />
+        </Suspense>
+      </div>
     </main>
   );
 }

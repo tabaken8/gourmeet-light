@@ -369,7 +369,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
             </div>
           </section>
 
-          {canViewPosts ? <ProfileYearStats userId={userId} scope="public" /> : null}
+          {/* {canViewPosts ? <ProfileYearStats userId={userId} scope="public" /> : null} */}
 
           {/* ヒートマップ（この部分は継承） */}
           {canViewPosts ? (
@@ -400,12 +400,12 @@ export default async function UserPublicPage({ params }: { params: { id: string 
           </section>
 
           {/* 行きたいリスト（そのまま。必要なら後でAlbum化） */}
-          <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
+          {/* <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
             <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">行きたい店リスト (随時実装予定)</h2>
             <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
               （このセクションは現状維持）
             </div>
-          </section>
+          </section> */}
         </div>
       </div>
     </main>

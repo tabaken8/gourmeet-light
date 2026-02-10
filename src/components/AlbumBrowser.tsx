@@ -238,7 +238,7 @@ export default function AlbumBrowser({
   // ---------------------
   function PostGrid({ items }: { items: AlbumPost[] }) {
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-3 gap-0">
         {items.map((p) => {
           const place = p.places;
           const pid = p.place_id ?? place?.place_id ?? null;
@@ -289,7 +289,7 @@ export default function AlbumBrowser({
                       title="ピン（全体表示の最上部に固定）"
                     >
                       <Pin size={12} />
-                      {pinnedHere ? "固定中" : "ピン"}
+                      {pinnedHere ? "" : "ピン"}
                     </button>
                   </div>
                 ) : null}
@@ -300,6 +300,27 @@ export default function AlbumBrowser({
       </div>
     );
   }
+function TileGrid({ items }: { items: AlbumPost[] }) {
+  return (
+    <div className="grid grid-cols-3 gap-0">
+      {items.map((p) => {
+        const thumb = getThumbUrl(p);
+        return (
+          <Link
+            key={p.id}
+            href={`/posts/${encodeURIComponent(String(p.id))}`}
+            className="relative block aspect-square bg-orange-50"
+          >
+            {thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={thumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            ) : null}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
   // ---------------------
   // header controls
