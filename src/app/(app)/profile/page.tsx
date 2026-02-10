@@ -430,7 +430,7 @@ const { data } = await supabase
               </Link>
             </div>
 
-            <AlbumBrowser posts={albumPosts} isOwner={true} />
+            <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={true} />
 
           </section>
 

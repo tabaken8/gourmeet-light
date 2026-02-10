@@ -392,7 +392,8 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             ) : (
-            <AlbumBrowser posts={albumPosts} isOwner={me.id === userId} pinnedPlaceIdsInitial={pinnedPlaceIds} />
+            <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={false} />
+
 
 
             )}
