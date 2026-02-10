@@ -1,12 +1,10 @@
-// src/app/(app)/profile/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { Globe2, Lock, Plus } from "lucide-react";
 
-// ✅ 遅延ブロック
-import ProfileStatsBlock from "./parts/ProfileStatsBlock";
+// ✅ 遅延ブロック（statsは呼ばない）
 import HeatmapBlock from "./parts/HeatmapBlock";
 import AlbumBlock from "./parts/AlbumBlock";
 
@@ -24,7 +22,7 @@ export default async function AccountPage() {
   // ✅ プロフィール（軽い）
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, bio, avatar_url, username, is_public, header_image_url")
+    .select("display_name, bio, avatar_url, username, is_public") // ✅ header_image_url を取らない
     .eq("id", user.id)
     .single();
 
@@ -33,7 +31,6 @@ export default async function AccountPage() {
   const avatarUrl = profile?.avatar_url ?? "";
   const username = profile?.username ?? "";
   const isPublic = profile?.is_public ?? true;
-  const headerImageUrl = profile?.header_image_url ?? null;
 
   // Joined 表示
   let joinedLabel: string | null = null;
@@ -70,181 +67,144 @@ export default async function AccountPage() {
 
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      <div className="mx-auto w-full max-w-none px-3 py-4 md:max-w-4xl md:px-6 md:py-8">
-        <div className="flex flex-col gap-5 md:gap-6">
-          {/* プロフィールヘッダー（即表示） */}
-          <section className="overflow-hidden rounded-3xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur">
-            <div className="relative">
-              {/* カバー */}
-              <div className="relative z-0 h-28 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-36">
-                {headerImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={headerImageUrl} alt="header" className="h-full w-full object-cover" />
-                ) : null}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-orange-900/25 via-orange-500/5 to-transparent" />
-
-                {!isPublic ? (
-                  <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/35 px-3 py-1 text-xs font-medium text-white backdrop-blur">
-                    <Lock size={14} />
-                    <span>非公開アカウント</span>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* 本文 */}
-              <div className="px-4 pb-5 md:px-6 md:pb-6">
-                <div className="-mt-9 flex flex-col gap-3 md:-mt-14 md:flex-row md:items-start md:justify-between">
-                  <div className="flex items-start gap-3 md:gap-5">
-                    <div className="relative z-10 shrink-0">
-                      {avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={avatarUrl}
-                          alt="avatar"
-                          className="h-16 w-16 rounded-full border-4 border-white bg-orange-100 object-cover shadow-md md:h-24 md:w-24"
-                        />
-                      ) : (
-                        <div className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-orange-100 text-xl font-bold text-orange-700 shadow-md md:h-24 md:w-24">
-                          {displayName.slice(0, 1).toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-4 md:pt-10">
-                      <div className="inline-block rounded-2xl bg-white/70 px-3 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.06)] ring-1 ring-black/5 backdrop-blur">
-                        <h1 className="text-lg font-bold tracking-tight text-slate-900 md:text-2xl leading-tight">
-                          {displayName}
-                        </h1>
-
-                        {username ? (
-                          <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
-                        ) : null}
-
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
-                          <span className="inline-flex items-center gap-1">
-                            {isPublic ? (
-                              <>
-                                <Globe2 size={14} />
-                                <span>公開プロフィール</span>
-                              </>
-                            ) : (
-                              <>
-                                <Lock size={14} />
-                                <span>非公開プロフィール</span>
-                              </>
-                            )}
-                          </span>
-
-                          {joinedLabel ? (
-                            <>
-                              <span className="h-1 w-1 rounded-full bg-slate-400" />
-                              <span>{joinedLabel} から利用</span>
-                            </>
-                          ) : null}
-                        </div>
+      {/* ✅ 横はみ出し防止 */}
+      <div className="w-full overflow-x-hidden pb-24 pt-6">
+        {/* ✅ PCだけ中央寄せ。スマホはフル幅 */}
+        <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
+          {/* =========================
+              PROFILE (NO HEADER IMAGE)
+             ========================= */}
+          <section className="w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
+            <div className="px-4 py-5 md:px-6 md:py-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                {/* left: avatar + name */}
+                <div className="flex items-start gap-4 min-w-0">
+                  <div className="shrink-0">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={avatarUrl}
+                        alt="avatar"
+                        className="h-20 w-20 rounded-full border border-black/[.06] bg-orange-100 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full border border-black/[.06] bg-orange-100 text-2xl font-bold text-orange-700">
+                        {displayName.slice(0, 1).toUpperCase()}
                       </div>
-                    </div>
+                    )}
                   </div>
 
-                  <div className="md:pt-4">
-                    <Link
-                      href="/profile/edit"
-                      className="inline-flex w-full items-center justify-center rounded-full border border-orange-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-orange-400 hover:bg-orange-50 md:w-auto md:text-xs md:font-medium md:py-1.5"
-                    >
-                      プロフィールを編集
-                    </Link>
+                  <div className="min-w-0">
+                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
+                      {displayName}
+                    </h1>
+
+                    {username ? (
+                      <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
+                    ) : null}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
+                      <span className="inline-flex items-center gap-1">
+                        {isPublic ? (
+                          <>
+                            <Globe2 size={14} />
+                            <span>公開プロフィール</span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock size={14} />
+                            <span>非公開プロフィール</span>
+                          </>
+                        )}
+                      </span>
+
+                      {joinedLabel ? (
+                        <>
+                          <span className="h-1 w-1 rounded-full bg-slate-300" />
+                          <span>{joinedLabel} から利用</span>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 
-                {bio ? <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p> : null}
-
-                <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
-                  <li className="flex items-center gap-1.5">
-                    <span className="font-semibold text-slate-900">{postsCount}</span>
-                    <span>投稿</span>
-                  </li>
-
-                  <li className="flex items-center gap-1.5">
-                    <Link href={`/u/${user.id}/following`} className="flex items-center gap-1.5 hover:underline">
-                      <span className="font-semibold text-slate-900">{followingCount}</span>
-                      <span>フォロー中</span>
-                    </Link>
-                  </li>
-
-                  <li className="flex items-center gap-1.5">
-                    <Link href={`/u/${user.id}/followers`} className="flex items-center gap-1.5 hover:underline">
-                      <span className="font-semibold text-slate-900">{followersCount}</span>
-                      <span>フォロワー</span>
-                    </Link>
-                  </li>
-
-                  <li className="flex items-center gap-1.5">
-                    <span className="font-semibold text-slate-900">{wantsCount}</span>
-                    <span>行きたい</span>
-                  </li>
-                </ul>
+                {/* right: actions */}
+                <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
+                  <Link
+                    href="/profile/edit"
+                    className="inline-flex w-full items-center justify-center rounded-none border border-black/[.08] bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 md:w-auto md:text-xs md:py-2"
+                  >
+                    プロフィールを編集
+                  </Link>
+                </div>
               </div>
+
+              {bio ? (
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p>
+              ) : null}
+
+              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
+                <li className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-900">{postsCount}</span>
+                  <span>投稿</span>
+                </li>
+
+                <li className="flex items-center gap-1.5">
+                  <Link href={`/u/${user.id}/following`} className="flex items-center gap-1.5 hover:underline">
+                    <span className="font-semibold text-slate-900">{followingCount}</span>
+                    <span>フォロー中</span>
+                  </Link>
+                </li>
+
+                <li className="flex items-center gap-1.5">
+                  <Link href={`/u/${user.id}/followers`} className="flex items-center gap-1.5 hover:underline">
+                    <span className="font-semibold text-slate-900">{followersCount}</span>
+                    <span>フォロワー</span>
+                  </Link>
+                </li>
+
+                <li className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-900">{wantsCount}</span>
+                  <span>行きたい</span>
+                </li>
+              </ul>
             </div>
           </section>
 
-          {/* ✅ 年間統計：遅延 */}
-          {/* <Suspense
-            fallback={
-              <section className="rounded-3xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
-                <div className="h-5 w-40 rounded bg-orange-100/70" />
-                <div className="mt-3 h-28 rounded-xl border border-orange-50 bg-orange-50/60" />
-              </section>
-            }
-          > */}
-            {/* <ProfileStatsBlock userId={user.id} /> */}
-          {/* </Suspense> */}
-
-          {/* ✅ ヒートマップ：遅延 */}
+          {/* =========================
+              HEATMAP (LAZY)
+             ========================= */}
           <Suspense
             fallback={
-              <section className="rounded-3xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
-                <div className="h-5 w-32 rounded bg-orange-100/70" />
-                <div className="mt-3 h-32 rounded-xl border border-orange-50 bg-orange-50/60" />
+              <section className="w-full bg-white rounded-none border border-black/[.06] p-4">
+                <div className="h-5 w-32 bg-slate-100" />
+                <div className="mt-3 h-32 border border-black/[.06] bg-white" />
               </section>
             }
           >
             <HeatmapBlock userId={user.id} />
           </Suspense>
 
-          {/* ✅ 投稿（AlbumBrowser）：遅延
-              - スマホだけ左右余白0（端まで）
-              - 見出し/ボタンは今まで通り余白あり
-           */}
-          <section
-            className="
-              rounded-3xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur
-              p-0
-              -mx-3 md:mx-0
-              overflow-hidden
-            "
-          >
-            {/* ヘッダーは余白あり */}
-            <div className="p-4 md:p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
+          {/* =========================
+              POSTS (ALBUM)
+             ========================= */}
+          <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
 
-                <Link
-                  href="/posts/new"
-                  className="inline-flex h-10 items-center gap-2 rounded-full bg-orange-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 md:h-9 md:text-xs"
-                >
-                  <Plus size={16} />
-                  Post
-                </Link>
-              </div>
+              <Link
+                href="/posts/new"
+                className="inline-flex h-10 items-center gap-2 rounded-none bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700 md:h-9 md:text-xs"
+              >
+                <Plus size={16} />
+                Post
+              </Link>
             </div>
 
-            {/* ✅ Album本体（ここが端まで） */}
             <Suspense
               fallback={
-                <div className="px-4 pb-5 md:px-5">
-                  <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
-                    投稿を読み込み中...
-                  </div>
+                <div className="border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
+                  投稿を読み込み中...
                 </div>
               }
             >

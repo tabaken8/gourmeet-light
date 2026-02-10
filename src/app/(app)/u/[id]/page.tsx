@@ -1,10 +1,8 @@
-// src/app/(app)/u/[id]/page.tsx
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import FollowButton from "@/components/FollowButton";
 import { Globe2, Lock } from "lucide-react";
-import ProfileYearStats from "@/components/ProfileYearStats";
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
 import AlbumBrowser, { type AlbumPost } from "@/components/AlbumBrowser";
 
@@ -18,10 +16,9 @@ function formatJstYmdFromIso(iso: string): string {
     month: "2-digit",
     day: "2-digit",
   });
-  return dtf.format(new Date(iso)); // YYYY-MM-DD
+  return dtf.format(new Date(iso));
 }
 
-/** 代表日付：visited_on があればそれ、無ければ created_at の JST日付 */
 function getRepresentativeDayKey(r: any): string {
   if (r?.visited_on) return String(r.visited_on);
   if (r?.created_at) return formatJstYmdFromIso(String(r.created_at));
@@ -48,10 +45,10 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   // 自分のページなら /profile へ
   if (userId === me.id) redirect("/profile");
 
-  // プロフィール取得
+  // プロフィール取得（✅ header_image_url を取らない）
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, display_name, bio, avatar_url, is_public, header_image_url")
+    .select("id, username, display_name, bio, avatar_url, is_public")
     .eq("id", userId)
     .maybeSingle();
 
@@ -62,7 +59,6 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   const bio = profile.bio || "";
   const avatarUrl = profile.avatar_url || "";
   const isPublic = profile.is_public ?? true;
-  const headerImageUrl = profile.header_image_url || null;
 
   // 自分 → 相手（フォロー状態）
   let initiallyFollowing = false;
@@ -92,7 +88,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
 
   if (reverseRel) isFollowing = true;
 
-  // 統計（accepted のみ）
+  // 統計
   const [
     { count: postsCount = 0 },
     { count: followersCount = 0 },
@@ -117,7 +113,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   const canViewPosts = isPublic || initiallyFollowing;
 
   // -----------------------------
-  // ✅ ヒートマップ用データ（元のロジックを維持）
+  // heatmap data
   // -----------------------------
   let heatmapDays: HeatmapDay[] = [];
 
@@ -207,37 +203,36 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   }
 
   // -----------------------------
-  // ✅ AlbumBrowser 用（places join）+ places正規化
+  // AlbumBrowser posts
   // -----------------------------
   let albumPosts: AlbumPost[] = [];
   if (canViewPosts) {
     const { data } = await supabase
-  .from("posts")
-  .select(`
-    id,
-    place_id,
-    created_at,
-    visited_on,
-    recommend_score,
-    image_urls,
-    image_variants,
-    places:places (
-      place_id,
-      name,
-      address,
-      photo_url,
-      primary_genre,
-      genre_tags,
-      area_label_ja,
-      area_label_en,
-      area_key,
-      country_name,
-      search_text
-    )
-  `)
-
-      
-      
+      .from("posts")
+      .select(
+        `
+        id,
+        place_id,
+        created_at,
+        visited_on,
+        recommend_score,
+        image_urls,
+        image_variants,
+        places:places (
+          place_id,
+          name,
+          address,
+          photo_url,
+          primary_genre,
+          genre_tags,
+          area_label_ja,
+          area_label_en,
+          area_key,
+          country_name,
+          search_text
+        )
+      `
+      )
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(400);
@@ -246,7 +241,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   }
 
   // -----------------------------
-  // ✅ ピン（閲覧者=自分のピン）
+  // Pins (viewer = me)
   // -----------------------------
   let pinnedPlaceIds: string[] = [];
   {
@@ -262,157 +257,133 @@ export default async function UserPublicPage({ params }: { params: { id: string 
 
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      <div className="w-full pb-24 pt-6">
+      {/* ✅ 横はみ出し防止 */}
+      <div className="w-full overflow-x-hidden pb-24 pt-6">
         <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
-          {/* プロフィールヘッダー */}
-          <section className="overflow-hidden rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur">
-            <div className="relative">
-              <div className="relative z-0 h-28 w-full overflow-hidden bg-gradient-to-r from-orange-300 via-amber-200 to-orange-400 md:h-32">
-                {headerImageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={headerImageUrl} alt="header" className="h-full w-full object-cover" />
-                )}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-orange-900/25 via-orange-500/5 to-transparent" />
-
-                {!isPublic && (
-                  <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/35 px-3 py-1 text-xs font-medium text-white backdrop-blur">
-                    <Lock size={14} />
-                    <span>非公開アカウント</span>
+          {/* =========================
+              PROFILE (NO HEADER IMAGE)
+             ========================= */}
+          <section className="w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
+            <div className="px-4 py-5 md:px-6 md:py-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                {/* left */}
+                <div className="flex items-start gap-4 min-w-0">
+                  <div className="shrink-0">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={avatarUrl}
+                        alt="avatar"
+                        className="h-20 w-20 rounded-full border border-black/[.06] bg-orange-100 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full border border-black/[.06] bg-orange-100 text-2xl font-bold text-orange-700">
+                        {displayName.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="px-4 pb-5 md:px-6 md:pb-6">
-                <div className="-mt-12 flex justify-between gap-4 md:-mt-14">
-                  <div className="flex items-center gap-4 md:gap-5">
-                    <div className="relative z-10 shrink-0">
-                      {avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={avatarUrl}
-                          alt="avatar"
-                          className="h-20 w-20 rounded-full border-4 border-white bg-orange-100 object-cover shadow-md md:h-24 md:w-24"
-                        />
+                  <div className="min-w-0">
+                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
+                      {displayName}
+                    </h1>
+
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                      {username ? (
+                        <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
+                      ) : null}
+
+                      {isFollowing ? (
+                        <p className="bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 md:text-xs">
+                          フォローされています
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 md:text-xs">
+                      {isPublic ? (
+                        <>
+                          <Globe2 size={14} />
+                          <span>公開プロフィール</span>
+                        </>
                       ) : (
-                        <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-orange-100 text-2xl font-bold text-orange-700 shadow-md md:h-24 md:w-24">
-                          {displayName.slice(0, 1).toUpperCase()}
-                        </div>
+                        <>
+                          <Lock size={14} />
+                          <span>非公開プロフィール</span>
+                        </>
                       )}
                     </div>
-
-                    <div className="pt-18">
-                      <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
-                        {displayName}
-                      </h1>
-
-                      <div className="mt-0.5 flex items-center gap-2">
-                        {username && <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p>}
-
-                        {isFollowing && (
-                          <p className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-slate-500 md:text-xs">
-                            フォローされています
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 md:text-xs">
-                        {isPublic ? (
-                          <>
-                            <Globe2 size={14} />
-                            <span>公開プロフィール</span>
-                          </>
-                        ) : (
-                          <>
-                            <Lock size={14} />
-                            <span>非公開プロフィール</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-18">
-                    <FollowButton
-                      targetUserId={profile.id}
-                      targetUsername={profile.username}
-                      initiallyFollowing={initiallyFollowing}
-                      initiallyRequested={initiallyRequested}
-                    />
                   </div>
                 </div>
 
-                {bio && <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p>}
-
-                <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
-                  <li className="flex items-center gap-1.5">
-                    <span className="font-semibold text-slate-900">{postsCount}</span>
-                    <span>投稿</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <Link href={`/u/${userId}/following`} className="flex items-center gap-1.5 hover:underline">
-                      <span className="font-semibold text-slate-900">{followingCount}</span>
-                      <span>フォロー中</span>
-                    </Link>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <Link href={`/u/${userId}/followers`} className="flex items-center gap-1.5 hover:underline">
-                      <span className="font-semibold text-slate-900">{followersCount}</span>
-                      <span>フォロワー</span>
-                    </Link>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <span className="font-semibold text-slate-900">{wantsCount}</span>
-                    <span>行きたい</span>
-                  </li>
-                </ul>
+                {/* right */}
+                <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
+                  <FollowButton
+                    targetUserId={profile.id}
+                    targetUsername={profile.username}
+                    initiallyFollowing={initiallyFollowing}
+                    initiallyRequested={initiallyRequested}
+                  />
+                </div>
               </div>
+
+              {bio ? (
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p>
+              ) : null}
+
+              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
+                <li className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-900">{postsCount}</span>
+                  <span>投稿</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Link href={`/u/${userId}/following`} className="flex items-center gap-1.5 hover:underline">
+                    <span className="font-semibold text-slate-900">{followingCount}</span>
+                    <span>フォロー中</span>
+                  </Link>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Link href={`/u/${userId}/followers`} className="flex items-center gap-1.5 hover:underline">
+                    <span className="font-semibold text-slate-900">{followersCount}</span>
+                    <span>フォロワー</span>
+                  </Link>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-900">{wantsCount}</span>
+                  <span>行きたい</span>
+                </li>
+              </ul>
             </div>
           </section>
 
-          {/* {canViewPosts ? <ProfileYearStats userId={userId} scope="public" /> : null} */}
-
-          {/* ヒートマップ（この部分は継承） */}
+          {/* =========================
+              HEATMAP
+             ========================= */}
           {canViewPosts ? (
             <VisitHeatmap userId={userId} days={heatmapDays} />
           ) : (
-            <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
+            <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
               <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
-              <div className="mt-3 rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+              <div className="mt-3 border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             </section>
           )}
 
-{/* 投稿（AlbumBrowser） */}
-<section className="rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur md:p-5 md:rounded-2xl">
-  {/* ✅ 見出しは読みやすく余白キープ */}
-  <div className="px-4 pt-4 md:px-0 md:pt-0">
-    <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
-  </div>
+          {/* =========================
+              POSTS (ALBUM)
+             ========================= */}
+          <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
 
-  {!canViewPosts ? (
-    <div className="px-4 pb-4 md:px-0 md:pb-0">
-      <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
-        このアカウントの投稿はフォロワーのみが閲覧できます。
-      </div>
-    </div>
-  ) : (
-    // ✅ ここだけ“端まで”。md以上は通常に戻す
-    <div className="-mx-0 md:mx-0">
-      {/* AlbumBrowser 側が “余白ゼロ・2列・gapゼロ” になっていればここで完成 */}
-      <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={false} />
-    </div>
-  )}
-</section>
-
-
-          {/* 行きたいリスト（そのまま。必要なら後でAlbum化） */}
-          {/* <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
-            <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">行きたい店リスト (随時実装予定)</h2>
-            <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
-              （このセクションは現状維持）
-            </div>
-          </section> */}
+            {!canViewPosts ? (
+              <div className="border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
+                このアカウントの投稿はフォロワーのみが閲覧できます。
+              </div>
+            ) : (
+              <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={false} />
+            )}
+          </section>
         </div>
       </div>
     </main>

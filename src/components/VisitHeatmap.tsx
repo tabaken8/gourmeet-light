@@ -9,7 +9,7 @@ export type HeatmapDay = {
   date: string; // "YYYY-MM-DD" (JST基準の代表日付)
   count: number;
   maxScore: number | null;
-  posts: Array<{ id: string; thumbUrl: string | null }>; // 事前プレビュー用（上位3件など）
+  posts: Array<{ id: string; thumbUrl: string | null }>;
 };
 
 type DetailPost = {
@@ -94,8 +94,8 @@ function isPointerFine() {
  * 7〜10を10分割＝幅0.3
  */
 function scoreToLevel(maxScore: number | null) {
-  if (maxScore === null || !Number.isFinite(maxScore)) return 0; // 0=無
-  if (maxScore <= 7) return 1; // 黄色固定
+  if (maxScore === null || !Number.isFinite(maxScore)) return 0;
+  if (maxScore <= 7) return 1;
   const v = clamp(maxScore, 7, 10);
   const step = 0.3;
   const idx = Math.floor((v - 7) / step) + 2; // 2..11
@@ -176,10 +176,6 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
     return (day + 6) % 7; // Mon=0..Sun=6
   }
 
-  /**
-   * グリッド（週×曜日）を作る。
-   * さらに「月境界で少し空ける」ための breakBefore を週単位で持つ。
-   */
   const grid = useMemo(() => {
     const dates = calendar.dates;
     if (dates.length === 0) return { weeks: [] as string[][], breakBefore: [] as boolean[] };
@@ -194,7 +190,6 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
       weeksRaw.push(col);
     }
 
-    // 月境界検出：各週列の「最初の有効日」で ym を取る
     const breakBefore: boolean[] = [];
     let prevYM: string | null = null;
     for (const col of weeksRaw) {
@@ -208,7 +203,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
         breakBefore.push(false);
         prevYM = ym;
       } else if (ym !== prevYM) {
-        breakBefore.push(true); // ←この週の前に“月の区切りスペース”を入れる
+        breakBefore.push(true);
         prevYM = ym;
       } else {
         breakBefore.push(false);
@@ -218,12 +213,6 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
     return { weeks: weeksRaw, breakBefore };
   }, [calendar]);
 
-  /**
-   * ✅ Month ラベルは「列幅に影響させない」方式に変更
-   * - 各週列に対応する meta を作る
-   * - show: 月が切り替わる週だけ true
-   * - breakBefore: グリッドと同じ位置で“余白”を入れる
-   */
   const monthMeta = useMemo(() => {
     const meta: Array<{ show: boolean; text: string; breakBefore: boolean }> = [];
     let prevYM: string | null = null;
@@ -357,76 +346,61 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
 
   const hoverDay = hoverKey ? dayMap.get(hoverKey) ?? null : null;
 
-  // ✅ 凡例：実際の段階（0 + 1 + 10段階）をそのまま並べる
   const legendLevels = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
 
   return (
-    <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    // ✅ “はみ出し防止”のために outer は w-full + overflow-hidden
+    // ✅ 背景は白、角丸なし
+    <section className="w-full max-w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
+      {/* ✅ ヘッダー：凡例がはみ出さないようにスマホは縦積み */}
+      <div className="flex flex-col gap-2 px-3 pt-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
           <p className="mt-1 text-[11px] text-slate-500">ブロックを押すと投稿を見ることができます。</p>
         </div>
 
-        <div className="text-[11px] text-slate-500">
-          <div className="text-right font-medium text-slate-700">{yearRangeText}</div>
-
-          <div className="mt-1 flex items-center justify-end gap-2">
+        <div className="min-w-0 text-[11px] text-slate-500 sm:text-right">
+          <div className="font-medium text-slate-700">{yearRangeText}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 sm:justify-end">
             <div className="flex items-center gap-0.5">
               {legendLevels.map((lv) => (
-                <span key={lv} className={`h-2.5 w-2.5 rounded-[3px] ${levelClass(lv)}`} />
+                <span
+                  key={lv}
+                  className={`h-2.5 w-2.5 rounded-none ${levelClass(lv)}`} // ✅ 角丸なし
+                />
               ))}
             </div>
           </div>
         </div>
       </div>
 
-      {/* GitHub風：横スクロール（最新が右） */}
-      <div ref={scrollRef} className="mt-4 overflow-x-auto overscroll-x-contain">
-        <div className="min-w-[760px] pr-2">
-          {/* ✅ Month labels（ズレない版）
-              - 各列を flex-none w-3.5 で完全固定
-              - 文字は absolute で“レイアウトに影響させない”
-              - 月境界は breakBefore でグリッドと同じ位置にスペースを入れる
-          */}
- {/* ✅ Month labels（被り防止：行に高さを持たせる） */}
-            <div className="mb-2 flex gap-1 h-4 items-end">
+      {/* ✅ 横スクロールはここに閉じ込める（外にはみ出さない） */}
+      <div ref={scrollRef} className="mt-3 overflow-x-auto overscroll-x-contain px-0">
+        {/* ✅ iOSの“はみ出し”対策に max-w-full を入れる */}
+        <div className="max-w-full min-w-[760px] pr-2 pb-3">
+          {/* Month labels */}
+          <div className="mb-2 flex gap-1 h-4 items-end px-3">
             {monthMeta.map((m, i) => (
-                <div
-                key={i}
-                className={[
-                    "relative flex-none w-3.5 h-4",
-                    m.breakBefore ? "ml-2" : "",
-                ].join(" ")}
-                >
-                {m.show ? (
-                    <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 whitespace-nowrap leading-none">
-                    {m.text}
-                    </span>
-                ) : null}
-                </div>
-            ))}
-            </div>
-
-
-          {/* Grid（こちらも同じ breakBefore を適用して“セット管理”） */}
-          <div className="flex gap-1">
-            {grid.weeks.map((col, wi) => (
               <div
-                key={wi}
-                className={[
-                  "flex flex-col gap-1",
-                  grid.breakBefore[wi] ? "ml-2" : "",
-                ].join(" ")}
+                key={i}
+                className={["relative flex-none w-3.5 h-4", m.breakBefore ? "ml-2" : ""].join(" ")}
               >
+                {m.show ? (
+                  <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 whitespace-nowrap leading-none">
+                    {m.text}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          {/* Grid */}
+          <div className="flex gap-1 px-3">
+            {grid.weeks.map((col, wi) => (
+              <div key={wi} className={["flex flex-col gap-1", grid.breakBefore[wi] ? "ml-2" : ""].join(" ")}>
                 {col.map((dateKey, di) => {
                   if (!dateKey) {
-                    return (
-                      <div
-                        key={`${wi}-${di}`}
-                        className="h-3.5 w-3.5 rounded-[3px] bg-transparent"
-                      />
-                    );
+                    return <div key={`${wi}-${di}`} className="h-3.5 w-3.5 rounded-none bg-transparent" />;
                   }
                   const d = dayMap.get(dateKey) ?? null;
                   const level = scoreToLevel(d?.maxScore ?? null);
@@ -436,7 +410,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
                       key={dateKey}
                       type="button"
                       className={[
-                        "h-3.5 w-3.5 flex-none rounded-[3px] transition",
+                        "h-3.5 w-3.5 flex-none rounded-none transition", // ✅ 角丸なし
                         "outline-none focus:ring-2 focus:ring-orange-300/60 focus:ring-offset-2 focus:ring-offset-white",
                         levelClass(level),
                         "hover:brightness-95",
@@ -459,7 +433,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
       {/* ✅ PC hover popover */}
       {hoverKey && hoverPos && hoverDay && isPointerFine() && (
         <div
-          className="fixed z-[9998] -translate-x-1/2 rounded-2xl border border-orange-100 bg-white/95 p-3 shadow-xl backdrop-blur"
+          className="fixed z-[9998] -translate-x-1/2 rounded-none border border-black/[.08] bg-white p-3 shadow-xl"
           style={{ left: hoverPos.x, top: hoverPos.y - 12 }}
           onMouseLeave={closeHover}
         >
@@ -471,7 +445,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
           <div className="mt-2 flex items-center gap-2">
             {hoverDay.posts?.length ? (
               hoverDay.posts.slice(0, 3).map((p) => (
-                <div key={p.id} className="h-12 w-12 overflow-hidden rounded-xl bg-slate-100">
+                <div key={p.id} className="h-12 w-12 overflow-hidden rounded-none bg-slate-100">
                   {p.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.thumbUrl} alt="" className="h-full w-full object-cover" />
@@ -487,19 +461,17 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
         </div>
       )}
 
-      {/* ✅ 大きいモーダル（Portalで最前面） */}
+      {/* ✅ 大きいモーダル */}
       {openKey &&
         typeof document !== "undefined" &&
         createPortal(
           <div className="fixed inset-0 z-[9999]">
             <div className="absolute inset-0 bg-black/35" onClick={closeModal} aria-hidden="true" />
             <div className="absolute inset-0 flex items-center justify-center p-3 md:p-6">
-              <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-2xl">
+              <div className="w-full max-w-5xl overflow-hidden rounded-none border border-black/[.08] bg-white shadow-2xl">
                 <div className="flex items-start justify-between gap-3 border-b border-black/[.06] p-4 md:p-5">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
-                      Visits
-                    </div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Visits</div>
                     <div className="mt-1 text-base font-bold text-slate-900 md:text-lg">{openKey}</div>
                     <div className="mt-1 text-[11px] text-slate-500">
                       {loadingDetail ? "読み込み中..." : `${detailPosts.length}件`}
@@ -508,7 +480,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-orange-100 bg-orange-50 text-slate-700 hover:bg-orange-100"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-none border border-black/[.08] bg-white text-slate-700 hover:bg-slate-50"
                     aria-label="閉じる"
                   >
                     <X size={16} />
@@ -517,7 +489,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
 
                 <div className="max-h-[78vh] overflow-y-auto p-4 md:p-5">
                   {loadingDetail ? (
-                    <div className="rounded-2xl border border-orange-50 bg-orange-50/60 p-8 text-center text-sm text-slate-700">
+                    <div className="border border-black/[.06] bg-white p-8 text-center text-sm text-slate-700">
                       読み込み中…
                     </div>
                   ) : detailPosts.length ? (
@@ -540,9 +512,9 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
                           <a
                             key={p.id}
                             href={`/posts/${p.id}`}
-                            className="group flex gap-3 rounded-2xl border border-black/[.06] bg-white p-3 shadow-sm transition hover:shadow-md"
+                            className="group flex gap-3 border border-black/[.06] bg-white p-3 shadow-sm transition hover:shadow-md"
                           >
-                            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100 md:h-24 md:w-24">
+                            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-none bg-slate-100 md:h-24 md:w-24">
                               {p.thumbUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
@@ -558,7 +530,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 {p.place_name ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[11px] text-slate-800">
+                                  <span className="inline-flex items-center gap-1 bg-slate-50 px-2 py-1 text-[11px] text-slate-800">
                                     <MapPin size={13} className="opacity-70" />
                                     {mapUrl ? (
                                       <span className="max-w-[260px] truncate underline decoration-orange-200 underline-offset-2">
@@ -569,21 +541,17 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
                                     )}
                                   </span>
                                 ) : (
-                                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-500">
-                                    店名なし
-                                  </span>
+                                  <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-500">店名なし</span>
                                 )}
 
                                 {score !== null ? (
-                                  <span className="rounded-full bg-orange-50 px-2 py-1 text-[11px] text-orange-800">
+                                  <span className="bg-slate-50 px-2 py-1 text-[11px] text-orange-800">
                                     おすすめ <span className="ml-1 font-semibold">{score}/10</span>
                                   </span>
                                 ) : null}
 
                                 {priceLabel ? (
-                                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-700">
-                                    {priceLabel}
-                                  </span>
+                                  <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-700">{priceLabel}</span>
                                 ) : null}
                               </div>
 
@@ -602,7 +570,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-orange-50 bg-orange-50/60 p-8 text-center text-sm text-slate-700">
+                    <div className="border border-black/[.06] bg-white p-8 text-center text-sm text-slate-700">
                       この日は投稿がありません。
                     </div>
                   )}
