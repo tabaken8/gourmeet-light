@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Images, Globe2, Lock, Plus } from "lucide-react";
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
 import ProfileYearStats from "@/components/ProfileYearStats";
+import AlbumBrowser, { type AlbumPost } from "@/components/AlbumBrowser";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ function subtractDaysKeyJST(days: number): { startKey: string; startIsoUtc: stri
 }
 
 function getThumbUrlFromPost(p: any): string | null {
-  // ✅ ここが重要：thumb優先
+  // ✅ thumb優先
   const v = p?.image_variants;
   if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string") return v[0].thumb;
 
@@ -69,6 +70,13 @@ type PostRow = {
   recommend_score?: any;
   title?: string | null;
 };
+
+function normalizePlacesShape(row: any) {
+  // ✅ places が object でも array でも来るので object に正規化
+  const pl = row?.places;
+  const places = Array.isArray(pl) ? (pl[0] ?? null) : (pl ?? null);
+  return { ...row, places };
+}
 
 export default async function AccountPage() {
   const supabase = await createClient();
@@ -164,9 +172,8 @@ export default async function AccountPage() {
     const score = scoreAsNumber((r as any).recommend_score);
     const thumbUrl = getThumbUrlFromPost(r);
 
-    if (!heatMap.has(repKey)) {
-      heatMap.set(repKey, { count: 0, maxScore: null, posts: [] });
-    }
+    if (!heatMap.has(repKey)) heatMap.set(repKey, { count: 0, maxScore: null, posts: [] });
+
     const cur = heatMap.get(repKey)!;
     cur.count += 1;
     if (typeof score === "number") cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
@@ -211,7 +218,6 @@ export default async function AccountPage() {
     const bKey = b.visited_on ? b.visited_on : formatJSTDayKey(b.created_at);
     if (aKey !== bKey) return aKey < bKey ? 1 : -1; // desc
 
-    // 同じ日なら visited_on がある方を先に
     const av = a.visited_on ? 1 : 0;
     const bv = b.visited_on ? 1 : 0;
     if (av !== bv) return bv - av;
@@ -236,9 +242,60 @@ export default async function AccountPage() {
     wantPosts = (data ?? []) as PostRow[];
   }
 
+  // -----------------------------
+  // ✅ AlbumBrowser 用（places join）+ places正規化
+  // -----------------------------
+  let albumPosts: AlbumPost[] = [];
+  {
+const { data } = await supabase
+  .from("posts")
+  .select(`
+    id,
+    place_id,
+    created_at,
+    visited_on,
+    recommend_score,
+    image_urls,
+    image_variants,
+    places:places (
+      place_id,
+      name,
+      address,
+      photo_url,
+      primary_genre,
+      genre_tags,
+      area_label_ja,
+      area_label_en,
+      area_key,
+      country_name,
+      search_text
+    )
+  `)
+
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(400);
+
+    albumPosts = (data ?? []).map(normalizePlacesShape) as any;
+  }
+
+  // -----------------------------
+  // ✅ ピン（自分）
+  // -----------------------------
+  let pinnedPlaceIds: string[] = [];
+  {
+    const { data } = await supabase
+      .from("place_pins")
+      .select("place_id")
+      .eq("user_id", user.id)
+      .order("sort_order", { ascending: true })
+      .limit(80);
+
+    pinnedPlaceIds = (data ?? []).map((r: any) => String(r.place_id));
+  }
+
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      {/* ✅ スマホ全幅 / PCでmax-w */}
       <div className="mx-auto w-full max-w-none px-3 py-4 md:max-w-4xl md:px-6 md:py-8">
         <div className="flex flex-col gap-5 md:gap-6">
           {/* プロフィールヘッダー */}
@@ -262,10 +319,8 @@ export default async function AccountPage() {
 
               {/* 本文 */}
               <div className="px-4 pb-5 md:px-6 md:pb-6">
-                {/* ✅ -mt を弱める + 「名前プレート」を敷いて username が隠れない＆背景差が気にならないように */}
                 <div className="-mt-9 flex flex-col gap-3 md:-mt-14 md:flex-row md:items-start md:justify-between">
                   <div className="flex items-start gap-3 md:gap-5">
-                    {/* アイコン */}
                     <div className="relative z-10 shrink-0">
                       {avatarUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -281,29 +336,13 @@ export default async function AccountPage() {
                       )}
                     </div>
 
-                    {/* ✅ 名前プレート */}
                     <div className="pt-4 md:pt-10">
-                      <div
-                        className="
-                          inline-block
-                          rounded-2xl
-                          bg-white/70
-                          px-3 py-2
-                          shadow-[0_6px_20px_rgba(0,0,0,0.06)]
-                          ring-1 ring-black/5
-                          backdrop-blur
-                        "
-                      >
+                      <div className="inline-block rounded-2xl bg-white/70 px-3 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.06)] ring-1 ring-black/5 backdrop-blur">
                         <h1 className="text-lg font-bold tracking-tight text-slate-900 md:text-2xl leading-tight">
                           {displayName}
                         </h1>
 
-                        {/* ✅ これが隠れないように：プレート内で上側に出す */}
-                        {username && (
-                          <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">
-                            @{username}
-                          </p>
-                        )}
+                        {username && <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p>}
 
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
                           <span className="inline-flex items-center gap-1">
@@ -331,31 +370,18 @@ export default async function AccountPage() {
                     </div>
                   </div>
 
-                  {/* 編集ボタン */}
                   <div className="md:pt-4">
                     <Link
                       href="/profile/edit"
-                      className="
-                        inline-flex w-full items-center justify-center
-                        rounded-full border border-orange-200 bg-white/90
-                        px-4 py-2 text-sm font-semibold text-slate-700
-                        shadow-sm transition hover:border-orange-400 hover:bg-orange-50
-                        md:w-auto md:text-xs md:font-medium md:py-1.5
-                      "
+                      className="inline-flex w-full items-center justify-center rounded-full border border-orange-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-orange-400 hover:bg-orange-50 md:w-auto md:text-xs md:font-medium md:py-1.5"
                     >
                       プロフィールを編集
                     </Link>
                   </div>
                 </div>
 
-                {/* Bio */}
-                {bio && (
-                  <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-                    {bio}
-                  </p>
-                )}
+                {bio && <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p>}
 
-                {/* ✅ 統計：元のUIに戻す（テキスト＋リンク） */}
                 <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
                   <li className="flex items-center gap-1.5">
                     <span className="font-semibold text-slate-900">{postsCount}</span>
@@ -384,12 +410,13 @@ export default async function AccountPage() {
               </div>
             </div>
           </section>
+
           <ProfileYearStats userId={user.id} scope="me" />
 
-          {/* ✅ 来店ヒートマップ：bio と 投稿の間 */}
+          {/* ✅ ヒートマップはそのまま */}
           <VisitHeatmap userId={user.id} days={heatDays} />
 
-          {/* 投稿グリッド */}
+          {/* 投稿（AlbumBrowser） */}
           <section className="rounded-3xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
@@ -403,42 +430,8 @@ export default async function AccountPage() {
               </Link>
             </div>
 
-            {posts?.length ? (
-              <div className="grid grid-cols-3 gap-[2px] sm:grid-cols-4 sm:gap-[3px] md:grid-cols-5">
-                {posts.map((p) => {
-                  const thumb = getThumbUrlFromPost(p); // ✅ thumb優先
-                  return (
-                    <a
-                      key={p.id}
-                      href={`/posts/${p.id}`}
-                      className="group relative block overflow-hidden bg-slate-100"
-                    >
-                      {thumb ? (
-                        <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={thumb}
-                            alt=""
-                            className="aspect-square w-full object-cover transition group-hover:opacity-95"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                          {(p.image_urls?.length ?? 0) > 1 && (
-                            <Images size={16} className="absolute right-1 top-1 text-white drop-shadow" />
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex aspect-square items-center justify-center bg-orange-50 text-[10px] text-orange-900/70" />
-                      )}
-                    </a>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-orange-50 bg-orange-50/60 p-8 text-center text-sm text-slate-600">
-                まだ投稿がありません。
-              </div>
-            )}
+            <AlbumBrowser posts={albumPosts} isOwner={true} />
+
           </section>
 
           {/* 行きたい！ */}
@@ -448,13 +441,9 @@ export default async function AccountPage() {
             {wantPosts.length ? (
               <div className="grid grid-cols-3 gap-[2px] sm:grid-cols-4 sm:gap-[3px] md:grid-cols-5">
                 {wantPosts.map((p) => {
-                  const thumb = getThumbUrlFromPost(p); // ✅ thumb優先
+                  const thumb = getThumbUrlFromPost(p);
                   return (
-                    <a
-                      key={p.id}
-                      href={`/posts/${p.id}`}
-                      className="group relative block overflow-hidden bg-slate-100"
-                    >
+                    <a key={p.id} href={`/posts/${p.id}`} className="group relative block overflow-hidden bg-slate-100">
                       {thumb ? (
                         <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}

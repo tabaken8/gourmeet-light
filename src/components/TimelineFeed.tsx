@@ -680,10 +680,7 @@ export default function TimelineFeed({
 
                 {/* ✅ Media：正方形枠 + カルーセルも正方形 */}
                 {timelineImageUrls.length > 0 && (
-                  <Link
-                    href={`/posts/${p.id}`}
-                    className="block w-full aspect-square overflow-hidden bg-slate-100"
-                  >
+                  <div className="block w-full aspect-square overflow-hidden bg-slate-100">
                     <PostImageCarousel
                       postId={p.id}
                       imageUrls={timelineImageUrls}
@@ -691,10 +688,11 @@ export default function TimelineFeed({
                       eager={false}
                       preloadNeighbors={true}
                       fit="cover"
-                      aspect="square" // ★これがないと square枠にならない
+                      aspect="square"
                     />
-                  </Link>
+                  </div>
                 )}
+
 
                 {/* Body */}
                 <div className="space-y-2 px-4 py-4">
