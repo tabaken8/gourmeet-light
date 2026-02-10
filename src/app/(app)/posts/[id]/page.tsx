@@ -266,19 +266,22 @@ export default async function PostPage({
         </div>
 
         {/* Media */}
+{/* ✅ Media：スマホは左右余白ゼロ（端まで） / md以上は通常 */}
 {imageUrls.length > 0 ? (
-  <div className="block w-full aspect-square overflow-hidden bg-slate-100">
-    <PostImageCarousel
-      postId={post.id}
-      imageUrls={imageUrls}
-      initialIndex={safeIndex}
-      syncUrl={false}
-      // ↓ TimelineFeedと同じ props がもし使えるなら付ける（使えないなら消してOK）
-      eager={false}
-      preloadNeighbors={true}
-      fit="cover"
-      aspect="square"
-    />
+  <div className="-mx-3 md:mx-0">
+    <div className="block w-full aspect-square overflow-hidden bg-slate-100">
+      <PostImageCarousel
+        postId={post.id}
+        imageUrls={imageUrls}
+        initialIndex={safeIndex}
+        syncUrl={false}
+        // ↓ TimelineFeedで使ってるpropsが対応しているなら効く（未対応なら削除でOK）
+        eager={false as any}
+        preloadNeighbors={true as any}
+        fit={"cover" as any}
+        aspect={"square" as any}
+      />
+    </div>
   </div>
 ) : (
   <div className="px-4 pb-4">
@@ -287,6 +290,7 @@ export default async function PostPage({
     </div>
   </div>
 )}
+
 
 
         {/* Content */}

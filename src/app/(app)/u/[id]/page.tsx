@@ -383,21 +383,28 @@ export default async function UserPublicPage({ params }: { params: { id: string 
             </section>
           )}
 
-          {/* 投稿（AlbumBrowser） */}
-          <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
-            <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
+{/* 投稿（AlbumBrowser） */}
+<section className="rounded-2xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur md:p-5 md:rounded-2xl">
+  {/* ✅ 見出しは読みやすく余白キープ */}
+  <div className="px-4 pt-4 md:px-0 md:pt-0">
+    <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
+  </div>
 
-            {!canViewPosts ? (
-              <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
-                このアカウントの投稿はフォロワーのみが閲覧できます。
-              </div>
-            ) : (
-            <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={false} />
+  {!canViewPosts ? (
+    <div className="px-4 pb-4 md:px-0 md:pb-0">
+      <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+        このアカウントの投稿はフォロワーのみが閲覧できます。
+      </div>
+    </div>
+  ) : (
+    // ✅ ここだけ“端まで”。md以上は通常に戻す
+    <div className="-mx-0 md:mx-0">
+      {/* AlbumBrowser 側が “余白ゼロ・2列・gapゼロ” になっていればここで完成 */}
+      <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={false} />
+    </div>
+  )}
+</section>
 
-
-
-            )}
-          </section>
 
           {/* 行きたいリスト（そのまま。必要なら後でAlbum化） */}
           {/* <section className="rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">

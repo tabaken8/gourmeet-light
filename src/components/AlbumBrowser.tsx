@@ -35,7 +35,7 @@ type SortKey = "score" | "visited" | "created";
 // ---------------------
 function toScore(x: any): number | null {
   if (typeof x === "number" && Number.isFinite(x)) return x;
-  if (typeof x === "string" && Number.isFinite(Number(x))) return Number(x);
+  if (typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x))) return Number(x);
   return null;
 }
 
@@ -63,6 +63,13 @@ function genreLabel(place: PlaceRow | null | undefined): string {
 
 function normSpace(s: string) {
   return s.replace(/\s+/g, " ").trim();
+}
+
+function stableId(p: AlbumPost) {
+  // ✅ React keyの重複事故を避ける（念のため）
+  // posts.id がユニーク前提だが、万一 place_id が同じ/データ混在しても壊れないようにする
+  const pid = p.place_id ?? p.places?.place_id ?? "no-place";
+  return `${String(p.id)}::${pid}`;
 }
 
 // ---------------------
@@ -131,6 +138,7 @@ export default function AlbumBrowser({
       const cb = b.created_at ?? "";
       if (ca !== cb) return ca < cb ? 1 : -1;
 
+      // 安定化
       return String(a.id) < String(b.id) ? 1 : -1;
     });
     return arr;
@@ -179,9 +187,7 @@ export default function AlbumBrowser({
           .eq("place_id", placeId);
 
         if (error) {
-          throw new Error(
-            `delete failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`
-          );
+          throw new Error(`delete failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
         }
       } else {
         const { error, status, statusText } = await supabase
@@ -189,15 +195,12 @@ export default function AlbumBrowser({
           .upsert({ user_id: uid, place_id: placeId, sort_order: 0 }, { onConflict: "user_id,place_id" });
 
         if (error) {
-          throw new Error(
-            `upsert failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`
-          );
+          throw new Error(`upsert failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
         }
       }
     } catch (e: any) {
       // 巻き戻し
       setPinned((prev) => (already ? [placeId, ...prev] : prev.filter((x) => x !== placeId)));
-
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e);
       console.error("togglePin error:", msg, e);
     }
@@ -235,10 +238,11 @@ export default function AlbumBrowser({
 
   // ---------------------
   // UI: Post Card (square) + pin button in info area (not overlay)
+  // ✅ インスタ密度：スマホ gap=0 / 左右px=0
   // ---------------------
   function PostGrid({ items }: { items: AlbumPost[] }) {
     return (
-      <div className="grid grid-cols-3 gap-0">
+      <div className="grid grid-cols-2 gap-0 md:grid-cols-3 md:gap-[2px]">
         {items.map((p) => {
           const place = p.places;
           const pid = p.place_id ?? place?.place_id ?? null;
@@ -246,18 +250,22 @@ export default function AlbumBrowser({
 
           const name = place?.name ?? "Unknown";
           const genre = genreLabel(place);
-          const visited = fmtVisited(p.visited_on);
+        //   const visited = fmtVisited(p.visited_on);
           const score = toScore(p.recommend_score);
           const scoreText = score == null ? "おすすめ: -" : `おすすめ: ${score.toFixed(1)}`;
 
           const thumb = getThumbUrl(p);
 
           return (
-            <div key={p.id} className="overflow-hidden border border-orange-100 bg-white shadow-sm" style={{ borderRadius: 0 }}>
+            <div
+              key={stableId(p)}
+              className="overflow-hidden border border-orange-100 bg-white shadow-sm"
+              style={{ borderRadius: 0 }}
+            >
               <Link href={`/posts/${encodeURIComponent(String(p.id))}`} className="block">
                 <div className="relative aspect-square bg-orange-50">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" /> : null}
+                  {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : null}
                 </div>
               </Link>
 
@@ -270,7 +278,7 @@ export default function AlbumBrowser({
                 </div>
 
                 <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-slate-500">
-                  <span className="truncate">{visited}</span>
+                  {/* <span className="truncate">{visited}</span> */}
                   <span className="shrink-0 font-semibold text-slate-700">{scoreText}</span>
                 </div>
 
@@ -289,7 +297,7 @@ export default function AlbumBrowser({
                       title="ピン（全体表示の最上部に固定）"
                     >
                       <Pin size={12} />
-                      {pinnedHere ? "" : "ピン"}
+                      {pinnedHere ? "固定中" : "ピン"}
                     </button>
                   </div>
                 ) : null}
@@ -300,27 +308,6 @@ export default function AlbumBrowser({
       </div>
     );
   }
-function TileGrid({ items }: { items: AlbumPost[] }) {
-  return (
-    <div className="grid grid-cols-3 gap-0">
-      {items.map((p) => {
-        const thumb = getThumbUrl(p);
-        return (
-          <Link
-            key={p.id}
-            href={`/posts/${encodeURIComponent(String(p.id))}`}
-            className="relative block aspect-square bg-orange-50"
-          >
-            {thumb ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={thumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            ) : null}
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
 
   // ---------------------
   // header controls
@@ -338,71 +325,74 @@ function TileGrid({ items }: { items: AlbumPost[] }) {
     </select>
   );
 
-  const chipBase =
-    "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold";
+  const chipBase = "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold";
   const chipActive = "border-orange-200 bg-orange-50 text-slate-900";
   const chipIdle = "border-orange-100 bg-white text-slate-600 hover:bg-orange-50/40";
 
   return (
-    <section className="border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
+    // ✅ 左右余白ゼロ（中身を詰めても端に寄る）
+    <section className="border border-orange-100 bg-white/95 px-0 py-4 shadow-sm backdrop-blur md:px-5 md:py-5">
       {/* top row */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          {/* search */}
-          <div className="relative w-full md:w-80">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="店名・エリア・ジャンルで検索"
-              className="w-full rounded-full border border-orange-100 bg-white px-9 py-2 text-sm outline-none focus:border-orange-200"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-2 md:justify-end">
-          {/* view toggles */}
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            <button
-              type="button"
-              onClick={toggleArea}
-              className={[chipBase, view === "area" ? chipActive : chipIdle].join(" ")}
-              aria-pressed={view === "area"}
-            >
-              <MapPin size={14} />
-              エリア
-            </button>
-
-            <button
-              type="button"
-              onClick={toggleGenre}
-              className={[chipBase, view === "genre" ? chipActive : chipIdle].join(" ")}
-              aria-pressed={view === "genre"}
-            >
-              <Tag size={14} />
-              ジャンル
-            </button>
+      {/* ✅ ヘッダー行だけ左右余白を戻す（グリッドは端まで行く） */}
+      <div className="px-4 md:px-0">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-2">
+            {/* search */}
+            <div className="relative w-full md:w-80">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="店名・エリア・ジャンルで検索"
+                className="w-full rounded-full border border-orange-100 bg-white px-9 py-2 text-sm outline-none focus:border-orange-200"
+              />
+            </div>
           </div>
 
-          {/* sort */}
-          <div className="shrink-0">{sortSelect}</div>
+          <div className="flex items-center justify-between gap-2 md:justify-end">
+            {/* view toggles */}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={toggleArea}
+                className={[chipBase, view === "area" ? chipActive : chipIdle].join(" ")}
+                aria-pressed={view === "area"}
+              >
+                <MapPin size={14} />
+                エリア
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleGenre}
+                className={[chipBase, view === "genre" ? chipActive : chipIdle].join(" ")}
+                aria-pressed={view === "genre"}
+              >
+                <Tag size={14} />
+                ジャンル
+              </button>
+            </div>
+
+            {/* sort */}
+            <div className="shrink-0">{sortSelect}</div>
+          </div>
         </div>
       </div>
 
       {/* body */}
+      {/* ✅ グリッドは端まで（px無し） */}
       <div className="mt-4 space-y-6">
         {posts.length === 0 ? (
-          <div className="border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+          <div className="mx-4 md:mx-0 border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
             投稿はまだありません。
           </div>
         ) : view === "all" ? (
-          // ✅ 無選択（全体）: pin固定が効く
           <PostGrid items={postsWithPinTop} />
         ) : view === "area" ? (
           areaBlocks.map((b) => (
             <section key={b.key} className="space-y-3">
-              {/* 区分ラベルを目立たせる */}
-              <div className="flex items-center gap-2">
+              {/* 区分ラベル（ここだけ余白付ける） */}
+              <div className="px-4 md:px-0 flex items-center gap-2">
                 <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
                   {b.key}
                 </div>
@@ -414,7 +404,7 @@ function TileGrid({ items }: { items: AlbumPost[] }) {
         ) : (
           genreBlocks.map((b) => (
             <section key={b.key} className="space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="px-4 md:px-0 flex items-center gap-2">
                 <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
                   {b.key}
                 </div>

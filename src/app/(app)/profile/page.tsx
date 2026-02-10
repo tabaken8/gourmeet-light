@@ -39,7 +39,9 @@ export default async function AccountPage() {
   let joinedLabel: string | null = null;
   if (user.created_at) {
     try {
-      joinedLabel = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "short" }).format(new Date(user.created_at));
+      joinedLabel = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "short" }).format(
+        new Date(user.created_at)
+      );
     } catch {
       joinedLabel = null;
     }
@@ -49,8 +51,16 @@ export default async function AccountPage() {
   const [postsQ, wantsQ, followersQ, followingQ] = await Promise.all([
     supabase.from("posts").select("*", { count: "exact", head: true }).eq("user_id", user.id),
     supabase.from("post_wants").select("*", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("follows").select("*", { count: "exact", head: true }).eq("followee_id", user.id).eq("status", "accepted"),
-    supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id).eq("status", "accepted"),
+    supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("followee_id", user.id)
+      .eq("status", "accepted"),
+    supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("follower_id", user.id)
+      .eq("status", "accepted"),
   ]);
 
   const postsCount = postsQ.count ?? 0;
@@ -106,7 +116,9 @@ export default async function AccountPage() {
                           {displayName}
                         </h1>
 
-                        {username ? <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p> : null}
+                        {username ? (
+                          <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
+                        ) : null}
 
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
                           <span className="inline-flex items-center gap-1">
@@ -176,16 +188,16 @@ export default async function AccountPage() {
           </section>
 
           {/* ✅ 年間統計：遅延 */}
-          <Suspense
+          {/* <Suspense
             fallback={
               <section className="rounded-3xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
                 <div className="h-5 w-40 rounded bg-orange-100/70" />
                 <div className="mt-3 h-28 rounded-xl border border-orange-50 bg-orange-50/60" />
               </section>
             }
-          >
-            <ProfileStatsBlock userId={user.id} />
-          </Suspense>
+          > */}
+            {/* <ProfileStatsBlock userId={user.id} /> */}
+          {/* </Suspense> */}
 
           {/* ✅ ヒートマップ：遅延 */}
           <Suspense
@@ -199,24 +211,40 @@ export default async function AccountPage() {
             <HeatmapBlock userId={user.id} />
           </Suspense>
 
-          {/* ✅ 投稿（AlbumBrowser）：遅延 */}
-          <section className="rounded-3xl border border-orange-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
+          {/* ✅ 投稿（AlbumBrowser）：遅延
+              - スマホだけ左右余白0（端まで）
+              - 見出し/ボタンは今まで通り余白あり
+           */}
+          <section
+            className="
+              rounded-3xl border border-orange-100 bg-white/95 shadow-sm backdrop-blur
+              p-0
+              -mx-3 md:mx-0
+              overflow-hidden
+            "
+          >
+            {/* ヘッダーは余白あり */}
+            <div className="p-4 md:p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
 
-              <Link
-                href="/posts/new"
-                className="inline-flex h-10 items-center gap-2 rounded-full bg-orange-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 md:h-9 md:text-xs"
-              >
-                <Plus size={16} />
-                Post
-              </Link>
+                <Link
+                  href="/posts/new"
+                  className="inline-flex h-10 items-center gap-2 rounded-full bg-orange-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 md:h-9 md:text-xs"
+                >
+                  <Plus size={16} />
+                  Post
+                </Link>
+              </div>
             </div>
 
+            {/* ✅ Album本体（ここが端まで） */}
             <Suspense
               fallback={
-                <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
-                  投稿を読み込み中...
+                <div className="px-4 pb-5 md:px-5">
+                  <div className="rounded-xl border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+                    投稿を読み込み中...
+                  </div>
                 </div>
               }
             >
