@@ -367,7 +367,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </div>
 
           {/* 投稿インセンティブ（ちょろっと案内） */}
-          {showPromo && (
+          {/* {showPromo && (
             <div className="mt-2 flex items-start justify-between gap-2 px-1">
               <div className="min-w-0">
                 <div className="truncate text-[11px] font-semibold text-slate-900">🎁 {promoText}</div>
@@ -380,8 +380,8 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               >
                 ここからポイント残高を見る
               </Link>
-            </div>
-          )}
+            </div> */}
+          {/* )} */}
         </div>
       </header>
     </div>
