@@ -1,3 +1,4 @@
+// src/components/VisitHeatmap.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -83,6 +84,17 @@ function jstDayToUtcRange(dateKey: string) {
   return { startIso: new Date(startUtcMs).toISOString(), endIso: new Date(endUtcMs).toISOString() };
 }
 
+/** JST key を日単位で加減算 */
+function addDaysJstKey(key: string, deltaDays: number) {
+  const [y, m, d] = key.split("-").map(Number);
+  // JSTの正午をUTCで保持（DST無いが念のため）
+  const jstNoonUtcMs = Date.UTC(y, m - 1, d, 12, 0, 0) - 9 * 60 * 60 * 1000;
+  const t = new Date(jstNoonUtcMs + deltaDays * 24 * 60 * 60 * 1000);
+  // JSTへ戻して "en-CA"
+  const dtf = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" });
+  return dtf.format(new Date(t.getTime() + 9 * 60 * 60 * 1000));
+}
+
 /** pointerがfineならPC扱い（hover想定） */
 function isPointerFine() {
   if (typeof window === "undefined") return false;
@@ -124,8 +136,61 @@ function monthLabel(m: number) {
   return `${m}月`;
 }
 
-export default function VisitHeatmap({ userId, days }: { userId: string; days: HeatmapDay[] }) {
+/** “全て” の下限 */
+const ABS_MIN_START = "2020-01-01";
+
+/** props:
+ * - days: 初期(直近1年)の集計をサーバーから渡す
+ * - earliestKey: ユーザーの最古（visited_on / created_atをJST日付に正規化したもの）
+ */
+export default function VisitHeatmap({
+  userId,
+  days,
+  earliestKey,
+}: {
+  userId: string;
+  days: HeatmapDay[];
+  earliestKey?: string | null;
+}) {
   const supabase = createClientComponentClient();
+
+  const dtf = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }),
+    []
+  );
+
+  // 今日はJSTのYYYY-MM-DD
+  const todayKey = useMemo(() => dtf.format(new Date()), [dtf]);
+
+  // 直近1年の開始（365日）
+  const yearStartKey = useMemo(() => addDaysJstKey(todayKey, -364), [todayKey]);
+
+  // allの開始： max(2020-01-01, 最古-30日) ただし最低でも1年表示は守る（トグル出す/出さないで吸収）
+  const allStartKey = useMemo(() => {
+    if (!earliestKey || earliestKey.length !== 10) return ABS_MIN_START;
+    const shifted = addDaysJstKey(earliestKey, -30);
+    return shifted < ABS_MIN_START ? ABS_MIN_START : shifted;
+  }, [earliestKey]);
+
+  // Allが意味を持つか（最古が1年範囲より古いか）
+  const canShowAllToggle = useMemo(() => {
+    if (!earliestKey || earliestKey.length !== 10) return false;
+    // 1年範囲より古いデータがある
+    return earliestKey < yearStartKey;
+  }, [earliestKey, yearStartKey]);
+
+  type RangeMode = "year" | "all";
+  const [mode, setMode] = useState<RangeMode>("year");
+
+  // “全て”用データ（必要になった時だけ作る）
+  const [allDays, setAllDays] = useState<HeatmapDay[] | null>(null);
+  const [loadingAll, setLoadingAll] = useState(false);
 
   // 横スクロール右寄せ（最新が右）
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -133,40 +198,59 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
     const el = scrollRef.current;
     if (!el) return;
     el.scrollLeft = el.scrollWidth;
-  }, []);
+  }, [mode, allDays]);
+
+  // 現在使う days
+  const activeDays = useMemo(() => {
+    if (mode === "all" && allDays) return allDays;
+    return days;
+  }, [mode, allDays, days]);
 
   // 日付→集計データ
   const dayMap = useMemo(() => {
     const m = new Map<string, HeatmapDay>();
-    for (const d of days) m.set(d.date, d);
+    for (const d of activeDays) m.set(d.date, d);
     return m;
-  }, [days]);
+  }, [activeDays]);
 
-  // 直近12ヶ月の日付配列（JST）
+  // 現在モードのカレンダー範囲
   const calendar = useMemo(() => {
-    const dtf = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const todayKey = dtf.format(new Date());
+    const endKey = todayKey;
 
-    const res: string[] = [];
-    const [ty, tm, td] = todayKey.split("-").map(Number);
-    const todayJstNoonUtc = Date.UTC(ty, tm - 1, td, 12, 0, 0) - 9 * 60 * 60 * 1000;
-
-    for (let i = 364; i >= 0; i--) {
-      const t = new Date(todayJstNoonUtc - i * 24 * 60 * 60 * 1000);
-      const key = dtf.format(new Date(t.getTime() + 9 * 60 * 60 * 1000));
-      res.push(key);
+    // year: 常に365日
+    if (mode === "year") {
+      const res: string[] = [];
+      for (let i = 364; i >= 0; i--) res.push(addDaysJstKey(endKey, -i));
+      return { startKey: res[0] ?? yearStartKey, endKey, dates: res };
     }
 
-    const startKey = res[0] ?? todayKey;
-    const endKey = res[res.length - 1] ?? todayKey;
+    // all: allStartKey..todayKey（ただし短すぎるなら結局1年相当に丸めてもOK）
+    const startKey = allStartKey;
 
-    return { todayKey, dates: res, startKey, endKey };
-  }, []);
+    // start->end の日数を概算（最大でも数千日程度のはず）
+    // 安全のため、もし start が today より後なら年に戻す
+    if (startKey > endKey) {
+      const res: string[] = [];
+      for (let i = 364; i >= 0; i--) res.push(addDaysJstKey(endKey, -i));
+      return { startKey: res[0] ?? yearStartKey, endKey, dates: res };
+    }
+
+    const dates: string[] = [];
+    // ループが長くなりすぎるのを防ぐ（2020-01-01〜でも約2200日程度）
+    for (let k = startKey; k <= endKey; k = addDaysJstKey(k, 1)) {
+      dates.push(k);
+      if (dates.length > 4000) break;
+    }
+
+    // 最低1年は維持（※UI上、allにしても短いならyearと同じ見え方になる）
+    if (dates.length < 365) {
+      const res: string[] = [];
+      for (let i = 364; i >= 0; i--) res.push(addDaysJstKey(endKey, -i));
+      return { startKey: res[0] ?? yearStartKey, endKey, dates: res };
+    }
+
+    return { startKey, endKey, dates };
+  }, [mode, todayKey, yearStartKey, allStartKey]);
 
   // 週の開始：月曜
   function weekdayMon0(dateKey: string) {
@@ -345,17 +429,147 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
   }, [openKey]);
 
   const hoverDay = hoverKey ? dayMap.get(hoverKey) ?? null : null;
-
   const legendLevels = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
 
+  // -----------------------------
+  // “全て” 用データを client で集計
+  // -----------------------------
+  async function ensureAllLoaded() {
+    if (allDays) return;
+    if (loadingAll) return;
+
+    setLoadingAll(true);
+    try {
+      const startKey = allStartKey;
+      const endKey = todayKey;
+
+      // visited_on がある投稿（date型なので文字列比較OK）
+      const { data: withVisited, error: err1 } = await supabase
+        .from("posts")
+        .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
+        .eq("user_id", userId)
+        .not("visited_on", "is", null)
+        .gte("visited_on", startKey)
+        .lte("visited_on", endKey)
+        .limit(20000);
+
+      if (err1) throw err1;
+
+      // visited_onが無い投稿は created_at をJSTレンジに合わせて拾う
+      const startIso = jstDayToUtcRange(startKey).startIso;
+      // endは “翌日0時(JST)” まで含めたいので endKeyの翌日startをendIsoとして使う
+      const endPlus1 = addDaysJstKey(endKey, 1);
+      const endIso = jstDayToUtcRange(endPlus1).startIso;
+
+      const { data: noVisited, error: err2 } = await supabase
+        .from("posts")
+        .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
+        .eq("user_id", userId)
+        .is("visited_on", null)
+        .gte("created_at", startIso)
+        .lt("created_at", endIso)
+        .limit(20000);
+
+      if (err2) throw err2;
+
+      const rows = new Map<string, any>();
+      for (const r of withVisited ?? []) rows.set(String(r.id), r);
+      for (const r of noVisited ?? []) rows.set(String(r.id), r);
+
+      type DayPost = { id: string; thumbUrl: string | null; score: number | null };
+      type DayAcc = { date: string; count: number; maxScore: number | null; posts: DayPost[] };
+      const acc = new Map<string, DayAcc>();
+
+      for (const r of rows.values()) {
+        const dateKey =
+          r?.visited_on && String(r.visited_on).length === 10 ? String(r.visited_on) : dtf.format(new Date(String(r.created_at)));
+        if (dateKey < startKey || dateKey > endKey) continue;
+
+        const sRaw = (r as any)?.recommend_score;
+        const score =
+          typeof sRaw === "number"
+            ? Number.isFinite(sRaw)
+              ? sRaw
+              : null
+            : typeof sRaw === "string"
+              ? Number.isFinite(Number(sRaw))
+                ? Number(sRaw)
+                : null
+              : null;
+
+        const cur: DayAcc = acc.get(dateKey) ?? { date: dateKey, count: 0, maxScore: null, posts: [] };
+        cur.count += 1;
+        if (score !== null) cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
+        cur.posts.push({ id: String(r.id), thumbUrl: getThumbUrlFromRow(r), score });
+        acc.set(dateKey, cur);
+      }
+
+      const packed: HeatmapDay[] = Array.from(acc.values())
+        .map((d) => {
+          const sorted = d.posts.slice().sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+          const top3 = sorted.slice(0, 3).map((p) => ({ id: p.id, thumbUrl: p.thumbUrl }));
+          return { date: d.date, count: d.count, maxScore: d.maxScore, posts: top3 };
+        })
+        // 新しい順に並べてもdayMapは問題ないが、見た目の意味では使わない
+        .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+      setAllDays(packed);
+    } catch (e) {
+      console.warn("ensureAllLoaded failed:", e);
+      setAllDays([]);
+    } finally {
+      setLoadingAll(false);
+    }
+  }
+
+  async function onSelectMode(next: RangeMode) {
+    setMode(next);
+    if (next === "all") await ensureAllLoaded();
+  }
+
+  // Segmented control（トグル）
+  const Segmented = useMemo(() => {
+    if (!canShowAllToggle) return null;
+
+    const base =
+      "inline-flex items-center rounded-full border border-black/[.08] bg-white p-1 text-[11px] md:text-xs";
+    const btn =
+      "px-3 py-1.5 rounded-full transition outline-none focus:ring-2 focus:ring-orange-300/60 focus:ring-offset-2 focus:ring-offset-white";
+    const active = "bg-slate-900 text-white";
+    const idle = "text-slate-700 hover:bg-slate-50";
+
+    return (
+      <div className={base}>
+        <button
+          type="button"
+          className={`${btn} ${mode === "year" ? active : idle}`}
+          onClick={() => onSelectMode("year")}
+        >
+          1年
+        </button>
+        <button
+          type="button"
+          className={`${btn} ${mode === "all" ? active : idle}`}
+          onClick={() => onSelectMode("all")}
+        >
+          全て
+        </button>
+      </div>
+    );
+  }, [canShowAllToggle, mode, onSelectMode]);
+
   return (
-    // ✅ “はみ出し防止”のために outer は w-full + overflow-hidden
-    // ✅ 背景は白、角丸なし
     <section className="w-full max-w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
-      {/* ✅ ヘッダー：凡例がはみ出さないようにスマホは縦積み */}
+      {/* Header */}
       <div className="flex flex-col gap-2 px-3 pt-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
+            {Segmented}
+            {mode === "all" && loadingAll ? (
+              <span className="text-[11px] text-slate-500">読み込み中...</span>
+            ) : null}
+          </div>
           <p className="mt-1 text-[11px] text-slate-500">ブロックを押すと投稿を見ることができます。</p>
         </div>
 
@@ -364,27 +578,20 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
           <div className="mt-1 flex flex-wrap items-center gap-2 sm:justify-end">
             <div className="flex items-center gap-0.5">
               {legendLevels.map((lv) => (
-                <span
-                  key={lv}
-                  className={`h-2.5 w-2.5 rounded-none ${levelClass(lv)}`} // ✅ 角丸なし
-                />
+                <span key={lv} className={`h-2.5 w-2.5 rounded-none ${levelClass(lv)}`} />
               ))}
             </div>
           </div>
         </div>
       </div>
 
-      {/* ✅ 横スクロールはここに閉じ込める（外にはみ出さない） */}
-      <div ref={scrollRef} className="mt-3 overflow-x-auto overscroll-x-contain px-0">
-        {/* ✅ iOSの“はみ出し”対策に max-w-full を入れる */}
-        <div className="max-w-full min-w-[760px] pr-2 pb-3">
+      {/* Scroll area: “余白ダサい”対策で、内側は w-max で実幅に合わせる */}
+      <div ref={scrollRef} className="mt-3 overflow-x-auto overscroll-x-contain">
+        <div className="inline-block w-max pb-3">
           {/* Month labels */}
           <div className="mb-2 flex gap-1 h-4 items-end px-3">
             {monthMeta.map((m, i) => (
-              <div
-                key={i}
-                className={["relative flex-none w-3.5 h-4", m.breakBefore ? "ml-2" : ""].join(" ")}
-              >
+              <div key={i} className={["relative flex-none w-3.5 h-4", m.breakBefore ? "ml-2" : ""].join(" ")}>
                 {m.show ? (
                   <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 whitespace-nowrap leading-none">
                     {m.text}
@@ -407,10 +614,10 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
 
                   return (
                     <button
-                      key={dateKey}
+                      key={`${dateKey}-${wi}-${di}`}
                       type="button"
                       className={[
-                        "h-3.5 w-3.5 flex-none rounded-none transition", // ✅ 角丸なし
+                        "h-3.5 w-3.5 flex-none rounded-none transition",
                         "outline-none focus:ring-2 focus:ring-orange-300/60 focus:ring-offset-2 focus:ring-offset-white",
                         levelClass(level),
                         "hover:brightness-95",
@@ -430,7 +637,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
         </div>
       </div>
 
-      {/* ✅ PC hover popover */}
+      {/* PC hover popover */}
       {hoverKey && hoverPos && hoverDay && isPointerFine() && (
         <div
           className="fixed z-[9998] -translate-x-1/2 rounded-none border border-black/[.08] bg-white p-3 shadow-xl"
@@ -461,7 +668,7 @@ export default function VisitHeatmap({ userId, days }: { userId: string; days: H
         </div>
       )}
 
-      {/* ✅ 大きいモーダル */}
+      {/* Modal */}
       {openKey &&
         typeof document !== "undefined" &&
         createPortal(

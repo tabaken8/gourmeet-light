@@ -1,14 +1,33 @@
+// src/app/(app)/profile/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { Globe2, Lock, Plus } from "lucide-react";
 
-// ✅ 遅延ブロック（statsは呼ばない）
-import HeatmapBlock from "./parts/HeatmapBlock";
+import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
+
+// ✅ 遅延ブロック（posts）
 import AlbumBlock from "./parts/AlbumBlock";
 
 export const dynamic = "force-dynamic";
+
+// ---- utils ----
+function formatJstYmdFromIso(iso: string): string {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return dtf.format(new Date(iso));
+}
+
+function getRepresentativeDayKey(r: any): string {
+  if (r?.visited_on) return String(r.visited_on);
+  if (r?.created_at) return formatJstYmdFromIso(String(r.created_at));
+  return "0000-00-00";
+}
 
 export default async function AccountPage() {
   const supabase = await createClient();
@@ -22,7 +41,7 @@ export default async function AccountPage() {
   // ✅ プロフィール（軽い）
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, bio, avatar_url, username, is_public") // ✅ header_image_url を取らない
+    .select("display_name, bio, avatar_url, username, is_public")
     .eq("id", user.id)
     .single();
 
@@ -36,15 +55,13 @@ export default async function AccountPage() {
   let joinedLabel: string | null = null;
   if (user.created_at) {
     try {
-      joinedLabel = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "short" }).format(
-        new Date(user.created_at)
-      );
+      joinedLabel = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "short" }).format(new Date(user.created_at));
     } catch {
       joinedLabel = null;
     }
   }
 
-  // ✅ カウントは軽いのでここで（並列）
+  // ✅ カウント（並列）
   const [postsQ, wantsQ, followersQ, followingQ] = await Promise.all([
     supabase.from("posts").select("*", { count: "exact", head: true }).eq("user_id", user.id),
     supabase.from("post_wants").select("*", { count: "exact", head: true }).eq("user_id", user.id),
@@ -65,19 +82,130 @@ export default async function AccountPage() {
   const followersCount = followersQ.count ?? 0;
   const followingCount = followingQ.count ?? 0;
 
+  // -----------------------------
+  // earliestKey (visited_on or created_at)
+  // -----------------------------
+  let earliestKey: string | null = null;
+  {
+    const [earliestVisitedQ, earliestCreatedQ] = await Promise.all([
+      supabase
+        .from("posts")
+        .select("visited_on")
+        .eq("user_id", user.id)
+        .not("visited_on", "is", null)
+        .order("visited_on", { ascending: true })
+        .limit(1),
+      supabase
+        .from("posts")
+        .select("created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true })
+        .limit(1),
+    ]);
+
+    const v = (earliestVisitedQ.data ?? [])[0]?.visited_on ? String((earliestVisitedQ.data ?? [])[0].visited_on) : null;
+    const cIso = (earliestCreatedQ.data ?? [])[0]?.created_at ? String((earliestCreatedQ.data ?? [])[0].created_at) : null;
+    const c = cIso ? formatJstYmdFromIso(cIso) : null;
+
+    if (v && c) earliestKey = v < c ? v : c;
+    else earliestKey = v ?? c ?? null;
+  }
+
+  // -----------------------------
+  // heatmapDays (initial = 1 year only)
+  // -----------------------------
+  let heatmapDays: HeatmapDay[] = [];
+  {
+    const dtf = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+
+    const today = new Date();
+    const todayJst = dtf.format(today);
+    const startJst = dtf.format(new Date(today.getTime() - 364 * 24 * 60 * 60 * 1000));
+
+    const startIso = new Date(Date.now() - 364 * 24 * 60 * 60 * 1000).toISOString();
+    const endIso = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: withVisited } = await supabase
+      .from("posts")
+      .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
+      .eq("user_id", user.id)
+      .not("visited_on", "is", null)
+      .gte("visited_on", startJst)
+      .lte("visited_on", todayJst)
+      .limit(2000);
+
+    const { data: noVisited } = await supabase
+      .from("posts")
+      .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
+      .eq("user_id", user.id)
+      .is("visited_on", null)
+      .gte("created_at", startIso)
+      .lte("created_at", endIso)
+      .limit(2000);
+
+    const rows = new Map<string, any>();
+    for (const r of withVisited ?? []) rows.set(String(r.id), r);
+    for (const r of noVisited ?? []) rows.set(String(r.id), r);
+
+    type DayPost = { id: string; thumbUrl: string | null; score: number | null };
+    type DayAcc = { date: string; count: number; maxScore: number | null; posts: DayPost[] };
+    const dayMap = new Map<string, DayAcc>();
+
+    const getThumbUrlFromPostRow = (r: any): string | null => {
+      const v = r?.image_variants;
+      if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string") return v[0].thumb;
+      const urls = r?.image_urls;
+      if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string") return urls[0];
+      return null;
+    };
+
+    for (const r of rows.values()) {
+      const dateKey = getRepresentativeDayKey(r);
+      if (dateKey < startJst || dateKey > todayJst) continue;
+
+      const sRaw = (r as any)?.recommend_score;
+      const score =
+        typeof sRaw === "number"
+          ? Number.isFinite(sRaw)
+            ? sRaw
+            : null
+          : typeof sRaw === "string"
+            ? Number.isFinite(Number(sRaw))
+              ? Number(sRaw)
+              : null
+            : null;
+
+      const cur: DayAcc = dayMap.get(dateKey) ?? { date: dateKey, count: 0, maxScore: null, posts: [] };
+
+      cur.count += 1;
+      if (score !== null) cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
+      cur.posts.push({ id: String(r.id), thumbUrl: getThumbUrlFromPostRow(r), score });
+
+      dayMap.set(dateKey, cur);
+    }
+
+    heatmapDays = Array.from(dayMap.values())
+      .map((d) => {
+        const sorted = d.posts.slice().sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+        const top3 = sorted.slice(0, 3).map((p) => ({ id: p.id, thumbUrl: p.thumbUrl }));
+        return { date: d.date, count: d.count, maxScore: d.maxScore, posts: top3 };
+      })
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  }
+
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      {/* ✅ 横はみ出し防止 */}
       <div className="w-full overflow-x-hidden pb-24 pt-6">
-        {/* ✅ PCだけ中央寄せ。スマホはフル幅 */}
         <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
-          {/* =========================
-              PROFILE (NO HEADER IMAGE)
-             ========================= */}
+          {/* ========================= PROFILE ========================= */}
           <section className="w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
             <div className="px-4 py-5 md:px-6 md:py-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                {/* left: avatar + name */}
                 <div className="flex items-start gap-4 min-w-0">
                   <div className="shrink-0">
                     {avatarUrl ? (
@@ -95,13 +223,9 @@ export default async function AccountPage() {
                   </div>
 
                   <div className="min-w-0">
-                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
-                      {displayName}
-                    </h1>
+                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">{displayName}</h1>
 
-                    {username ? (
-                      <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
-                    ) : null}
+                    {username ? <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p> : null}
 
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
                       <span className="inline-flex items-center gap-1">
@@ -128,7 +252,6 @@ export default async function AccountPage() {
                   </div>
                 </div>
 
-                {/* right: actions */}
                 <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
                   <Link
                     href="/profile/edit"
@@ -139,9 +262,7 @@ export default async function AccountPage() {
                 </div>
               </div>
 
-              {bio ? (
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p>
-              ) : null}
+              {bio ? <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p> : null}
 
               <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
                 <li className="flex items-center gap-1.5">
@@ -171,9 +292,7 @@ export default async function AccountPage() {
             </div>
           </section>
 
-          {/* =========================
-              HEATMAP (LAZY)
-             ========================= */}
+          {/* ========================= HEATMAP ========================= */}
           <Suspense
             fallback={
               <section className="w-full bg-white rounded-none border border-black/[.06] p-4">
@@ -182,12 +301,10 @@ export default async function AccountPage() {
               </section>
             }
           >
-            <HeatmapBlock userId={user.id} />
+            <VisitHeatmap userId={user.id} days={heatmapDays} earliestKey={earliestKey} />
           </Suspense>
 
-          {/* =========================
-              POSTS (ALBUM)
-             ========================= */}
+          {/* ========================= POSTS (ALBUM) ========================= */}
           <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-900 md:text-base">投稿</h2>

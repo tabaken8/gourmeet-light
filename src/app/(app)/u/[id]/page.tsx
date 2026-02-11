@@ -1,3 +1,4 @@
+// src/app/(app)/u/[id]/page.tsx
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -115,8 +116,6 @@ export default async function UserPublicPage({ params }: { params: { id: string 
 
   // -----------------------------
   // 🔔 bell initial state (server-side)
-  // - acceptedフォローなら基本ONのはず（DBトリガー前提）
-  // - 念のため enabled を読む（無ければON扱いにしてUIが自然）
   // -----------------------------
   let initialBellEnabled = false;
   if (initiallyFollowing) {
@@ -126,13 +125,40 @@ export default async function UserPublicPage({ params }: { params: { id: string 
       .eq("user_id", me.id)
       .eq("target_user_id", userId)
       .maybeSingle();
-
-    // ✅ デフォルトONを優先（行がまだ無い/遅延でもONに見せる）
     initialBellEnabled = sub?.enabled ?? true;
   }
 
   // -----------------------------
-  // heatmap data
+  // earliestKey (visited_on or created_at)
+  // -----------------------------
+  let earliestKey: string | null = null;
+  if (canViewPosts) {
+    const [earliestVisitedQ, earliestCreatedQ] = await Promise.all([
+      supabase
+        .from("posts")
+        .select("visited_on")
+        .eq("user_id", userId)
+        .not("visited_on", "is", null)
+        .order("visited_on", { ascending: true })
+        .limit(1),
+      supabase
+        .from("posts")
+        .select("created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true })
+        .limit(1),
+    ]);
+
+    const v = (earliestVisitedQ.data ?? [])[0]?.visited_on ? String((earliestVisitedQ.data ?? [])[0].visited_on) : null;
+    const cIso = (earliestCreatedQ.data ?? [])[0]?.created_at ? String((earliestCreatedQ.data ?? [])[0].created_at) : null;
+    const c = cIso ? formatJstYmdFromIso(cIso) : null;
+
+    if (v && c) earliestKey = v < c ? v : c;
+    else earliestKey = v ?? c ?? null;
+  }
+
+  // -----------------------------
+  // heatmap data (initial = 1 year only)
   // -----------------------------
   let heatmapDays: HeatmapDay[] = [];
 
@@ -202,7 +228,6 @@ export default async function UserPublicPage({ params }: { params: { id: string 
             : null;
 
       const thumbUrl = getThumbUrlFromPostRow(r);
-
       const cur: DayAcc = dayMap.get(dateKey) ?? { date: dateKey, count: 0, maxScore: null, posts: [] };
 
       cur.count += 1;
@@ -304,9 +329,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                     </h1>
 
                     <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                      {username ? (
-                        <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
-                      ) : null}
+                      {username ? <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p> : null}
 
                       {isFollowing ? (
                         <p className="bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 md:text-xs">
@@ -340,8 +363,6 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                       initiallyFollowing={initiallyFollowing}
                       initiallyRequested={initiallyRequested}
                     />
-
-                    {/* 🔔 ベル（acceptedフォローのみトグル可） */}
                     <PostNotifyBellButton
                       targetUserId={userId}
                       canToggle={initiallyFollowing}
@@ -349,16 +370,11 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                     />
                   </div>
 
-                  {/* pendingの時のヒント（任意） */}
-                  {initiallyRequested ? (
-                    <p className="text-[11px] text-slate-500">フォロー承認後に通知をONにできます</p>
-                  ) : null}
+                  {initiallyRequested ? <p className="text-[11px] text-slate-500">フォロー承認後に通知をONにできます</p> : null}
                 </div>
               </div>
 
-              {bio ? (
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p>
-              ) : null}
+              {bio ? <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p> : null}
 
               <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
                 <li className="flex items-center gap-1.5">
@@ -386,7 +402,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
           </section>
 
           {canViewPosts ? (
-            <VisitHeatmap userId={userId} days={heatmapDays} />
+            <VisitHeatmap userId={userId} days={heatmapDays} earliestKey={earliestKey} />
           ) : (
             <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
               <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
