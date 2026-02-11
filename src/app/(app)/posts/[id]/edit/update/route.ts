@@ -13,9 +13,6 @@ type Payload = {
   place_name?: string | null;
   place_address?: string | null;
 
-  // 画像は「送られてきた時だけ更新」したいので optional のまま
-  // 変更なし: このキー自体を送らない
-  // 削除したい: null / [] を明示的に送る
   image_variants?: any | null;
   image_urls?: any | null;
 };
@@ -24,7 +21,14 @@ function finiteNumberOrNull(v: any): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-// ✅ Next 16: context.params が Promise になってるので await する
+function normalizeNullableString(v: any): string | null {
+  if (v == null) return null;
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s === "" ? null : s;
+}
+
+// ✅ Next 15/16: context.params が Promise になるケースがあるので await する
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
@@ -42,7 +46,6 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       );
     }
 
-    // JSON受信（クライアントが application/json を送っている前提）
     const payload = (await req.json()) as Payload;
 
     // 対象投稿の存在確認 + 自分の投稿かチェック
@@ -68,18 +71,18 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     // 「送られてきた項目だけ」更新
     const patch: Record<string, any> = {};
 
-    if ("content" in payload) patch.content = payload.content ?? null;
-    if ("visited_on" in payload) patch.visited_on = payload.visited_on ?? null;
+    if ("content" in payload) patch.content = normalizeNullableString(payload.content);
+    if ("visited_on" in payload) patch.visited_on = normalizeNullableString(payload.visited_on);
 
     if ("recommend_score" in payload) patch.recommend_score = finiteNumberOrNull(payload.recommend_score);
     if ("price_yen" in payload) patch.price_yen = finiteNumberOrNull(payload.price_yen);
-    if ("price_range" in payload) patch.price_range = payload.price_range ?? null;
+    if ("price_range" in payload) patch.price_range = normalizeNullableString(payload.price_range);
 
-    if ("place_id" in payload) patch.place_id = payload.place_id ?? null;
-    if ("place_name" in payload) patch.place_name = payload.place_name ?? null;
-    if ("place_address" in payload) patch.place_address = payload.place_address ?? null;
+    // ✅ FK対策：空文字は必ず null に落とす
+    if ("place_id" in payload) patch.place_id = normalizeNullableString(payload.place_id);
+    if ("place_name" in payload) patch.place_name = normalizeNullableString(payload.place_name);
+    if ("place_address" in payload) patch.place_address = normalizeNullableString(payload.place_address);
 
-    // ⭐画像：送られてきた時だけ更新（未送信なら既存値保持）
     if ("image_variants" in payload) patch.image_variants = payload.image_variants;
     if ("image_urls" in payload) patch.image_urls = payload.image_urls;
 

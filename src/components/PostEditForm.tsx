@@ -69,7 +69,6 @@ function isPhotoItem(v: unknown): v is PhotoItem {
 }
 
 function buildPhotosFromInitial(initial: EditInitialPost): PhotoItem[] {
-  // 1) image_variants: [{ thumb, full }] を優先
   const variants: any[] = Array.isArray(initial.image_variants) ? initial.image_variants : [];
   const fromVariants: PhotoItem[] = variants
     .map((v: any) => {
@@ -84,7 +83,6 @@ function buildPhotosFromInitial(initial: EditInitialPost): PhotoItem[] {
 
   if (fromVariants.length > 0) return fromVariants;
 
-  // 2) image_urls: string[] をフォールバック
   const urls: unknown[] = Array.isArray(initial.image_urls) ? initial.image_urls : [];
   return urls
     .filter(isNonEmptyString)
@@ -127,7 +125,6 @@ function normalizePriceRange(v: string | null | undefined): string {
     const b = Number(String(bRaw).replace(/[^\d]/g, ""));
     if (Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= 0) {
       const mid = (a + b) / 2;
-
       const buckets: Array<{ min: number; max: number; value: string }> = [
         { min: 0, max: 999, value: "~999" },
         { min: 1000, max: 1999, value: "1000-1999" },
@@ -169,6 +166,13 @@ function normalizePriceRange(v: string | null | undefined): string {
   return "~999";
 }
 
+function normalizeNullableString(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s === "" ? null : s;
+}
+
 export default function PostEditForm({ initial }: { initial: EditInitialPost }) {
   const router = useRouter();
 
@@ -199,7 +203,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
   // 写真（表示）
   const photos = useMemo(() => buildPhotosFromInitial(initial), [initial]);
 
-  // 店（新規投稿と同じ検索UX）
+  // 店（初期）
   const initialSelectedPlace: PlaceResult | null = useMemo(() => {
     if (initial.place_id && initial.place_name) {
       return {
@@ -211,6 +215,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     return null;
   }, [initial.place_id, initial.place_name, initial.place_address]);
 
+  // 店（検索UX）
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(initialSelectedPlace);
@@ -226,7 +231,21 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         setIsSearchingPlace(true);
         const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
         const data = await res.json().catch(() => ({}));
-        setPlaceResults((data.results ?? []).slice(0, 6));
+
+        // ✅ 新規投稿側と同じ shape に寄せる（place_id/name/formatted_address）
+        const normalized: PlaceResult[] = Array.isArray(data?.results)
+          ? data.results
+              .map((r: any) => ({
+                place_id: r?.place_id ?? "",
+                name: r?.name ?? "",
+                formatted_address:
+                  r?.formatted_address ?? r?.vicinity ?? r?.formattedAddress ?? "",
+              }))
+              .filter((r: PlaceResult) => r.place_id && r.name)
+              .slice(0, 6)
+          : [];
+
+        setPlaceResults(normalized);
       } catch (e) {
         console.error(e);
       } finally {
@@ -243,9 +262,28 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     return String(Math.round(v * 10) / 10);
   }, [score]);
 
+  // ✅ place の「変更判定」
+  const initialPlaceId = initial.place_id ?? null;
+  const currentPlaceId = selectedPlace?.place_id ?? null;
+  const placeChanged = initialPlaceId !== currentPlaceId;
+
+  // ✅ places に必ず作る（placeChanged かつ place_id がある時だけ呼ぶ）
+  async function ensurePlace(placeId: string) {
+    const res = await fetch("/api/places/ensure", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ placeId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      throw new Error(j?.error ?? `places ensure failed (${res.status})`);
+    }
+  }
+
   async function onSubmit() {
     setErrMsg(null);
     setSaving(true);
+
     try {
       let scoreVal: number | null = null;
       if (score !== null && Number.isFinite(score)) scoreVal = clamp(score, 0, 10);
@@ -262,16 +300,31 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         price_range = priceRange || null;
       }
 
-      const payload = {
+      // ✅ payload は「place を変更したときだけ」 place_* を含める
+      const payload: Record<string, any> = {
         content,
         visited_on: visited,
         recommend_score: scoreVal,
         price_yen,
         price_range,
-        place_id: selectedPlace?.place_id ?? null,
-        place_name: selectedPlace?.name ?? null,
-        place_address: selectedPlace?.formatted_address ?? null,
       };
+
+      if (placeChanged) {
+        const pid = normalizeNullableString(selectedPlace?.place_id ?? null);
+
+        // 変更後が「設定あり」なら、先に ensure して FK を確実に満たす
+        if (pid) {
+          await ensurePlace(pid);
+          payload.place_id = pid;
+          payload.place_name = normalizeNullableString(selectedPlace?.name) ?? null;
+          payload.place_address = normalizeNullableString(selectedPlace?.formatted_address) ?? null;
+        } else {
+          // 変更後が「クリア」なら null を明示送信
+          payload.place_id = null;
+          payload.place_name = null;
+          payload.place_address = null;
+        }
+      }
 
       const res = await fetch(`/posts/${initial.id}/edit/update`, {
         method: "POST",
@@ -411,6 +464,11 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
                 )}
               </div>
             )}
+          </div>
+
+          {/* 変更検知の表示（デバッグしやすい） */}
+          <div className="mt-2 text-[11px] text-slate-500">
+            {placeChanged ? "お店：変更あり（保存時に反映）" : "お店：変更なし"}
           </div>
         </div>
 
