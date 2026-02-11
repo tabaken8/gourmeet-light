@@ -32,23 +32,6 @@ function escapeHtml(s: string) {
     .replace(/'/g, "&#039;");
 }
 
-function labelForType(t: NotifType) {
-  switch (t) {
-    case "follow":
-      return "フォロー";
-    case "comment":
-      return "コメント";
-    case "reply":
-      return "返信";
-    case "like":
-      return "いいね";
-    case "want":
-      return "行きたい！";
-    case "post":
-      return "新規投稿";
-  }
-}
-
 function berealStyleLine(t: NotifType, actorName: string, placeName?: string | null) {
   const place = placeName ? ` @ ${placeName}` : "";
   switch (t) {
@@ -80,16 +63,11 @@ function buildSubject(t: NotifType, actorName: string, placeName?: string | null
             : t === "want"
               ? "「行きたい！」された"
               : "新しい投稿";
+
   const tail = placeName ? `｜${placeName}` : "";
   return `Gourmeet｜${actorName}に${core}${tail}`;
 }
 
-/**
- * ✅ いいね連打・付け直しでメール爆撃を防ぐ簡易クールダウン
- * - 同じ user_id（受信者）× actor_id（した人）× post_id × type が
- *   例えば15分以内に "sent" になってたら今回の送信をスキップ
- * - DB変更なしで実現できる
- */
 async function shouldCooldownLike(opts: {
   user_id: string;
   actor_id: string | null;
@@ -114,6 +92,47 @@ async function shouldCooldownLike(opts: {
     .limit(1);
 
   return (data?.length ?? 0) > 0;
+}
+
+/** ✅ 通知設定（メール）を読む。無ければ全部true扱い */
+async function getEmailPrefs(userId: string) {
+  const { data } = await supabaseAdmin
+    .from("user_notification_settings")
+    .select(
+      "email_enabled,email_like,email_comment,email_reply,email_follow,email_post,email_want"
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const d = data ?? null;
+
+  return {
+    email_enabled: d?.email_enabled ?? true,
+    email_like: d?.email_like ?? true,
+    email_comment: d?.email_comment ?? true,
+    email_reply: d?.email_reply ?? true,
+    email_follow: d?.email_follow ?? true,
+    email_post: d?.email_post ?? true,
+    email_want: d?.email_want ?? false, // wantはデフォルトOFF推奨（爆撃になりやすい）
+  };
+}
+
+function isTypeEmailAllowed(prefs: Awaited<ReturnType<typeof getEmailPrefs>>, t: NotifType) {
+  if (!prefs.email_enabled) return false;
+  switch (t) {
+    case "like":
+      return prefs.email_like;
+    case "comment":
+      return prefs.email_comment;
+    case "reply":
+      return prefs.email_reply;
+    case "follow":
+      return prefs.email_follow;
+    case "post":
+      return prefs.email_post;
+    case "want":
+      return prefs.email_want;
+  }
 }
 
 export async function POST(req: Request) {
@@ -152,6 +171,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, skipped: `type=${t}` });
   }
 
+  // ✅ 通知設定（受信者）をチェックして送らない
+  const prefs = await getEmailPrefs(n.user_id);
+  if (!isTypeEmailAllowed(prefs, t)) {
+    await supabaseAdmin
+      .from("notifications")
+      .update({ email_status: "skipped", email_fail_reason: `prefs_off:${t}` })
+      .eq("id", notificationId);
+    return NextResponse.json({ ok: true, skipped: `prefs_off:${t}` });
+  }
+
   // ✅ like は爆撃防止（例：15分クールダウン）
   if (t === "like") {
     const cooled = await shouldCooldownLike({
@@ -172,8 +201,8 @@ export async function POST(req: Request) {
 
   // 2) 宛先メール
   const { data: userRes, error: uErr } = await supabaseAdmin.auth.admin.getUserById(n.user_id);
-
   const toEmail = userRes?.user?.email ?? null;
+
   if (uErr || !toEmail) {
     await supabaseAdmin
       .from("notifications")
@@ -184,23 +213,29 @@ export async function POST(req: Request) {
 
   // 3) actor / post / comment
   let actorName = "だれか";
+  let actorUsername: string | null = null;
+
   if (n.actor_id) {
     const { data: actor } = await supabaseAdmin
       .from("profiles")
       .select("display_name,username")
       .eq("id", n.actor_id)
       .maybeSingle();
+
     actorName = actor?.display_name ?? actor?.username ?? actorName;
+    actorUsername = actor?.username ?? null;
   }
 
   let placeName: string | null = null;
   let placeId: string | null = null;
+
   if (n.post_id) {
     const { data: post } = await supabaseAdmin
       .from("posts")
       .select("place_name,place_id")
       .eq("id", n.post_id)
       .maybeSingle();
+
     placeName = post?.place_name ?? null;
     placeId = post?.place_id ?? null;
   }
@@ -218,6 +253,9 @@ export async function POST(req: Request) {
   // 4) リンク
   const notificationsUrl = `${appOrigin()}/notifications`;
   const settingsUrl = `${appOrigin()}/settings/notifications`;
+
+  // 「プロフィールの🔔からOFF」リンク（相手ページ）
+  const actorProfileUrl = n.actor_id ? `${appOrigin()}/u/${n.actor_id}` : notificationsUrl;
 
   // iPhoneネイティブ/WEBどっちでも開きやすいGoogle Mapsリンク
   const mapsUrl = placeId
@@ -240,6 +278,7 @@ export async function POST(req: Request) {
     `\n確認する：${notificationsUrl}`,
     mapsUrl ? `Google Maps：${mapsUrl}` : null,
     `\n通知設定：${settingsUrl}`,
+    n.actor_id ? `この人の投稿通知だけOFF：${actorProfileUrl} の🔔をOFF` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -247,6 +286,8 @@ export async function POST(req: Request) {
   const safeHeadline = escapeHtml(headline);
   const safePlace = placeName ? escapeHtml(placeName) : "";
   const safeComment = commentPreview ? escapeHtml(commentPreview) : "";
+  const safeActorName = escapeHtml(actorName);
+  const safeActorHandle = actorUsername ? escapeHtml(actorUsername) : null;
 
   const html = `
   <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;line-height:1.6;background:#fff;padding:20px">
@@ -254,29 +295,54 @@ export async function POST(req: Request) {
       <div style="background:#fff7ed;padding:16px 18px">
         <div style="font-size:12px;letter-spacing:.18em;color:#f97316;font-weight:700">GOURMEET</div>
         <div style="font-size:18px;margin-top:6px;font-weight:800;color:#111">${safeHeadline}</div>
+        ${
+          n.actor_id
+            ? `<div style="margin-top:6px;font-size:12px;color:#444">from ${safeActorName}${safeActorHandle ? ` (@${safeActorHandle})` : ""}</div>`
+            : ""
+        }
       </div>
 
       <div style="padding:18px">
-        ${placeName ? `<div style="margin:8px 0 0;color:#111"><span style="color:#f97316;font-weight:700">📍</span> ${safePlace}</div>` : ""}
+        ${
+          placeName
+            ? `<div style="margin:8px 0 0;color:#111"><span style="color:#f97316;font-weight:700">📍</span> ${safePlace}</div>`
+            : ""
+        }
 
-        ${commentPreview ? `
+        ${
+          commentPreview
+            ? `
           <div style="margin-top:12px;padding:12px;border-left:4px solid #fed7aa;background:#fffaf5;border-radius:10px;color:#111">
             “${safeComment}”
           </div>
-        ` : ""}
+        `
+            : ""
+        }
 
         <div style="margin-top:16px">
           <a href="${notificationsUrl}"
              style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:10px 14px;border-radius:12px;font-weight:700">
             今すぐ見る →
           </a>
-          ${mapsUrl ? `<a href="${mapsUrl}" style="margin-left:10px;color:#111;text-decoration:underline;font-size:13px">Maps</a>` : ""}
+          ${
+            mapsUrl
+              ? `<a href="${mapsUrl}" style="margin-left:10px;color:#111;text-decoration:underline;font-size:13px">Google Maps</a>`
+              : ""
+          }
         </div>
 
         <div style="margin-top:18px;font-size:12px;color:#666">
           このメールはGourmeetの通知です。通知のオン/オフは
           <a href="${settingsUrl}" style="color:#111;text-decoration:underline">通知設定</a>
           から変更できます。
+          <br/>
+          ${
+            n.actor_id
+              ? `特定の人の投稿通知だけOFFにする場合は、
+          <a href="${actorProfileUrl}" style="color:#111;text-decoration:underline">その人のプロフィール</a>
+          の 🔔 をOFFにしてください。`
+              : ""
+          }
         </div>
       </div>
     </div>

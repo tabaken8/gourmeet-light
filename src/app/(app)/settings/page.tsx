@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -8,6 +9,7 @@ import {
   FileText,
   Scale,
   Settings2,
+  Bell, // ✅ 追加
 } from "lucide-react";
 
 type Item = {
@@ -44,6 +46,12 @@ export default function SettingsIndexPage() {
       desc: "プロフィールや基本情報",
       href: "/settings/account",
       icon: <User className="h-5 w-5 text-gray-700" />,
+    },
+    {
+      title: "通知設定", // ✅ 追加
+      desc: "メール通知・投稿通知（ベル）など",
+      href: "/settings/notifications",
+      icon: <Bell className="h-5 w-5 text-gray-700" />,
     },
     {
       title: "アカウントのプライバシー",

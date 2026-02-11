@@ -797,7 +797,7 @@ export default function NewPostPage() {
                 </div>
 
                 <div className="mt-2 text-[11px] text-slate-500">
-                  ✅ タイムライン用は<strong>正方形</strong>に統一（中心クロップ） / ✅ マップ用は<strong>160px正方形</strong>を別生成
+                
                 </div>
               </div>
             )}

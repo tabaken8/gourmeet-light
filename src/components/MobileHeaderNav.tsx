@@ -15,6 +15,7 @@ import {
   CircleDollarSign,
   MessagesSquare,
   Sparkles,
+  Settings, // ✅ 追加
 } from "lucide-react";
 import { useNavBadges } from "@/hooks/useNavBadges";
 
@@ -78,11 +79,6 @@ function IconButton({
   );
 }
 
-/**
- * Gourmeet day_key（毎日4:00 JSTで切り替え）
- * - JSTで 00:00〜03:59 は「前日扱い」
- * - それ以外は「当日扱い」
- */
 function getGourmeetDayKey(now = new Date()): string {
   const dtf = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
@@ -117,16 +113,13 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
   const isActive = (p: string) => pathname === p || pathname.startsWith(p + "/");
 
-  // ✅ Sidebar と同じゲート
   const gate = (href: string, allowGuest = false) => {
     if (allowGuest) return href;
     return isAuthed ? href : `/auth/required?next=${encodeURIComponent(href)}`;
   };
 
-  // ✅ ロゴ/ホームは必ず friends tab に統一
   const homeHref = "/timeline?tab=friends";
 
-  // ===== 投稿インセンティブ判定（初回 or 今日の+50未取得） =====
   const [uid, setUid] = useState<string | null>(null);
   const [hasPosted, setHasPosted] = useState<boolean | null>(null);
   const [dailyAwarded, setDailyAwarded] = useState<boolean | null>(null);
@@ -154,23 +147,15 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
     (async () => {
       try {
-        // ① 投稿済みか（自分の投稿が1件でもあるか）
-        const { count: postCount, error: postErr } = await supabase
+        const { count: postCount } = await supabase
           .from("posts")
           .select("id", { count: "exact", head: true })
           .eq("user_id", uid);
 
         if (cancelled) return;
+        setHasPosted((postCount ?? 0) > 0);
 
-        if (postErr) {
-          console.error(postErr);
-          setHasPosted(null);
-        } else {
-          setHasPosted((postCount ?? 0) > 0);
-        }
-
-        // ② 今日のdaily_post(+50)が付与済みか（4:00 JST基準）
-        const { count: dailyCount, error: dailyErr } = await supabase
+        const { count: dailyCount } = await supabase
           .from("point_transactions")
           .select("id", { count: "exact", head: true })
           .eq("user_id", uid)
@@ -178,15 +163,8 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           .eq("day_key", dayKey);
 
         if (cancelled) return;
-
-        if (dailyErr) {
-          console.error(dailyErr);
-          setDailyAwarded(null);
-        } else {
-          setDailyAwarded((dailyCount ?? 0) > 0);
-        }
+        setDailyAwarded((dailyCount ?? 0) > 0);
       } catch (e) {
-        console.error(e);
         if (!cancelled) {
           setHasPosted(null);
           setDailyAwarded(null);
@@ -199,37 +177,29 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
     };
   }, [supabase, uid, isAuthed, dayKey]);
 
-  // 初回未投稿 → 550pt（初回+500 + 今日の+50 の “体感” を押し出す想定）
   const showFirstPostPromo = isAuthed && hasPosted === false;
-  // 既投稿 & 今日の+50未取得 → 50pt
   const showDailyPromo = isAuthed && hasPosted === true && dailyAwarded === false;
 
   const promoPoints = showFirstPostPromo ? 550 : showDailyPromo ? 50 : 0;
   const showPromo = promoPoints > 0;
 
-  const promoText = showFirstPostPromo
-    ? "初投稿で +550pt（今がチャンス）"
-    : showDailyPromo
-    ? "今日の投稿で +50pt もらえる"
-    : "";
-
-  const promoSub = showFirstPostPromo
-    ? "投稿ボタンから1発。ポイントは /points で確認できます"
-    : showDailyPromo
-    ? "1日1回。投稿すると自動で付与されます"
-    : "";
+  // ✅ fixed headerの高さ（だいたい2段で 12 + (px2 pb2) ≒ 104px）
+  const headerHeight = 104;
 
   return (
     <div className="md:hidden">
+      {/* ✅ spacer：fixedで本文が潜らないように */}
+      <div style={{ height: `calc(${headerHeight}px + env(safe-area-inset-top))` }} />
+
       <header
         className="
-          sticky top-0 z-50
+          fixed left-0 right-0 top-0 z-50
           border-b border-black/[.06]
           bg-white/90 backdrop-blur
           pt-[env(safe-area-inset-top)]
         "
       >
-        {/* 1段目：サブnav */}
+        {/* 1段目 */}
         <div className="flex h-12 items-center justify-between px-3">
           <Link href={gate(homeHref)} className="text-[15px] font-bold tracking-tight">
             Gourmeet
@@ -268,6 +238,16 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Badge count={followReqCount} />
             </IconButton>
 
+            {/* ✅ Settings追加 */}
+            <IconButton
+              href={gate("/settings")}
+              active={isActive("/settings")}
+              ariaLabel="設定"
+              activeClassName="bg-slate-100"
+            >
+              <Settings size={20} className="text-slate-700" />
+            </IconButton>
+
             {/* Profile */}
             <Link
               href={gate("/profile")}
@@ -295,10 +275,9 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </div>
         </div>
 
-        {/* 2段目：メインnav（Settings → AI相談に差し替え） */}
+        {/* 2段目 */}
         <div className="px-2 pb-2">
           <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
-            {/* Home */}
             <IconButton
               href={gate(homeHref)}
               active={isActive("/timeline")}
@@ -309,7 +288,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Dot on={timelineDot} />
             </IconButton>
 
-            {/* Search (guest OK) */}
             <IconButton
               href={gate("/search", true)}
               active={isActive("/search")}
@@ -319,7 +297,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Search size={20} className="text-teal-700" />
             </IconButton>
 
-            {/* Post（プロモ時に光らせる） */}
             <Link
               href={gate("/posts/new")}
               className={[
@@ -345,7 +322,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               )}
             </Link>
 
-            {/* Map */}
             <IconButton
               href={gate("/map")}
               active={isActive("/map")}
@@ -355,7 +331,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <MapPin size={20} className="text-emerald-700" />
             </IconButton>
 
-            {/* ✅ AI相談（Settingsと入れ替え） */}
             <IconButton
               href={gate("/ai-chat")}
               active={isActive("/ai-chat")}
@@ -365,23 +340,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <AIChatIcon size={20} />
             </IconButton>
           </div>
-
-          {/* 投稿インセンティブ（ちょろっと案内） */}
-          {/* {showPromo && (
-            <div className="mt-2 flex items-start justify-between gap-2 px-1">
-              <div className="min-w-0">
-                <div className="truncate text-[11px] font-semibold text-slate-900">🎁 {promoText}</div>
-                <div className="truncate text-[10px] text-slate-500">{promoSub}</div>
-              </div>
-
-              <Link
-                href={gate("/points")}
-                className="shrink-0 rounded-full border border-orange-100 bg-orange-50 px-2 py-1 text-[10px] font-semibold text-orange-700 hover:bg-orange-100"
-              >
-                ここからポイント残高を見る
-              </Link>
-            </div> */}
-          {/* )} */}
         </div>
       </header>
     </div>
