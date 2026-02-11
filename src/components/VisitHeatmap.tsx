@@ -297,32 +297,40 @@ export default function VisitHeatmap({
     return { weeks: weeksRaw, breakBefore };
   }, [calendar]);
 
-  const monthMeta = useMemo(() => {
-    const meta: Array<{ show: boolean; text: string; breakBefore: boolean }> = [];
-    let prevYM: string | null = null;
+const monthMeta = useMemo(() => {
+  const meta: Array<{ show: boolean; text: string; yearText?: string; breakBefore: boolean }> = [];
+  let prevYM: string | null = null;
 
-    for (let i = 0; i < grid.weeks.length; i++) {
-      const col = grid.weeks[i];
-      const firstKey = col.find((x) => x && x.length === 10) ?? "";
-      const bb = grid.breakBefore[i] ?? false;
+  for (let i = 0; i < grid.weeks.length; i++) {
+    const col = grid.weeks[i];
+    const firstKey = col.find((x) => x && x.length === 10) ?? "";
+    const bb = grid.breakBefore[i] ?? false;
 
-      if (!firstKey) {
-        meta.push({ show: false, text: "", breakBefore: bb });
-        continue;
-      }
-
-      const ym = firstKey.slice(0, 7);
-      if (ym !== prevYM) {
-        const m = Number(firstKey.slice(5, 7));
-        meta.push({ show: true, text: monthLabel(m), breakBefore: bb });
-        prevYM = ym;
-      } else {
-        meta.push({ show: false, text: "", breakBefore: bb });
-      }
+    if (!firstKey) {
+      meta.push({ show: false, text: "", breakBefore: bb });
+      continue;
     }
 
-    return meta;
-  }, [grid.weeks, grid.breakBefore]);
+    const ym = firstKey.slice(0, 7);
+    const y = firstKey.slice(0, 4);
+    const m = Number(firstKey.slice(5, 7));
+
+    if (ym !== prevYM) {
+      meta.push({
+        show: true,
+        text: monthLabel(m),            // "1月" など
+        yearText: m === 1 ? y : undefined, // ✅ 1月だけ年を表示
+        breakBefore: bb,
+      });
+      prevYM = ym;
+    } else {
+      meta.push({ show: false, text: "", breakBefore: bb });
+    }
+  }
+
+  return meta;
+}, [grid.weeks, grid.breakBefore]);
+
 
   const yearRangeText = useMemo(() => {
     const sy = Number(calendar.startKey.slice(0, 4));
@@ -588,18 +596,29 @@ export default function VisitHeatmap({
       {/* Scroll area: “余白ダサい”対策で、内側は w-max で実幅に合わせる */}
       <div ref={scrollRef} className="mt-3 overflow-x-auto overscroll-x-contain">
         <div className="inline-block w-max pb-3">
-          {/* Month labels */}
-          <div className="mb-2 flex gap-1 h-4 items-end px-3">
-            {monthMeta.map((m, i) => (
-              <div key={i} className={["relative flex-none w-3.5 h-4", m.breakBefore ? "ml-2" : ""].join(" ")}>
-                {m.show ? (
-                  <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 whitespace-nowrap leading-none">
-                    {m.text}
-                  </span>
-                ) : null}
-              </div>
-            ))}
-          </div>
+  {/* Month labels */}
+<div className="mb-2 flex gap-1 h-6 items-end px-3">
+  {monthMeta.map((m, i) => (
+    <div key={i} className={["relative flex-none w-3.5 h-6", m.breakBefore ? "ml-2" : ""].join(" ")}>
+      {m.show ? (
+        <>
+          {/* ✅ 年（1月だけ） */}
+          {m.yearText ? (
+            <span className="absolute left-0 top-0 text-[10px] font-semibold text-slate-500 whitespace-nowrap leading-none">
+              {m.yearText}
+            </span>
+          ) : null}
+
+          {/* 月 */}
+          <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 whitespace-nowrap leading-none">
+            {m.text}
+          </span>
+        </>
+      ) : null}
+    </div>
+  ))}
+</div>
+
 
           {/* Grid */}
           <div className="flex gap-1 px-3">
