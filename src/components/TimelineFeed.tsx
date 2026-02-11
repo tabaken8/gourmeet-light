@@ -304,44 +304,54 @@ export default function TimelineFeed({
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  async function loadMore(reset = false) {
-    if (loading) return;
-    if (!reset && done) return;
+async function loadMore(reset = false) {
+  if (loading) return;
+  if (!reset && done) return;
 
-    setLoading(true);
-    setError(null);
+  setLoading(true);
+  setError(null);
 
-    const params = new URLSearchParams();
-    params.set("tab", activeTab);
-    params.set("limit", activeTab === "discover" ? "24" : "5");
-    if (!reset && cursor) params.set("cursor", cursor);
+  const params = new URLSearchParams();
+  params.set("tab", activeTab);
+  params.set("limit", activeTab === "discover" ? "24" : "5");
+  params.set("seed", seed); // ✅ リロードごとにランダム / 同一スクロール内は一貫
+  if (!reset && cursor) params.set("cursor", cursor);
 
-    try {
-      const res = await fetch(`/api/timeline?${params.toString()}`);
-      const payload = await res.json().catch(() => ({}));
+  try {
+    const res = await fetch(`/api/timeline?${params.toString()}`);
+    const payload = await res.json().catch(() => ({}));
 
-      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+    if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
-      const newPosts: PostRow[] = payload.posts ?? [];
-      const nextCursor: string | null = payload.nextCursor ?? null;
+    const newPosts: PostRow[] = payload.posts ?? [];
+    const nextCursor: string | null = payload.nextCursor ?? null;
 
-      // meta（最初のページだけ採用）
-      if (reset) {
-        setSuggestMeta(payload?.meta ?? null);
-        shownSuggestRef.current = false;
-      }
-
-      setPosts((prev) => (reset ? newPosts : [...prev, ...newPosts]));
-      setCursor(nextCursor);
-      if (!nextCursor || newPosts.length === 0) setDone(true);
-    } catch (e: any) {
-      const msg = e?.message ?? "読み込みに失敗しました";
-      setError(msg);
-      if (String(msg).includes("Unauthorized")) setDone(true);
-    } finally {
-      setLoading(false);
+    // meta（最初のページだけ採用）
+    if (reset) {
+      setSuggestMeta(payload?.meta ?? null);
+      shownSuggestRef.current = false;
     }
+
+    setPosts((prev) => {
+      if (reset) return newPosts;
+
+      // ✅ prevの順序を維持しつつ newPosts を末尾に追加（重複は追加しない）
+      const seen = new Set(prev.map((p) => p.id));
+      const appended = newPosts.filter((p) => !seen.has(p.id));
+      return [...prev, ...appended];
+    });
+
+    setCursor(nextCursor);
+    if (!nextCursor || newPosts.length === 0) setDone(true);
+  } catch (e: any) {
+    const msg = e?.message ?? "読み込みに失敗しました";
+    setError(msg);
+    if (String(msg).includes("Unauthorized")) setDone(true);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   useEffect(() => {
     setPosts([]);
