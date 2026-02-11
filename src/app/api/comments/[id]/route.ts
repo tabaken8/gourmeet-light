@@ -1,28 +1,30 @@
-import { NextResponse } from "next/server";
+// src/app/api/comments/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
-
-function json(data: any, status = 200) {
-  return NextResponse.json(data, { status });
-}
-
 export async function DELETE(
-  _req: Request,
-  { params }: { params: { id: string } }
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+
   const supabase = await createClient();
 
-  const { data: auth, error: aErr } = await supabase.auth.getUser();
-  if (aErr) return json({ error: aErr.message }, 401);
-  if (!auth.user) return json({ error: "Unauthorized" }, 401);
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
 
-  const commentId = params.id;
+  if (authErr || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  // RLSで「自分のコメントだけ」が保証される
-  const { error } = await supabase.from("comments").delete().eq("id", commentId);
+  // ✅ 自分のコメントだけ削除（RLSでも守る想定だが二重に安全）
+  const { error } = await supabase.from("comments").delete().eq("id", id).eq("user_id", user.id);
 
-  if (error) return json({ error: error.message }, 400);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
-  return json({ ok: true });
+  return NextResponse.json({ ok: true }, { status: 200 });
 }
