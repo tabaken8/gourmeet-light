@@ -1,4 +1,3 @@
-// src/components/PostActions.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -13,7 +12,7 @@ export type LikerLite = {
 };
 
 type LikerRow = LikerLite & {
-  is_following?: boolean;
+  is_following?: boolean; // me -> liker
 };
 
 type PostActionsProps = {
@@ -23,9 +22,13 @@ type PostActionsProps = {
   initialLiked: boolean;
   initialLikeCount: number;
 
+  // ✅ タイムラインで先頭だけ見せる用（最大3）
   initialLikers?: LikerLite[];
+
+  // ✅ 一覧で「あなた」「フォロー中」判定
   meId?: string | null;
 
+  // 既存互換（使わないが残す）
   initialWanted?: boolean;
   initialBookmarked?: boolean;
   initialWantCount?: number;
@@ -38,9 +41,12 @@ function uniqById(arr: LikerLite[]) {
   return Array.from(m.values());
 }
 
-function likersKey(arr: LikerLite[] | undefined) {
-  if (!arr || !arr.length) return "";
-  return arr.map((x) => x.id).join("|");
+function idsKey(arr: LikerLite[] | undefined) {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) return "";
+  return arr
+    .map((x) => x?.id)
+    .filter(Boolean)
+    .join("|");
 }
 
 function AvatarBubble({
@@ -128,8 +134,15 @@ function LikeListModal({
 
   return (
     <div className="fixed inset-0 z-[999]">
-      <button type="button" onClick={onClose} className="absolute inset-0 bg-black/35" aria-label="閉じる" />
+      {/* backdrop */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/35"
+        aria-label="閉じる"
+      />
 
+      {/* bottom sheet */}
       <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="text-sm font-semibold">いいね！</div>
@@ -230,34 +243,38 @@ export default function PostActions({
 }: PostActionsProps) {
   const supabase = createClientComponentClient();
 
-  const [liked, setLiked] = useState(initialLiked);
-  const [likeCount, setLikeCount] = useState(initialLikeCount);
+  const [liked, setLiked] = useState<boolean>(initialLiked);
+  const [likeCount, setLikeCount] = useState<number>(initialLikeCount);
   const [likers, setLikers] = useState<LikerLite[]>(initialLikers);
   const [loading, setLoading] = useState(false);
   const [openList, setOpenList] = useState(false);
 
-  // ✅ 無限update depth回避：内容キーで比較して必要な時だけ同期
-  const propKey = useMemo(() => likersKey(initialLikers), [initialLikers]);
-  const prevSyncRef = useRef<{ liked: boolean; count: number; key: string } | null>(null);
+  // ✅ 無限ループ対策：参照が毎回変わる配列を deps にして setState しない
+  const incomingKey = useMemo(() => idsKey(initialLikers), [initialLikers]);
+  const lastSyncRef = useRef<string>("");
 
   useEffect(() => {
-    const prev = prevSyncRef.current;
-    const next = { liked: initialLiked, count: initialLikeCount, key: propKey };
+    const key = `${initialLiked ? 1 : 0}::${initialLikeCount}::${incomingKey}`;
+    if (lastSyncRef.current === key) return;
+    lastSyncRef.current = key;
 
-    if (prev && prev.liked === next.liked && prev.count === next.count && prev.key === next.key) {
-      return;
-    }
+    // 値が変わっている時だけ同期
+    setLiked((cur) => (cur !== initialLiked ? initialLiked : cur));
+    setLikeCount((cur) => (cur !== initialLikeCount ? initialLikeCount : cur));
 
-    prevSyncRef.current = next;
-    setLiked(initialLiked);
-    setLikeCount(initialLikeCount);
-    setLikers(initialLikers ?? []);
-  }, [initialLiked, initialLikeCount, propKey, initialLikers]);
+    const nextLikers = initialLikers ?? [];
+    setLikers((cur) => {
+      const curKey = idsKey(cur);
+      const nextKey = idsKey(nextLikers);
+      return curKey !== nextKey ? nextLikers : cur;
+    });
+  }, [initialLiked, initialLikeCount, incomingKey, initialLikers]);
 
   const displayRow = useMemo(() => {
     const first = likers[0] ?? null;
-    return { first };
-  }, [likers]);
+    const showOthers = likeCount >= 2; // ✅ 2人以上の時だけ「他」を見せる
+    return { first, showOthers };
+  }, [likers, likeCount]);
 
   const toggleLike = async () => {
     if (loading) return;
@@ -284,14 +301,19 @@ export default function PostActions({
     };
 
     if (!liked) {
+      // optimistic ON
       setLiked(true);
       setLikeCount((c) => c + 1);
       setLikers((prev) => uniqById([myLite, ...prev]).slice(0, 3));
 
-      const { error } = await supabase.from("post_likes").insert({ post_id: postId, user_id: user.id });
+      const { error } = await supabase.from("post_likes").insert({
+        post_id: postId,
+        user_id: user.id,
+      });
 
       if (error && (error as any).code !== "23505") {
         console.error("like insert error:", error);
+        // rollback
         setLiked(false);
         setLikeCount((c) => Math.max(0, c - 1));
         setLikers((prev) => prev.filter((x) => x.id !== user.id));
@@ -307,6 +329,7 @@ export default function PostActions({
         }
       }
     } else {
+      // optimistic OFF
       setLiked(false);
       setLikeCount((c) => Math.max(0, c - 1));
       setLikers((prev) => prev.filter((x) => x.id !== user.id));
@@ -319,6 +342,7 @@ export default function PostActions({
 
       if (error) {
         console.error("like delete error:", error);
+        // rollback
         setLiked(true);
         setLikeCount((c) => c + 1);
         setLikers((prev) => uniqById([myLite, ...prev]).slice(0, 3));
@@ -328,10 +352,11 @@ export default function PostActions({
     setLoading(false);
   };
 
-  const canShowOther = likeCount >= 2;
+  const bubbleUsers = useMemo(() => likers.slice(0, 3), [likers]);
 
   return (
     <div className="flex items-center gap-3">
+      {/* heart */}
       <button
         type="button"
         onClick={toggleLike}
@@ -342,10 +367,12 @@ export default function PostActions({
         <Heart className="h-5 w-5" fill={liked ? "currentColor" : "none"} strokeWidth={1.8} />
       </button>
 
+      {/* instagram line */}
       <div className="min-w-0">
         <div className="flex items-center gap-2">
+          {/* bubbles */}
           <div className="flex items-center">
-            {likers.slice(0, 3).map((u, idx) => (
+            {bubbleUsers.map((u, idx) => (
               <Link
                 key={u.id}
                 href={`/u/${u.id}`}
@@ -358,6 +385,7 @@ export default function PostActions({
             ))}
           </div>
 
+          {/* text */}
           <div className="min-w-0 text-[12px] text-slate-700">
             {likeCount <= 0 ? (
               <span className="text-slate-400">いいね！</span>
@@ -372,7 +400,8 @@ export default function PostActions({
                     >
                       {displayRow.first.display_name ?? "ユーザー"}
                     </Link>
-                    {canShowOther ? (
+
+                    {displayRow.showOthers ? (
                       <>
                         <span className="text-slate-500">、</span>
                         <button
