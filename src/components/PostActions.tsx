@@ -386,46 +386,46 @@ export default function PostActions({
           </div>
 
           {/* text */}
-          <div className="min-w-0 text-[12px] text-slate-700">
-            {likeCount <= 0 ? (
-              <span className="text-slate-400">いいね！</span>
-            ) : (
-              <span className="truncate">
-                <span className="font-semibold">いいね！</span>{" "}
-                {displayRow.first ? (
-                  <>
-                    <Link
-                      href={`/u/${displayRow.first.id}`}
-                      className="font-semibold text-slate-900 hover:underline"
-                    >
-                      {displayRow.first.display_name ?? "ユーザー"}
-                    </Link>
+{/* text */}
+<div className="min-w-0 text-[12px] text-slate-700">
+  {likeCount <= 0 ? null : (
+    <span className="truncate">
+      <span className="font-semibold">いいね！</span>{" "}
+      {displayRow.first ? (
+        <>
+          <Link
+            href={`/u/${displayRow.first.id}`}
+            className="font-semibold text-slate-900 hover:underline"
+          >
+            {displayRow.first.display_name ?? "ユーザー"}
+          </Link>
 
-                    {displayRow.showOthers ? (
-                      <>
-                        <span className="text-slate-500">、</span>
-                        <button
-                          type="button"
-                          onClick={() => setOpenList(true)}
-                          className="font-semibold text-slate-900 hover:underline"
-                        >
-                          他
-                        </button>
-                      </>
-                    ) : null}
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setOpenList(true)}
-                    className="font-semibold text-slate-900 hover:underline"
-                  >
-                    {likeCount}人
-                  </button>
-                )}
-              </span>
-            )}
-          </div>
+          {displayRow.showOthers ? (
+            <>
+              <span className="text-slate-500">、</span>
+              <button
+                type="button"
+                onClick={() => setOpenList(true)}
+                className="font-semibold text-slate-900 hover:underline"
+              >
+                他
+              </button>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpenList(true)}
+          className="font-semibold text-slate-900 hover:underline"
+        >
+          {likeCount}人
+        </button>
+      )}
+    </span>
+  )}
+</div>
+
         </div>
       </div>
 

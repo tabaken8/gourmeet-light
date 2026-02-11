@@ -15,6 +15,7 @@ type Props = {
   targetUsername?: string | null;
   initiallyFollowing?: boolean;
   initiallyRequested?: boolean;
+  label?: string; 
 
   // --- new style ---
   targetId?: string;

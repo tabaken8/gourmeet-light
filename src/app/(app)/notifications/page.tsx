@@ -27,7 +27,7 @@ type Comment = {
   created_at: string;
 };
 
-type NotificationType = "like" | "want" | "comment" | "reply" | "follow";
+type NotificationType = "like" | "want" | "comment" | "reply" | "follow" | "comment_like";
 
 type Notification = {
   id: string;
@@ -53,7 +53,6 @@ function formatRelativeJp(iso: string) {
 }
 
 function dayBucket(iso: string) {
-  // JSTで 今日/昨日/過去7日/それ以前
   const dtf = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -84,22 +83,24 @@ function labelForType(t: NotificationType) {
       return "が返信しました";
     case "follow":
       return "があなたをフォローしました";
+    case "comment_like":
+      return "があなたのコメントにいいねしました";
   }
 }
 
 function iconForType(t: NotificationType) {
-  // ✅ IG寄せ：アイコンは小さく控えめ（主役はテキスト）
   switch (t) {
     case "like":
       return <Heart size={14} className="text-rose-500" />;
     case "want":
-      // wantは現状使ってないなら、後で削除しよう（今回はUIのみ）
       return <Heart size={14} className="text-orange-500" />;
     case "comment":
     case "reply":
       return <MessageCircle size={14} className="text-slate-500" />;
     case "follow":
       return <UserPlus size={14} className="text-sky-600" />;
+    case "comment_like":
+      return <Heart size={14} className="text-rose-500" />;
   }
 }
 
@@ -147,7 +148,6 @@ export default function NotificationsPage() {
       setJustReadIds(unreadIds);
       setNotifs((data as unknown as Notification[]) ?? []);
 
-      // 既読化（既存API）
       try {
         await fetch("/api/notifications/read", { method: "POST" });
       } catch (e) {
@@ -175,7 +175,6 @@ export default function NotificationsPage() {
   return (
     <main className="min-h-screen bg-[#fafafa] text-slate-900">
       <div className="mx-auto w-full max-w-2xl px-0 pb-24">
-        {/* ✅ IGっぽい sticky top bar（カード感を消す） */}
         <div className="sticky top-0 z-20 border-b border-black/10 bg-white/90 backdrop-blur pt-[env(safe-area-inset-top)]">
           <div className="flex h-12 items-center justify-between px-4">
             <h1 className="text-[16px] font-semibold tracking-tight">通知</h1>
@@ -188,7 +187,6 @@ export default function NotificationsPage() {
           </div>
         </div>
 
-        {/* ✅ 本体：白背景 + セクション見出し + 行リスト */}
         {!notifs?.length ? (
           <div className="flex min-h-[60vh] items-center justify-center px-4 text-[12px] text-slate-500">
             {emptyText}
@@ -224,13 +222,12 @@ export default function NotificationsPage() {
                     const initial = (actorName || "U").slice(0, 1).toUpperCase();
 
                     const commentPreview =
-                      (n.type === "comment" || n.type === "reply") && n.comment?.body
+                      (n.type === "comment" || n.type === "reply" || n.type === "comment_like") &&
+                      n.comment?.body
                         ? n.comment.body
                         : null;
 
                     const thumb = getThumbUrl(post);
-
-                    // ✅ 未読の薄いハイライト（IGの「薄青」っぽいノリ）
                     const isJustRead = justReadIds.includes(n.id);
 
                     return (
@@ -243,7 +240,6 @@ export default function NotificationsPage() {
                           isJustRead ? "bg-[#eef6ff]" : "bg-white",
                         ].join(" ")}
                       >
-                        {/* avatar */}
                         <div className="shrink-0">
                           {actorAvatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -260,7 +256,6 @@ export default function NotificationsPage() {
                           )}
                         </div>
 
-                        {/* text */}
                         <div className="min-w-0 flex-1">
                           <div className="text-[13px] leading-snug text-slate-900">
                             <span className="inline-flex items-center gap-1.5">
@@ -302,7 +297,6 @@ export default function NotificationsPage() {
                           </div>
                         </div>
 
-                        {/* right: thumb（IGは右に置くのが肝） */}
                         <div className="shrink-0">
                           {thumb ? (
                             // eslint-disable-next-line @next/next/no-img-element
