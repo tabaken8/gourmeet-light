@@ -57,7 +57,7 @@ export default async function TimelinePage({
                     : "text-slate-500 hover:text-orange-500",
                 ].join(" ")}
               >
-                フォロー中
+                最新
               </Link>
 
               <Link
@@ -69,7 +69,7 @@ export default async function TimelinePage({
                     : "text-slate-500 hover:text-orange-500",
                 ].join(" ")}
               >
-                探す
+                発見
               </Link>
             </div>
 

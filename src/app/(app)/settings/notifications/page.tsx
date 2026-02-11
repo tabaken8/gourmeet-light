@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Bell, Mail, Smartphone, ArrowLeft } from "lucide-react";
+import { Bell, Mail, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import XSwitch from "@/components/XSwitch";
 
@@ -11,7 +11,6 @@ type SettingsRow = {
 
   // master
   email_enabled: boolean;
-  inapp_enabled: boolean;
 
   // per type (NO want)
   email_follow: boolean;
@@ -19,12 +18,6 @@ type SettingsRow = {
   email_comment: boolean;
   email_reply: boolean;
   email_post: boolean;
-
-  inapp_follow: boolean;
-  inapp_like: boolean;
-  inapp_comment: boolean;
-  inapp_reply: boolean;
-  inapp_post: boolean;
 
   updated_at?: string | null;
 };
@@ -61,11 +54,12 @@ export default function NotificationsSettingsPage() {
   const [s, setS] = useState<SettingsRow | null>(null);
 
   const canEmail = !!s?.email_enabled;
-  const canInapp = !!s?.inapp_enabled;
 
   const patch = async (partial: Partial<SettingsRow>, keyForLoading?: string) => {
     if (!meId) return;
     setSavingKey(keyForLoading ?? "x");
+
+    // UIを先に更新
     setS((prev) => (prev ? { ...prev, ...partial } : prev));
 
     const { error } = await supabase
@@ -75,11 +69,11 @@ export default function NotificationsSettingsPage() {
     setSavingKey(null);
 
     if (error) {
-      // 巻き戻し（シンプルに再取得）
+      // 失敗時は再取得して整合を取る
       console.error("update settings error:", error.message);
       const { data } = await supabase
         .from("user_notification_settings")
-        .select("*")
+        .select("user_id,email_enabled,email_follow,email_like,email_comment,email_reply,email_post")
         .eq("user_id", meId)
         .maybeSingle();
       if (data) setS(data as any);
@@ -89,18 +83,20 @@ export default function NotificationsSettingsPage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
+
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth.user?.id ?? null;
       setMeId(uid);
+
       if (!uid) {
         setLoading(false);
         return;
       }
 
-      // 既存設定取得。無ければデフォルトで作る（フォロー通知など全部ON）
+      // 既存設定取得（email系だけ）
       const { data } = await supabase
         .from("user_notification_settings")
-        .select("*")
+        .select("user_id,email_enabled,email_follow,email_like,email_comment,email_reply,email_post")
         .eq("user_id", uid)
         .maybeSingle();
 
@@ -110,22 +106,15 @@ export default function NotificationsSettingsPage() {
         return;
       }
 
+      // 無ければデフォルト作成（全部ON）
       const defaults: SettingsRow = {
         user_id: uid,
         email_enabled: true,
-        inapp_enabled: true,
-
         email_follow: true,
         email_like: true,
         email_comment: true,
         email_reply: true,
         email_post: true,
-
-        inapp_follow: true,
-        inapp_like: true,
-        inapp_comment: true,
-        inapp_reply: true,
-        inapp_post: true,
       };
 
       await supabase.from("user_notification_settings").insert(defaults as any);
@@ -177,7 +166,7 @@ export default function NotificationsSettingsPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">通知設定</h1>
-            <p className="mt-1 text-sm text-gray-600">メール通知とアプリ内通知を管理します。</p>
+            <p className="mt-1 text-sm text-gray-600">メール通知を管理します。</p>
           </div>
         </div>
         <div className="mt-1 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
@@ -185,7 +174,7 @@ export default function NotificationsSettingsPage() {
         </div>
       </div>
 
-      {/* master toggles */}
+      {/* email only */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
           <Mail className="h-4 w-4" />
@@ -239,66 +228,10 @@ export default function NotificationsSettingsPage() {
         </div>
       </section>
 
-      <div className="my-8 h-px bg-black/10" />
-
-      <section className="space-y-3">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-          <Smartphone className="h-4 w-4" />
-          アプリ内通知
-        </div>
-
-        <Row
-          title="アプリ内通知を有効にする"
-          desc="OFFにすると、通知ボックスには表示されません。"
-          checked={s.inapp_enabled}
-          onChange={(v) => patch({ inapp_enabled: v }, "inapp_enabled")}
-          disabled={busy("inapp_enabled")}
-        />
-
-        <div className="space-y-2">
-          <Row
-            title="フォロー"
-            desc="通知ボックスに表示"
-            checked={s.inapp_follow && canInapp}
-            onChange={(v) => patch({ inapp_follow: v }, "inapp_follow")}
-            disabled={!canInapp || busy("inapp_follow")}
-          />
-          <Row
-            title="いいね"
-            desc="通知ボックスに表示"
-            checked={s.inapp_like && canInapp}
-            onChange={(v) => patch({ inapp_like: v }, "inapp_like")}
-            disabled={!canInapp || busy("inapp_like")}
-          />
-          <Row
-            title="コメント"
-            desc="通知ボックスに表示"
-            checked={s.inapp_comment && canInapp}
-            onChange={(v) => patch({ inapp_comment: v }, "inapp_comment")}
-            disabled={!canInapp || busy("inapp_comment")}
-          />
-          <Row
-            title="返信"
-            desc="通知ボックスに表示"
-            checked={s.inapp_reply && canInapp}
-            onChange={(v) => patch({ inapp_reply: v }, "inapp_reply")}
-            disabled={!canInapp || busy("inapp_reply")}
-          />
-          <Row
-            title="新規投稿（ベル）"
-            desc="ベルONの人の新規投稿を通知ボックスに表示"
-            checked={s.inapp_post && canInapp}
-            onChange={(v) => patch({ inapp_post: v }, "inapp_post")}
-            disabled={!canInapp || busy("inapp_post")}
-          />
-        </div>
-      </section>
-
       <div className="mt-8 rounded-2xl border border-black/10 bg-white p-4 text-xs text-gray-600 shadow-sm">
         <div className="font-semibold text-gray-900">メモ</div>
         <div className="mt-1 leading-relaxed">
-          「新規投稿（ベル）」は、プロフィールでベルをONにしている相手の投稿に対してのみ発火します。
-          （フォローしているだけでは通知は飛びません）
+          「新規投稿（ベル）」は、プロフィールでベルをONにしている相手の投稿に対してのみメールが届きます。
         </div>
       </div>
     </main>

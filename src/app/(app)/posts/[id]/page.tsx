@@ -178,11 +178,14 @@ export default async function PostPage({
 
   const priceLabel = formatPrice(post);
 
-  const mapUrl = post.place_id
-    ? `https://www.google.com/maps/place/?q=place_id:${post.place_id}`
-    : post.place_address
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
-      : null;
+const mapUrl = post.place_id
+  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      post.place_name ?? "place"
+    )}&query_place_id=${encodeURIComponent(post.place_id)}`
+  : post.place_address
+  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
+  : null;
+
 
   const imageUrls = getAllImageUrls(post);
 

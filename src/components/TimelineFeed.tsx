@@ -3,11 +3,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { MapPin, Lock, ChevronDown, ChevronUp } from "lucide-react";
+import { MapPin, Lock, ChevronDown, ChevronUp, UserPlus } from "lucide-react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
-import PostActions from "@/components/PostActions";
+import PostActions, { type LikerLite } from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
@@ -50,6 +51,7 @@ type PostRow = {
   place_name: string | null;
   place_address: string | null;
   place_id: string | null;
+  place_genre?: string | null;
 
   recommend_score?: number | null;
   price_yen?: number | null;
@@ -59,8 +61,13 @@ type PostRow = {
 
   likeCount?: number;
   likedByMe?: boolean;
+  initialLikers?: LikerLite[];
 
-  k_hop?: number | null;
+  // friends injection
+  injected?: boolean;
+  injected_reason?: string | null;
+  recommended_by?: ProfileLite | null;
+  is_following_author_by_me?: boolean;
 };
 
 type DiscoverTile = { p: PostRow; big: boolean };
@@ -78,33 +85,19 @@ function formatJST(iso: string) {
 }
 
 /**
- * ✅ friends Timelineでは「正方形URLのみ」を返す（統一が壊れるfallbackはしない）
- * 優先順位：
- *  1) cover_square_url（最強）
- *  2) image_assets[].square（新）
- *  3) image_variants[].thumb（旧）
+ * ✅ friends Timelineでは「正方形URLのみ」を返す
  */
 function getTimelineSquareUrls(p: PostRow): string[] {
-  // 1) cover_square_url があればそれを先頭にしつつ、他のsquareも足す
   const cover = p.cover_square_url ? [p.cover_square_url] : [];
 
-  // 2) image_assets[].square
   const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
-  const squaresFromAssets = assets
-    .map((a) => a?.square ?? null)
-    .filter((x): x is string => !!x);
+  const squaresFromAssets = assets.map((a) => a?.square ?? null).filter((x): x is string => !!x);
 
-  // 3) image_variants[].thumb
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
-  const thumbsFromVariants = variants
-    .map((v) => v?.thumb ?? null)
-    .filter((x): x is string => !!x);
+  const thumbsFromVariants = variants.map((v) => v?.thumb ?? null).filter((x): x is string => !!x);
 
-  // まとめ：重複排除
   const all = [...cover, ...squaresFromAssets, ...thumbsFromVariants];
-  const uniq = Array.from(new Set(all)).filter(Boolean);
-
-  return uniq;
+  return Array.from(new Set(all)).filter(Boolean);
 }
 
 function getFirstSquareThumb(p: PostRow): string | null {
@@ -116,34 +109,21 @@ function getFirstSquareThumb(p: PostRow): string | null {
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
   if (variants[0]?.thumb) return variants[0].thumb;
 
-  // discoverタイルは古い投稿も見せたいので legacy fallback 可
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy[0] ?? null;
 }
 
-/**
- * ✅ place_address から「都道府県 + 市区町村」だけ抜く
- * 例:
- *  "日本、〒144-0041 東京都大田区羽田空港３丁目３−２" -> "東京都大田区"
- *  "〒150-0002 東京都渋谷区渋谷1-1-1" -> "東京都渋谷区"
- *  "神奈川県横浜市西区..." -> "神奈川県横浜市"
- */
 function extractPrefCity(address: string | null | undefined): string | null {
   if (!address) return null;
 
-  // 1) ノイズ除去（先頭の "日本、" と 郵便番号）
   const s = address
     .replace(/^日本[、,\s]*/u, "")
     .replace(/〒\s*\d{3}-?\d{4}\s*/u, "")
     .trim();
 
-  // 2) 都道府県 + (市/区/町/村) までを抽出
-  // - 都道府県: 東京都/北海道/大阪府/京都府/xx県
-  // - 市区町村: "港区" "大田区" "横浜市" "札幌市" など
   const m = s.match(
     /(東京都|北海道|大阪府|京都府|.{2,3}県)([^0-9\s,、]{1,20}?(市|区|町|村))/u
   );
-
   if (!m) return null;
 
   const pref = m[1];
@@ -235,12 +215,7 @@ function makeSeed(): string {
 function planDiscoverTiles(
   ordered: PostRow[],
   seed: string,
-  opts?: {
-    bigDenom?: number;
-    minIndexForBig?: number;
-    tailGuard?: number;
-    maxBig?: number;
-  }
+  opts?: { bigDenom?: number; minIndexForBig?: number; tailGuard?: number; maxBig?: number }
 ): DiscoverTile[] {
   const bigDenom = opts?.bigDenom ?? 4;
   const minIndexForBig = opts?.minIndexForBig ?? 3;
@@ -311,6 +286,76 @@ function planDiscoverTiles(
   return out;
 }
 
+function FollowButton({
+  targetUserId,
+  targetProfile,
+  meId,
+  initialFollowing,
+}: {
+  targetUserId: string;
+  targetProfile: ProfileLite | null;
+  meId: string | null;
+  initialFollowing: boolean;
+}) {
+  const supabase = createClientComponentClient();
+  const [state, setState] = useState<"none" | "pending" | "accepted">(initialFollowing ? "accepted" : "none");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setState(initialFollowing ? "accepted" : "none");
+  }, [initialFollowing]);
+
+  const onFollow = async () => {
+    if (!meId) return alert("ログインが必要です");
+    if (loading) return;
+    if (state !== "none") return;
+    if (meId === targetUserId) return;
+
+    setLoading(true);
+
+    // public なら即 accepted、そうでなければ pending（あなたの仕様に無難に寄せる）
+    const nextStatus = targetProfile?.is_public ? "accepted" : "pending";
+    setState(nextStatus);
+
+    const { error } = await supabase
+      .from("follows")
+      .upsert(
+        { follower_id: meId, followee_id: targetUserId, status: nextStatus },
+        { onConflict: "follower_id,followee_id" }
+      );
+
+    if (error) {
+      console.error("follow upsert error:", error);
+      setState("none");
+      alert("フォローに失敗しました");
+    }
+
+    setLoading(false);
+  };
+
+  const label = state === "accepted" ? "フォロー中" : state === "pending" ? "申請中" : "フォロー";
+
+  return (
+    <button
+      type="button"
+      onClick={onFollow}
+      disabled={loading || state !== "none"}
+      className={[
+        "inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold",
+        state === "none"
+          ? "bg-blue-600 text-white hover:bg-blue-700"
+          : "bg-slate-100 text-slate-700",
+        "disabled:opacity-70",
+      ].join(" ")}
+      aria-label="フォロー"
+      title="フォロー"
+    >
+      <UserPlus size={14} />
+      {label}
+    </button>
+  );
+}
+
 export default function TimelineFeed({
   activeTab,
   meId,
@@ -338,13 +383,12 @@ export default function TimelineFeed({
 
     const params = new URLSearchParams();
     params.set("tab", activeTab);
-    params.set("limit", activeTab === "discover" ? "24" : "5");
+    params.set("limit", activeTab === "discover" ? "24" : "10");
     if (!reset && cursor) params.set("cursor", cursor);
 
     try {
       const res = await fetch(`/api/timeline?${params.toString()}`);
       const payload = await res.json().catch(() => ({}));
-
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
       const newPosts: PostRow[] = payload.posts ?? [];
@@ -485,16 +529,19 @@ export default function TimelineFeed({
 
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
 
-                  <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
+                  <div className="hidden md:flex absolute left-2 top-2 items-center gap-2 text-[11px] font-medium text-white drop-shadow">
                     <span className="max-w-[120px] truncate">{display}</span>
                     {!isPublic && <Lock size={12} className="text-white/90" />}
                   </div>
 
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2">
-                    <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
-                      <span className="truncate">{p.place_name ? p.place_name : " "}</span>
+                  {/* ✅ genre label */}
+                  {p.place_genre ? (
+                    <div className="pointer-events-none absolute left-2 bottom-2">
+                      <div className="inline-flex max-w-[75vw] items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
+                        <span className="truncate">{p.place_genre}</span>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
               </Link>
             );
@@ -502,7 +549,6 @@ export default function TimelineFeed({
         </div>
 
         <div ref={sentinelRef} className="h-10" />
-
         {loading && <div className="pb-8 pt-4 text-center text-xs text-slate-500">読み込み中...</div>}
         {error && !error.includes("Unauthorized") && (
           <div className="pb-8 pt-4 text-center text-xs text-red-600">{error}</div>
@@ -517,8 +563,6 @@ export default function TimelineFeed({
   // =========================
   // FRIENDS
   // =========================
-  const MOBILE_THUMBS = 3;
-
   return (
     <div className="flex flex-col items-stretch gap-6">
       {posts.map((p) => {
@@ -536,10 +580,7 @@ export default function TimelineFeed({
           ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
           : null;
 
-        // ✅ 追加: 都道府県+市区町村ラベル
         const areaLabel = extractPrefCity(p.place_address);
-
-        // ✅ 正方形URL配列（friends timelineは統一のため squareのみ）
         const timelineImageUrls = getTimelineSquareUrls(p);
 
         const initialLikeCount = p.likeCount ?? 0;
@@ -559,6 +600,7 @@ export default function TimelineFeed({
             : null;
 
         const priceLabel = formatPrice(p);
+        const injected = !!p.injected;
 
         return (
           <article key={p.id} className="gm-card gm-press overflow-hidden">
@@ -596,11 +638,30 @@ export default function TimelineFeed({
                         {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
                       </div>
 
-                      <div className="text-[11px] text-slate-500">友達のおすすめ</div>
+                      {/* ✅ injected説明 */}
+                      {injected ? (
+                        <div className="text-[11px] text-slate-500">
+                          {p.injected_reason ?? "あなたの友達がフォロー"}
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-500">最新</div>
+                      )}
                     </div>
                   </div>
 
-                  <PostMoreMenu postId={p.id} isMine={meId === p.user_id} />
+                  <div className="flex items-center gap-2">
+                    {/* ✅ injectedだけフォローボタン */}
+                    {injected && meId && meId !== p.user_id && !p.is_following_author_by_me ? (
+                      <FollowButton
+                        targetUserId={p.user_id}
+                        targetProfile={p.profile}
+                        meId={meId}
+                        initialFollowing={false}
+                      />
+                    ) : null}
+
+                    <PostMoreMenu postId={p.id} isMine={meId === p.user_id} />
+                  </div>
                 </div>
 
                 {/* Strip */}
@@ -619,19 +680,21 @@ export default function TimelineFeed({
                             title={p.place_address ?? undefined}
                           >
                             {p.place_name}
-                            {areaLabel ? (
-                              <span className="ml-2 text-slate-500">{areaLabel}</span>
-                            ) : null}
+                            {areaLabel ? <span className="ml-2 text-slate-500">{areaLabel}</span> : null}
                           </a>
                         ) : (
                           <span className="max-w-[280px] truncate" title={p.place_address ?? undefined}>
                             {p.place_name}
-                            {areaLabel ? (
-                              <span className="ml-2 text-slate-500">({areaLabel})</span>
-                            ) : null}
+                            {areaLabel ? <span className="ml-2 text-slate-500">({areaLabel})</span> : null}
                           </span>
                         )}
                       </div>
+                    ) : null}
+
+                    {p.place_genre ? (
+                      <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-slate-700">
+                        {p.place_genre}
+                      </span>
                     ) : null}
 
                     {score !== null ? (
@@ -678,7 +741,7 @@ export default function TimelineFeed({
                   </div>
                 </div>
 
-                {/* ✅ Media：正方形枠 + カルーセルも正方形 */}
+                {/* Media */}
                 {timelineImageUrls.length > 0 && (
                   <div className="block w-full aspect-square overflow-hidden bg-slate-100">
                     <PostImageCarousel
@@ -693,13 +756,10 @@ export default function TimelineFeed({
                   </div>
                 )}
 
-
                 {/* Body */}
                 <div className="space-y-2 px-4 py-4">
                   {p.content && (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-                      {p.content}
-                    </p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{p.content}</p>
                   )}
                 </div>
 
@@ -710,6 +770,8 @@ export default function TimelineFeed({
                     postUserId={p.user_id}
                     initialLiked={initialLiked}
                     initialLikeCount={initialLikeCount}
+                    initialLikers={p.initialLikers ?? []}
+                    meId={meId}
                     initialWanted={false}
                     initialBookmarked={false}
                     initialWantCount={0}
@@ -727,12 +789,7 @@ export default function TimelineFeed({
               {/* Right panel (PC) */}
               <aside className="hidden md:block p-4">
                 {p.place_id ? (
-                  <PlacePhotoGallery
-                    placeId={p.place_id}
-                    placeName={p.place_name}
-                    per={8}
-                    maxThumbs={8}
-                  />
+                  <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={8} maxThumbs={8} />
                 ) : (
                   <div className="text-xs text-slate-400">写真を取得できませんでした</div>
                 )}
@@ -755,9 +812,7 @@ export default function TimelineFeed({
       {error && !error.includes("Unauthorized") && (
         <div className="pb-8 text-center text-xs text-red-600">{error}</div>
       )}
-      {done && posts.length > 0 && (
-        <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>
-      )}
+      {done && posts.length > 0 && <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>}
     </div>
   );
 }
