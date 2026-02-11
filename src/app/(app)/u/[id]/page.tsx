@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import FollowButton from "@/components/FollowButton";
+import PostNotifyBellButton from "@/components/PostNotifyBellButton";
 import { Globe2, Lock } from "lucide-react";
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
 import AlbumBrowser, { type AlbumPost } from "@/components/AlbumBrowser";
@@ -45,7 +46,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   // 自分のページなら /profile へ
   if (userId === me.id) redirect("/profile");
 
-  // プロフィール取得（✅ header_image_url を取らない）
+  // プロフィール取得
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, username, display_name, bio, avatar_url, is_public")
@@ -111,6 +112,24 @@ export default async function UserPublicPage({ params }: { params: { id: string 
 
   // 投稿閲覧権限
   const canViewPosts = isPublic || initiallyFollowing;
+
+  // -----------------------------
+  // 🔔 bell initial state (server-side)
+  // - acceptedフォローなら基本ONのはず（DBトリガー前提）
+  // - 念のため enabled を読む（無ければON扱いにしてUIが自然）
+  // -----------------------------
+  let initialBellEnabled = false;
+  if (initiallyFollowing) {
+    const { data: sub } = await supabase
+      .from("user_post_subscriptions")
+      .select("enabled")
+      .eq("user_id", me.id)
+      .eq("target_user_id", userId)
+      .maybeSingle();
+
+    // ✅ デフォルトONを優先（行がまだ無い/遅延でもONに見せる）
+    initialBellEnabled = sub?.enabled ?? true;
+  }
 
   // -----------------------------
   // heatmap data
@@ -257,12 +276,8 @@ export default async function UserPublicPage({ params }: { params: { id: string 
 
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
-      {/* ✅ 横はみ出し防止 */}
       <div className="w-full overflow-x-hidden pb-24 pt-6">
         <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
-          {/* =========================
-              PROFILE (NO HEADER IMAGE)
-             ========================= */}
           <section className="w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
             <div className="px-4 py-5 md:px-6 md:py-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -318,12 +333,26 @@ export default async function UserPublicPage({ params }: { params: { id: string 
 
                 {/* right */}
                 <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
-                  <FollowButton
-                    targetUserId={profile.id}
-                    targetUsername={profile.username}
-                    initiallyFollowing={initiallyFollowing}
-                    initiallyRequested={initiallyRequested}
-                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <FollowButton
+                      targetUserId={profile.id}
+                      targetUsername={profile.username}
+                      initiallyFollowing={initiallyFollowing}
+                      initiallyRequested={initiallyRequested}
+                    />
+
+                    {/* 🔔 ベル（acceptedフォローのみトグル可） */}
+                    <PostNotifyBellButton
+                      targetUserId={userId}
+                      canToggle={initiallyFollowing}
+                      initiallyEnabled={initialBellEnabled}
+                    />
+                  </div>
+
+                  {/* pendingの時のヒント（任意） */}
+                  {initiallyRequested ? (
+                    <p className="text-[11px] text-slate-500">フォロー承認後に通知をONにできます</p>
+                  ) : null}
                 </div>
               </div>
 
@@ -356,9 +385,6 @@ export default async function UserPublicPage({ params }: { params: { id: string 
             </div>
           </section>
 
-          {/* =========================
-              HEATMAP
-             ========================= */}
           {canViewPosts ? (
             <VisitHeatmap userId={userId} days={heatmapDays} />
           ) : (
@@ -370,9 +396,6 @@ export default async function UserPublicPage({ params }: { params: { id: string 
             </section>
           )}
 
-          {/* =========================
-              POSTS (ALBUM)
-             ========================= */}
           <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
             <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
 

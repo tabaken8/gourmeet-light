@@ -1,3 +1,4 @@
+// app/api/notifications/send/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
@@ -12,7 +13,7 @@ const supabaseAdmin = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
-type NotifType = "like" | "want" | "comment" | "reply" | "follow";
+type NotifType = "like" | "want" | "comment" | "reply" | "follow" | "post";
 
 function appOrigin() {
   return process.env.NEXT_PUBLIC_SITE_URL ?? "https://gourmeet.jp";
@@ -43,6 +44,8 @@ function labelForType(t: NotifType) {
       return "いいね";
     case "want":
       return "行きたい！";
+    case "post":
+      return "新規投稿";
   }
 }
 
@@ -59,16 +62,24 @@ function berealStyleLine(t: NotifType, actorName: string, placeName?: string | n
       return `💛 ${actorName} がいいねしたよ${place}`;
     case "want":
       return `✨ ${actorName} が「行きたい！」したよ${place}`;
+    case "post":
+      return `📸 ${actorName} が新しいお店ログを追加したよ！${place}`;
   }
 }
 
 function buildSubject(t: NotifType, actorName: string, placeName?: string | null) {
   const core =
-    t === "follow" ? "フォローされた" :
-    t === "comment" ? "コメントが届いた" :
-    t === "reply" ? "返信が届いた" :
-    t === "like" ? "いいねされた" :
-    "「行きたい！」された";
+    t === "follow"
+      ? "フォローされた"
+      : t === "comment"
+        ? "コメントが届いた"
+        : t === "reply"
+          ? "返信が届いた"
+          : t === "like"
+            ? "いいねされた"
+            : t === "want"
+              ? "「行きたい！」された"
+              : "新しい投稿";
   const tail = placeName ? `｜${placeName}` : "";
   return `Gourmeet｜${actorName}に${core}${tail}`;
 }
@@ -87,7 +98,7 @@ async function shouldCooldownLike(opts: {
   cooldownMinutes: number;
 }) {
   const { user_id, actor_id, post_id, type, cooldownMinutes } = opts;
-  if (!actor_id || !post_id) return false; // 判定できないなら送る（likeは通常両方ある）
+  if (!actor_id || !post_id) return false;
 
   const since = new Date(Date.now() - cooldownMinutes * 60 * 1000).toISOString();
 
@@ -131,8 +142,8 @@ export async function POST(req: Request) {
 
   const t = n.type as NotifType;
 
-  // ✅ 送信対象に like を追加（want も送りたければここに）
-  const sendable: NotifType[] = ["follow", "comment", "reply", "like"];
+  // ✅ 送信対象（post を追加）
+  const sendable: NotifType[] = ["follow", "comment", "reply", "like", "post"];
   if (!sendable.includes(t)) {
     await supabaseAdmin
       .from("notifications")
@@ -160,8 +171,7 @@ export async function POST(req: Request) {
   }
 
   // 2) 宛先メール
-  const { data: userRes, error: uErr } =
-    await supabaseAdmin.auth.admin.getUserById(n.user_id);
+  const { data: userRes, error: uErr } = await supabaseAdmin.auth.admin.getUserById(n.user_id);
 
   const toEmail = userRes?.user?.email ?? null;
   if (uErr || !toEmail) {
@@ -172,7 +182,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "no recipient email" }, { status: 400 });
   }
 
-  // 3) actor / post / comment（JOINせず個別取得）
+  // 3) actor / post / comment
   let actorName = "だれか";
   if (n.actor_id) {
     const { data: actor } = await supabaseAdmin
@@ -207,16 +217,21 @@ export async function POST(req: Request) {
 
   // 4) リンク
   const notificationsUrl = `${appOrigin()}/notifications`;
-  const settingsUrl = `${appOrigin()}/settings/notifications`; // 無ければ /settings でもOK
-  const mapsUrl = placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : null;
+  const settingsUrl = `${appOrigin()}/settings/notifications`;
+
+  // iPhoneネイティブ/WEBどっちでも開きやすいGoogle Mapsリンク
+  const mapsUrl = placeId
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        placeName ?? "place"
+      )}&query_place_id=${encodeURIComponent(placeId)}`
+    : null;
 
   // 5) 文面
   const headline = berealStyleLine(t, actorName, placeName);
   const subject = buildSubject(t, actorName, placeName);
 
-  const commentPreview = commentBody
-    ? commentBody.slice(0, 140) + (commentBody.length > 140 ? "…" : "")
-    : null;
+  const commentPreview =
+    commentBody ? commentBody.slice(0, 140) + (commentBody.length > 140 ? "…" : "") : null;
 
   const text = [
     headline,
@@ -277,7 +292,6 @@ export async function POST(req: Request) {
       text,
       html,
       headers: {
-        // 迷惑メール扱いを減らす助け（通知設定へ誘導）
         "List-Unsubscribe": `<${settingsUrl}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
