@@ -1,7 +1,6 @@
-// src/components/FollowButton.tsx
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 type FollowStatus = "none" | "following" | "requested";
 
@@ -9,8 +8,6 @@ type FollowStatus = "none" | "following" | "requested";
  * ✅ 互換Props
  * - 旧: targetUserId / initiallyFollowing / initiallyRequested / className / targetUsername
  * - 新: targetId / initialFollowing / mode / size
- *
- * どっちで呼んでも動くようにしてある
  */
 type Props = {
   // --- old style ---
@@ -19,22 +16,21 @@ type Props = {
   initiallyFollowing?: boolean;
   initiallyRequested?: boolean;
 
-  // --- new style (timeline/suggestで使いたい) ---
-  targetId?: string; // targetUserId の別名
-  initialFollowing?: boolean; // initiallyFollowing の別名
-  mode?: "follow" | "followback"; // ラベル用
-  size?: "sm" | "md"; // 見た目用
+  // --- new style ---
+  targetId?: string;
+  initialFollowing?: boolean;
+  mode?: "follow" | "followback";
+  size?: "sm" | "md";
 
   // common
   className?: string;
 };
 
 export default function FollowButton(props: Props) {
-  // idの別名吸収
-  const targetUserId = props.targetUserId ?? props.targetId ?? "";
-  const targetUsername = props.targetUsername ?? null;
+  // ✅ alias吸収（Hooksより前にreturnしない）
+  const targetUserId = (props.targetUserId ?? props.targetId ?? "").trim();
+  const targetUsername = (props.targetUsername ?? null)?.trim() || null;
 
-  // 初期状態の別名吸収
   const initiallyFollowing = props.initiallyFollowing ?? props.initialFollowing ?? false;
   const initiallyRequested = props.initiallyRequested ?? false;
 
@@ -42,25 +38,39 @@ export default function FollowButton(props: Props) {
   const size = props.size ?? "sm";
   const className = props.className ?? "";
 
-  if (!targetUserId && !targetUsername) {
-    // devで早めに気づけるように
-    console.error("FollowButton: targetUserId/targetId or targetUsername is required");
-    return null;
-  }
+  const validTarget = Boolean(targetUserId || targetUsername);
 
-  const [status, setStatus] = useState<FollowStatus>(() =>
-    initiallyFollowing ? "following" : initiallyRequested ? "requested" : "none"
-  );
+  // ✅ Hooks（常に同じ順で呼ばれる）
+  const initialStatus: FollowStatus = initiallyFollowing
+    ? "following"
+    : initiallyRequested
+    ? "requested"
+    : "none";
+
+  const [status, setStatus] = useState<FollowStatus>(initialStatus);
   const [pending, startTransition] = useTransition();
 
+  // props側がSSR→CSRでズレる時だけ追随（無限ループ回避：差分ある時だけ）
+  useEffect(() => {
+    if (status !== initialStatus) setStatus(initialStatus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initiallyFollowing, initiallyRequested]); // initialStatusを直接入れると意図せず再計算が増えるので分解
+
   const sizeCls = useMemo(() => {
-    // 既存の px/py を size で揃える
-    // md: timelineカード右上など想定 / sm: 小さめ
     if (size === "md") return "px-4 py-1.5 text-sm";
     return "px-3 py-1 text-[12px]";
   }, [size]);
 
+  const followLabel = useMemo(
+    () => (mode === "followback" ? "フォローバック" : "フォローする"),
+    [mode]
+  );
+
   const doFollow = () => {
+    if (!validTarget) {
+      console.error("FollowButton: targetUserId/targetId or targetUsername is required");
+      return;
+    }
     if (status === "following" || status === "requested") return;
 
     startTransition(async () => {
@@ -92,6 +102,10 @@ export default function FollowButton(props: Props) {
   };
 
   const doCancelOrUnfollow = () => {
+    if (!validTarget) {
+      console.error("FollowButton: targetUserId/targetId or targetUsername is required");
+      return;
+    }
     if (status === "none") return;
 
     startTransition(async () => {
@@ -101,9 +115,7 @@ export default function FollowButton(props: Props) {
         targetUsername ? { targetUsername } : { targetId: targetUserId }
       );
 
-      const res = await fetch(`/api/follow?${qs.toString()}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/follow?${qs.toString()}`, { method: "DELETE" });
 
       if (!res.ok) {
         setStatus(prev);
@@ -114,22 +126,22 @@ export default function FollowButton(props: Props) {
     });
   };
 
-  // ---- UI labels ----
-  const followLabel = mode === "followback" ? "フォローバック" : "フォローする";
+  // --- UI ---
+  const common = [
+    "rounded-full border font-medium disabled:opacity-50",
+    sizeCls,
+    className,
+  ].join(" ");
 
-  /** --------------------------
-   *  following
-   * -------------------------- */
   if (status === "following") {
     return (
       <button
         type="button"
         onClick={doCancelOrUnfollow}
-        disabled={pending}
+        disabled={pending || !validTarget}
         className={[
-          "rounded-full border border-slate-300 bg-white font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50",
-          sizeCls,
-          className,
+          common,
+          "border-slate-300 bg-white text-slate-800 hover:bg-slate-100",
         ].join(" ")}
         aria-pressed="true"
       >
@@ -138,19 +150,15 @@ export default function FollowButton(props: Props) {
     );
   }
 
-  /** --------------------------
-   *  requested
-   * -------------------------- */
   if (status === "requested") {
     return (
       <button
         type="button"
         onClick={doCancelOrUnfollow}
-        disabled={pending}
+        disabled={pending || !validTarget}
         className={[
-          "rounded-full border border-slate-400 bg-white font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50",
-          sizeCls,
-          className,
+          common,
+          "border-slate-400 bg-white text-slate-800 hover:bg-slate-100",
         ].join(" ")}
         aria-pressed="mixed"
       >
@@ -159,20 +167,17 @@ export default function FollowButton(props: Props) {
     );
   }
 
-  /** --------------------------
-   *  none
-   * -------------------------- */
   return (
     <button
       type="button"
       onClick={doFollow}
-      disabled={pending}
+      disabled={pending || !validTarget}
       className={[
-        "rounded-full border border-slate-900 bg-slate-900 font-medium text-white hover:opacity-90 disabled:opacity-50",
-        sizeCls,
-        className,
+        common,
+        "border-slate-900 bg-slate-900 text-white hover:opacity-90",
       ].join(" ")}
       aria-pressed="false"
+      title={!validTarget ? "targetId（またはtargetUserId/targetUsername）が必要です" : undefined}
     >
       {followLabel}
     </button>
