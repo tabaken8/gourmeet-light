@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Heart, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { createPortal } from "react-dom";
 
 export type LikerLite = {
   id: string;
@@ -14,7 +13,7 @@ export type LikerLite = {
 };
 
 type LikerRow = LikerLite & {
-  is_following?: boolean; // /api/posts/[id]/likers で付与（me -> liker）
+  is_following?: boolean;
 };
 
 type PostActionsProps = {
@@ -24,13 +23,9 @@ type PostActionsProps = {
   initialLiked: boolean;
   initialLikeCount: number;
 
-  // ✅ タイムラインで小さく出す「先頭likers」
   initialLikers?: LikerLite[];
-
-  // ✅ 一覧モーダルで「あなた」「フォロー中」表示に使う
   meId?: string | null;
 
-  // 既存互換（使わないが残す）
   initialWanted?: boolean;
   initialBookmarked?: boolean;
   initialWantCount?: number;
@@ -43,20 +38,28 @@ function uniqById(arr: LikerLite[]) {
   return Array.from(m.values());
 }
 
-function shallowSameLikers(a: LikerLite[] | undefined, b: LikerLite[] | undefined) {
-  const aa = Array.isArray(a) ? a : [];
-  const bb = Array.isArray(b) ? b : [];
-  if (aa.length !== bb.length) return false;
-  for (let i = 0; i < aa.length; i++) if ((aa[i]?.id ?? "") !== (bb[i]?.id ?? "")) return false;
-  return true;
+function likersKey(arr: LikerLite[] | undefined) {
+  if (!arr || !arr.length) return "";
+  return arr.map((x) => x.id).join("|");
 }
 
-function AvatarBubble({ user, size = 18 }: { user: LikerLite; size?: number }) {
+function AvatarBubble({
+  user,
+  size = 18,
+  className = "",
+}: {
+  user: LikerLite;
+  size?: number;
+  className?: string;
+}) {
   const initial = (user.display_name ?? "U").slice(0, 1).toUpperCase();
 
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 ring-1 ring-white"
+      className={[
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 ring-1 ring-white",
+        className,
+      ].join(" ")}
       style={{ width: size, height: size }}
       title={user.display_name ?? undefined}
     >
@@ -78,12 +81,6 @@ function AvatarBubble({ user, size = 18 }: { user: LikerLite; size?: number }) {
   );
 }
 
-/**
- * ✅ 画面固定のいいね一覧（Portal）
- * - 親のtransform等に引きずられない
- * - open中スクロールロック
- * - Escで閉じる
- */
 function LikeListModal({
   open,
   onClose,
@@ -95,34 +92,11 @@ function LikeListModal({
   postId: string;
   meId: string | null | undefined;
 }) {
-  const [mounted, setMounted] = useState(false);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<LikerRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // portal guard
-  useEffect(() => setMounted(true), []);
-
-  // body scroll lock + esc close
-  useEffect(() => {
-    if (!open) return;
-
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open, onClose]);
-
-  // fetch likers
   useEffect(() => {
     if (!open) return;
 
@@ -150,25 +124,14 @@ function LikeListModal({
     return rows.filter((r) => (r.display_name ?? "").toLowerCase().includes(key));
   }, [rows, q]);
 
-  if (!open || !mounted) return null;
+  if (!open) return null;
 
-  const ui = (
-    <div className="fixed inset-0 z-[9999]">
-      {/* backdrop */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/35"
-        aria-label="閉じる"
-      />
+  return (
+    <div className="fixed inset-0 z-[999]">
+      <button type="button" onClick={onClose} className="absolute inset-0 bg-black/35" aria-label="閉じる" />
 
-      {/* center modal */}
-      <div
-        className="fixed left-1/2 top-1/2 w-[min(460px,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-white shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="flex items-center justify-between px-5 py-4">
+      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3">
           <div className="text-sm font-semibold">いいね！</div>
           <button
             type="button"
@@ -180,7 +143,7 @@ function LikeListModal({
           </button>
         </div>
 
-        <div className="px-5 pb-3">
+        <div className="px-4 pb-3">
           <div className="flex items-center gap-2 rounded-2xl border border-black/10 bg-slate-50 px-3 py-2">
             <input
               value={q}
@@ -191,13 +154,13 @@ function LikeListModal({
           </div>
         </div>
 
-        <div className="max-h-[50vh] overflow-y-auto px-3 pb-5">
+        <div className="max-h-[55vh] overflow-y-auto px-2 pb-4">
           {loading ? (
-            <div className="px-4 py-10 text-center text-xs text-slate-500">読み込み中...</div>
+            <div className="px-4 py-8 text-center text-xs text-slate-500">読み込み中...</div>
           ) : error ? (
-            <div className="px-4 py-10 text-center text-xs text-red-600">{error}</div>
+            <div className="px-4 py-8 text-center text-xs text-red-600">{error}</div>
           ) : filtered.length === 0 ? (
-            <div className="px-4 py-10 text-center text-xs text-slate-500">該当なし</div>
+            <div className="px-4 py-8 text-center text-xs text-slate-500">該当なし</div>
           ) : (
             filtered.map((u) => {
               const initial = (u.display_name ?? "U").slice(0, 1).toUpperCase();
@@ -232,7 +195,6 @@ function LikeListModal({
                     </div>
                   </Link>
 
-                  {/* 右：フォロー状態（表示のみ。実フォローは別で実装OK） */}
                   <div className="shrink-0">
                     {isMe ? (
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -256,8 +218,6 @@ function LikeListModal({
       </div>
     </div>
   );
-
-  return createPortal(ui, document.body);
 }
 
 export default function PostActions({
@@ -272,40 +232,32 @@ export default function PostActions({
 
   const [liked, setLiked] = useState(initialLiked);
   const [likeCount, setLikeCount] = useState(initialLikeCount);
-  const [likers, setLikers] = useState<LikerLite[]>(Array.isArray(initialLikers) ? initialLikers : []);
+  const [likers, setLikers] = useState<LikerLite[]>(initialLikers);
   const [loading, setLoading] = useState(false);
   const [openList, setOpenList] = useState(false);
 
-  // ✅ 無限ループ対策：props変化時に「実際に変わったときだけ」同期
-  const prevSyncKeyRef = useRef<string>("");
-  useEffect(() => {
-    const ids = (Array.isArray(initialLikers) ? initialLikers : []).map((x) => x?.id ?? "").join("|");
-    const key = `${initialLiked ? 1 : 0}:${initialLikeCount}:${ids}`;
-    if (prevSyncKeyRef.current === key) return;
-    prevSyncKeyRef.current = key;
+  // ✅ 無限update depth回避：内容キーで比較して必要な時だけ同期
+  const propKey = useMemo(() => likersKey(initialLikers), [initialLikers]);
+  const prevSyncRef = useRef<{ liked: boolean; count: number; key: string } | null>(null);
 
+  useEffect(() => {
+    const prev = prevSyncRef.current;
+    const next = { liked: initialLiked, count: initialLikeCount, key: propKey };
+
+    if (prev && prev.liked === next.liked && prev.count === next.count && prev.key === next.key) {
+      return;
+    }
+
+    prevSyncRef.current = next;
     setLiked(initialLiked);
     setLikeCount(initialLikeCount);
-
-    // likers 同期は shallow 比較
-    setLikers((prev) => {
-      const next = Array.isArray(initialLikers) ? initialLikers : [];
-      if (shallowSameLikers(prev, next)) return prev;
-      return next;
-    });
-  }, [initialLiked, initialLikeCount, initialLikers]);
+    setLikers(initialLikers ?? []);
+  }, [initialLiked, initialLikeCount, propKey, initialLikers]);
 
   const displayRow = useMemo(() => {
     const first = likers[0] ?? null;
-    const restCount = Math.max(0, likeCount - (first ? 1 : 0));
-    return { first, restCount };
-  }, [likers, likeCount]);
-
-  const openListSafely = () => {
-    // ✅ 0〜1人しかいないのに「他」を出したくない時の保険
-    if (likeCount <= 1) return;
-    setOpenList(true);
-  };
+    return { first };
+  }, [likers]);
 
   const toggleLike = async () => {
     if (loading) return;
@@ -325,32 +277,25 @@ export default function PostActions({
       return;
     }
 
-    const meta = (user.user_metadata ?? {}) as any;
     const myLite: LikerLite = {
       id: user.id,
-      display_name: meta?.display_name ?? user.email ?? "me",
-      avatar_url: meta?.avatar_url ?? null,
+      display_name: (user.user_metadata as any)?.display_name ?? user.email ?? "me",
+      avatar_url: (user.user_metadata as any)?.avatar_url ?? null,
     };
 
     if (!liked) {
-      // optimistic ON
       setLiked(true);
       setLikeCount((c) => c + 1);
       setLikers((prev) => uniqById([myLite, ...prev]).slice(0, 3));
 
-      const { error } = await supabase.from("post_likes").insert({
-        post_id: postId,
-        user_id: user.id,
-      });
+      const { error } = await supabase.from("post_likes").insert({ post_id: postId, user_id: user.id });
 
       if (error && (error as any).code !== "23505") {
         console.error("like insert error:", error);
-        // rollback
         setLiked(false);
         setLikeCount((c) => Math.max(0, c - 1));
         setLikers((prev) => prev.filter((x) => x.id !== user.id));
       } else {
-        // 通知
         if (postUserId && postUserId !== user.id) {
           await supabase.from("notifications").insert({
             user_id: postUserId,
@@ -362,7 +307,6 @@ export default function PostActions({
         }
       }
     } else {
-      // optimistic OFF
       setLiked(false);
       setLikeCount((c) => Math.max(0, c - 1));
       setLikers((prev) => prev.filter((x) => x.id !== user.id));
@@ -375,7 +319,6 @@ export default function PostActions({
 
       if (error) {
         console.error("like delete error:", error);
-        // rollback
         setLiked(true);
         setLikeCount((c) => c + 1);
         setLikers((prev) => uniqById([myLite, ...prev]).slice(0, 3));
@@ -385,9 +328,10 @@ export default function PostActions({
     setLoading(false);
   };
 
+  const canShowOther = likeCount >= 2;
+
   return (
     <div className="flex items-center gap-3">
-      {/* Heart */}
       <button
         type="button"
         onClick={toggleLike}
@@ -398,10 +342,8 @@ export default function PostActions({
         <Heart className="h-5 w-5" fill={liked ? "currentColor" : "none"} strokeWidth={1.8} />
       </button>
 
-      {/* Instagramっぽい行 */}
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          {/* bubbles */}
           <div className="flex items-center">
             {likers.slice(0, 3).map((u, idx) => (
               <Link
@@ -416,7 +358,6 @@ export default function PostActions({
             ))}
           </div>
 
-          {/* text */}
           <div className="min-w-0 text-[12px] text-slate-700">
             {likeCount <= 0 ? (
               <span className="text-slate-400">いいね！</span>
@@ -431,13 +372,12 @@ export default function PostActions({
                     >
                       {displayRow.first.display_name ?? "ユーザー"}
                     </Link>
-
-                    {likeCount >= 2 ? (
+                    {canShowOther ? (
                       <>
                         <span className="text-slate-500">、</span>
                         <button
                           type="button"
-                          onClick={openListSafely}
+                          onClick={() => setOpenList(true)}
                           className="font-semibold text-slate-900 hover:underline"
                         >
                           他
@@ -460,7 +400,7 @@ export default function PostActions({
         </div>
       </div>
 
-      <LikeListModal open={openList} onClose={() => setOpenList(false)} postId={postId} meId={meId ?? null} />
+      <LikeListModal open={openList} onClose={() => setOpenList(false)} postId={postId} meId={meId} />
     </div>
   );
 }

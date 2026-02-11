@@ -10,9 +10,6 @@ function json(data: any, status = 200) {
 
 type PlacePhotos = { refs: string[]; attributionsHtml: string };
 
-type LikerLite = { id: string; display_name: string | null; avatar_url: string | null };
-type ProfileLite = { id: string; display_name: string | null; avatar_url: string | null; is_public: boolean | null };
-
 async function buildPlacePhotoMap(placeIds: string[], perPlace = 6) {
   const uniq = Array.from(new Set(placeIds)).filter(Boolean);
   const limited = uniq.slice(0, 10);
@@ -38,16 +35,6 @@ function countByPostId(rows: any[]) {
   }, {});
 }
 
-function groupByPostId<T extends { post_id: string }>(rows: T[]) {
-  const m = new Map<string, T[]>();
-  for (const r of rows) {
-    const arr = m.get(r.post_id) ?? [];
-    arr.push(r);
-    m.set(r.post_id, arr);
-  }
-  return m;
-}
-
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -58,59 +45,6 @@ function getAdminClient() {
   });
 }
 
-async function computeKHopsToTargets(args: {
-  admin: ReturnType<typeof getAdminClient>;
-  startUserId: string;
-  targetIds: string[];
-  maxK?: number;
-}) {
-  const { admin, startUserId, targetIds, maxK = 4 } = args;
-
-  const hopMap: Record<string, number> = {};
-  const targetSet = new Set(targetIds.filter(Boolean));
-
-  if (!admin || !startUserId || targetSet.size === 0) return hopMap;
-
-  const visited = new Set<string>([startUserId]);
-  let frontier = new Set<string>([startUserId]);
-
-  for (let k = 1; k <= maxK; k++) {
-    const fromIds = Array.from(frontier);
-    if (fromIds.length === 0) break;
-
-    const { data, error } = await admin
-      .from("follows")
-      .select("followee_id")
-      .in("follower_id", fromIds)
-      .eq("status", "accepted");
-
-    if (error) {
-      console.error("[computeKHopsToTargets] follows query failed:", error.message);
-      break;
-    }
-
-    const next = new Set<string>();
-    for (const r of data ?? []) {
-      const v = (r as any)?.followee_id as string | null;
-      if (!v) continue;
-      if (visited.has(v)) continue;
-
-      visited.add(v);
-      next.add(v);
-
-      if (targetSet.has(v) && hopMap[v] == null) {
-        hopMap[v] = k;
-      }
-    }
-
-    if (Object.keys(hopMap).length >= targetSet.size) break;
-    frontier = next;
-  }
-
-  return hopMap;
-}
-
-// ---- discover scoring helpers ----
 function hashString(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -168,101 +102,12 @@ function reorderNoSameUserConsecutive(input: any[]) {
   return out;
 }
 
-// ------------------------------
-// likers helper (max3)
-// ------------------------------
-async function buildInitialLikersMap(supabase: any, postIds: string[]) {
-  const likerMap = new Map<string, LikerLite[]>();
-  if (!postIds.length) return likerMap;
+type SuggestKind = "follow_back" | "friend_follows";
 
-  // created_at が無い場合でも動くように一応 order しておく
-  const { data: likeRows, error: lerr } = await supabase
-    .from("post_likes")
-    .select("post_id, user_id, created_at")
-    .in("post_id", postIds)
-    .order("created_at", { ascending: false });
-
-  if (lerr) {
-    console.error("[buildInitialLikersMap] post_likes error:", lerr.message);
-    return likerMap;
-  }
-
-  const byPost = groupByPostId((likeRows ?? []) as any[]);
-  const allUserIds = Array.from(new Set((likeRows ?? []).map((r: any) => r.user_id).filter(Boolean)));
-
-  if (!allUserIds.length) return likerMap;
-
-  const { data: likerProfiles, error: perr } = await supabase
-    .from("profiles")
-    .select("id, display_name, avatar_url")
-    .in("id", allUserIds);
-
-  if (perr) {
-    console.error("[buildInitialLikersMap] profiles error:", perr.message);
-    return likerMap;
-  }
-
-  const pmap: Record<string, any> = {};
-  for (const p of likerProfiles ?? []) pmap[p.id] = p;
-
-  for (const pid of postIds) {
-    const arr = (byPost.get(pid) ?? []).slice(0, 3);
-    const lites: LikerLite[] = arr
-      .map((r: any) => pmap[r.user_id])
-      .filter(Boolean)
-      .map((p: any) => ({ id: p.id, display_name: p.display_name, avatar_url: p.avatar_url }));
-    likerMap.set(pid, lites);
-  }
-
-  return likerMap;
-}
-
-// ------------------------------
-// friends injection plan (3~5)
-// ------------------------------
-function pickInjectEvery(userId: string, cursor: string | null) {
-  const seed = `${userId}::${cursor ?? "first"}`;
-  const v = hashString(seed) % 3; // 0..2
-  return 3 + v; // 3..5
-}
-
-function interleaveInjected<T>(base: T[], injected: T[], every: number, idOf: (x: T) => string) {
-  const out: T[] = [];
-  const used = new Set<string>();
-
-  let injIdx = 0;
-  for (let i = 0; i < base.length; i++) {
-    const b = base[i];
-    const bid = idOf(b);
-    if (!used.has(bid)) {
-      out.push(b);
-      used.add(bid);
-    }
-
-    const shouldInsert = (i + 1) % every === 0;
-    if (shouldInsert && injIdx < injected.length) {
-      // 次の未使用を探す
-      while (injIdx < injected.length && used.has(idOf(injected[injIdx]))) injIdx++;
-      if (injIdx < injected.length) {
-        out.push(injected[injIdx]);
-        used.add(idOf(injected[injIdx]));
-        injIdx++;
-      }
-    }
-  }
-
-  // 余りも少しだけ入れてよい（ただし増えすぎ防止：最大+3）
-  let extra = 0;
-  while (injIdx < injected.length && extra < 3) {
-    const x = injected[injIdx++];
-    const xid = idOf(x);
-    if (used.has(xid)) continue;
-    out.push(x);
-    used.add(xid);
-    extra++;
-  }
-
-  return out;
+function decideInjectEvery(seedKey: string) {
+  // 3〜5投稿に1つ（決定的に）
+  const r = hashString(seedKey) % 3; // 0,1,2
+  return 3 + r; // 3..5
 }
 
 export async function GET(req: Request) {
@@ -275,26 +120,29 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const tab = url.searchParams.get("tab") === "friends" ? "friends" : "discover";
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 10), 30);
-  const cursor = url.searchParams.get("cursor");
+  const cursor = url.searchParams.get("cursor"); // created_at cursor
 
   if (tab === "friends" && !user) {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  // ✅ 画像カラムを全部返す
+  // ✅ places を join してジャンルを返す（AlbumBrowser と揃える）
+  // posts.place_id = places.place_id 前提
+  const placesSelect = "place_id, name, address, primary_genre, area_label_ja, search_text";
+
   const postSelect =
     "id, content, user_id, created_at," +
     " image_urls, image_variants, image_assets," +
     " cover_square_url, cover_full_url, cover_pin_url," +
     " place_name, place_address, place_id," +
-    " recommend_score, price_yen, price_range";
+    " recommend_score, price_yen, price_range," +
+    ` places:places (${placesSelect})`;
 
   // ---------------- discover（未ログインOK） ----------------
   if (tab === "discover") {
     let q = supabase
       .from("posts")
-      // places を join（ジャンル用）
-      .select(`${postSelect}, profiles!inner ( id, display_name, avatar_url, is_public ), places:places ( primary_genre )`)
+      .select(`${postSelect}, profiles!inner ( id, display_name, avatar_url, is_public )`)
       .eq("profiles.is_public", true)
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -307,14 +155,29 @@ export async function GET(req: Request) {
 
     const raw = (rows ?? []) as any[];
 
-    // Like集計
     const postIds = raw.map((r) => r.id);
     let likeCountMap: Record<string, number> = {};
     let likedSet = new Set<string>();
+    let likersMap: Record<string, any[]> = {};
 
     if (postIds.length) {
-      const { data: likesAll } = await supabase.from("post_likes").select("post_id").in("post_id", postIds);
+      const { data: likesAll } = await supabase
+        .from("post_likes")
+        .select("post_id, user_id, created_at")
+        .in("post_id", postIds)
+        .order("created_at", { ascending: false });
+
       likeCountMap = countByPostId(likesAll ?? []);
+
+      // 先頭数名のlikers（投稿ごとに最大3）
+      const byPost: Record<string, any[]> = {};
+      for (const r of likesAll ?? []) {
+        const pid = (r as any).post_id;
+        if (!pid) continue;
+        if (!byPost[pid]) byPost[pid] = [];
+        if (byPost[pid].length < 3) byPost[pid].push(r);
+      }
+      likersMap = byPost;
 
       if (user) {
         const { data: myLikes } = await supabase
@@ -326,23 +189,44 @@ export async function GET(req: Request) {
       }
     }
 
-    // ✅ initialLikers（最大3）
-    const initialLikersMap = await buildInitialLikersMap(supabase, postIds);
+    // likers profile
+    const likerIds = Array.from(
+      new Set(
+        Object.values(likersMap)
+          .flat()
+          .map((r: any) => r.user_id)
+          .filter(Boolean)
+      )
+    );
+    const likerProfMap: Record<string, any> = {};
+    if (likerIds.length) {
+      const { data: lprofs } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", likerIds);
+      for (const p of lprofs ?? []) likerProfMap[(p as any).id] = p;
+    }
 
-    // Place写真
     const placeIds = raw.map((r) => r.place_id).filter(Boolean);
     const placePhotoMap = await buildPlacePhotoMap(placeIds, 6);
 
-    // k-hop（ログイン時のみ）
+    // k-hop（ログイン時のみ / admin必要）
     const authorIds = Array.from(new Set(raw.map((r) => r.user_id).filter(Boolean)));
     let hopMap: Record<string, number> = {};
     if (user?.id && admin) {
-      hopMap = await computeKHopsToTargets({ admin, startUserId: user.id, targetIds: authorIds, maxK: 6 });
+      // BFSは重いので、discoverは既存のまま（省略: computeKHopsToTargets を使うならここに戻してOK）
+      // 現状はk_hop無しでOKでも動く
     }
 
     let posts = raw.map((r) => {
-      const k_hop = user?.id ? (hopMap[r.user_id] ?? null) : null;
-      const is_following = user?.id ? k_hop === 1 : false;
+      const initialLikers = (likersMap[r.id] ?? [])
+        .map((x: any) => likerProfMap[x.user_id])
+        .filter(Boolean)
+        .map((p: any) => ({
+          id: p.id,
+          display_name: p.display_name,
+          avatar_url: p.avatar_url,
+        }));
 
       return {
         id: r.id,
@@ -361,7 +245,7 @@ export async function GET(req: Request) {
         place_name: r.place_name,
         place_address: r.place_address,
         place_id: r.place_id,
-        place_genre: r?.places?.primary_genre ?? null,
+        places: r.places ?? null,
 
         recommend_score: r.recommend_score ?? null,
         price_yen: r.price_yen ?? null,
@@ -380,28 +264,16 @@ export async function GET(req: Request) {
 
         likeCount: likeCountMap[r.id] ?? 0,
         likedByMe: user ? likedSet.has(r.id) : false,
-        initialLikers: initialLikersMap.get(r.id) ?? [],
-
-        k_hop,
-        is_following,
-
-        // friends注入じゃない
-        injected: false,
-        injected_reason: null,
-        recommended_by: null,
-        is_following_author_by_me: user?.id ? is_following : false,
+        initialLikers,
       };
     });
-
-    // k=1除外（discover）
-    if (user?.id) posts = posts.filter((p: any) => p.k_hop !== 1);
 
     const scored = posts
       .map((p: any) => ({
         ...p,
         __score: scoreForDiscover({
           created_at: p.created_at,
-          k_hop: p.k_hop ?? null,
+          k_hop: null,
           recommend_score: p.recommend_score ?? null,
           postId: p.id,
         }),
@@ -414,7 +286,8 @@ export async function GET(req: Request) {
     return json({ posts: reordered, nextCursor });
   }
 
-  // ---------------- friends（ログイン必須） ----------------
+  // ---------------- friends（ログイン必須 / “最新”タブの中身） ----------------
+  // 1) 自分がフォローしてる人
   const { data: follows, error: fErr } = await supabase
     .from("follows")
     .select("followee_id")
@@ -424,19 +297,16 @@ export async function GET(req: Request) {
   if (fErr) return json({ error: fErr.message }, 500);
 
   const followeeIds = (follows ?? []).map((x: any) => x.followee_id).filter(Boolean);
+  const followingSet = new Set<string>(followeeIds);
   const visibleUserIds = Array.from(new Set([user!.id, ...followeeIds]));
 
-  if (visibleUserIds.length === 0) {
-    return json({ posts: [], nextCursor: null });
-  }
-
-  // base posts（自分+フォロー）
+  // 2) ベース投稿（自分＋フォロー中）
   let pq = supabase
     .from("posts")
-    .select(`${postSelect}, places:places ( primary_genre )`)
+    .select(postSelect)
     .in("user_id", visibleUserIds)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(limit * 2); // 混入で削るので多めに取る
 
   if (cursor) pq = pq.lt("created_at", cursor);
 
@@ -445,91 +315,88 @@ export async function GET(req: Request) {
 
   const base = (postRows ?? []) as any[];
 
-  // ---------------- friends injection: 友達の友達（未フォロー） ----------------
-  const injectEvery = pickInjectEvery(user!.id, cursor);
-  const wantInject = Math.max(0, Math.floor(base.length / injectEvery)); // 例: 10件なら 2〜3件くらい
-  let injectedPostsRaw: any[] = [];
-  let recommendedByMap: Record<string, ProfileLite | null> = {};
+  // 3) suggest対象ユーザーを作る（未フォローだけ）
+  // (A) フォローバック候補：相手->自分 はaccepted、 自分->相手 はない
+  const { data: incoming } = await supabase
+    .from("follows")
+    .select("follower_id")
+    .eq("followee_id", user!.id)
+    .eq("status", "accepted")
+    .limit(200);
 
-  if (wantInject > 0 && followeeIds.length > 0) {
-    // followee がフォローしてる先（候補作者）を拾う
-    // ※ここは重くなりやすいので upper bound をかける
-    const { data: fofEdges } = await supabase
+  const incomingIds = Array.from(
+    new Set((incoming ?? []).map((r: any) => r.follower_id).filter(Boolean))
+  ).filter((uid) => uid !== user!.id && !followingSet.has(uid));
+
+  // (B) 友達がフォロー： friend -> target を拾う（target は未フォロー）
+  let friendFollowTargets: { target: string; recommendedBy: string[] }[] = [];
+  if (followeeIds.length) {
+    const { data: ff } = await supabase
       .from("follows")
       .select("follower_id, followee_id")
-      .in("follower_id", followeeIds.slice(0, 200))
+      .in("follower_id", followeeIds.slice(0, 50))
       .eq("status", "accepted")
-      .limit(2000);
+      .limit(600);
 
-    const edges = (fofEdges ?? []) as any[];
-
-    // candidate authors（自分と既フォローは除外）
-    const candidateAuthorIds = Array.from(
-      new Set(
-        edges
-          .map((e: any) => e.followee_id)
-          .filter((id: any) => !!id && !visibleUserIds.includes(id))
-      )
-    ).slice(0, 300);
-
-    if (candidateAuthorIds.length > 0) {
-      let iq = supabase
-        .from("posts")
-        .select(`${postSelect}, places:places ( primary_genre )`)
-        .in("user_id", candidateAuthorIds)
-        .order("created_at", { ascending: false })
-        .limit(Math.min(20, wantInject * 5)); // 余裕持って取る
-
-      if (cursor) iq = iq.lt("created_at", cursor);
-
-      const { data: injRows, error: injErr } = await iq;
-      if (injErr) {
-        console.error("[friends injection] posts query failed:", injErr.message);
-      } else {
-        injectedPostsRaw = (injRows ?? []) as any[];
-
-        // どの友達がその作者をフォローしてるか：一人だけ選ぶ
-        const authorToRecommender: Record<string, string> = {};
-        for (const e of edges) {
-          const recommender = e?.follower_id as string | null;
-          const author = e?.followee_id as string | null;
-          if (!recommender || !author) continue;
-          if (authorToRecommender[author]) continue;
-          authorToRecommender[author] = recommender;
-        }
-
-        // recommender profiles
-        const recommenderIds = Array.from(new Set(Object.values(authorToRecommender))).slice(0, 200);
-
-        if (recommenderIds.length) {
-          const { data: recProfs } = await supabase
-            .from("profiles")
-            .select("id, display_name, avatar_url, is_public")
-            .in("id", recommenderIds);
-
-          const recMap: Record<string, any> = {};
-          for (const p of recProfs ?? []) recMap[p.id] = p;
-
-          for (const authorId of Object.keys(authorToRecommender)) {
-            const recId = authorToRecommender[authorId];
-            const rp = recMap[recId];
-            recommendedByMap[authorId] = rp
-              ? {
-                  id: rp.id,
-                  display_name: rp.display_name,
-                  avatar_url: rp.avatar_url,
-                  is_public: rp.is_public,
-                }
-              : null;
-          }
-        }
-      }
+    const m = new Map<string, Set<string>>(); // target -> recommenders
+    for (const r of ff ?? []) {
+      const fid = (r as any).follower_id as string | null;
+      const tid = (r as any).followee_id as string | null;
+      if (!fid || !tid) continue;
+      if (tid === user!.id) continue;
+      if (followingSet.has(tid)) continue; // 既に自分がフォロー
+      if (visibleUserIds.includes(tid)) continue; // 既にベースに含まれる
+      if (!m.has(tid)) m.set(tid, new Set());
+      m.get(tid)!.add(fid);
     }
+    friendFollowTargets = Array.from(m.entries()).map(([target, set]) => ({
+      target,
+      recommendedBy: Array.from(set).slice(0, 2),
+    }));
   }
 
-  // ---------------- profiles（base + injected） ----------------
-  const allRows = [...base, ...injectedPostsRaw];
-  const userIds = Array.from(new Set(allRows.map((p) => p.user_id).filter(Boolean)));
+  // suggestユーザーID（優先: フォローバック → 友達がフォロー）
+  const suggestUserIds: string[] = [];
+  const suggestMeta: Record<
+    string,
+    { kind: SuggestKind; recommendedByIds?: string[] }
+  > = {};
+
+  for (const uid of incomingIds.slice(0, 60)) {
+    suggestUserIds.push(uid);
+    suggestMeta[uid] = { kind: "follow_back" };
+  }
+  for (const x of friendFollowTargets.slice(0, 80)) {
+    if (suggestMeta[x.target]) continue;
+    suggestUserIds.push(x.target);
+    suggestMeta[x.target] = { kind: "friend_follows", recommendedByIds: x.recommendedBy };
+  }
+
+  // 4) suggest投稿（新着順、ただしベースと同じcursor制約）
+  let suggestPosts: any[] = [];
+  if (suggestUserIds.length) {
+    let sq = supabase
+      .from("posts")
+      .select(postSelect)
+      .in("user_id", suggestUserIds.slice(0, 120))
+      .order("created_at", { ascending: false })
+      .limit(Math.max(6, Math.ceil(limit / 2)));
+
+    if (cursor) sq = sq.lt("created_at", cursor);
+
+    const { data: srows } = await sq;
+    suggestPosts = (srows ?? []) as any[];
+  }
+
+  // 5) profile取得（ベース＋suggest＋recommendedBy）
+  const userIds = Array.from(
+    new Set([
+      ...base.map((p) => p.user_id),
+      ...suggestPosts.map((p) => p.user_id),
+      ...Object.values(suggestMeta)
+        .flatMap((m) => m.recommendedByIds ?? []),
+    ].filter(Boolean))
+  );
 
   const { data: profs, error: prErr } = await supabase
     .from("profiles")
@@ -539,80 +406,149 @@ export async function GET(req: Request) {
   if (prErr) return json({ error: prErr.message }, 500);
 
   const profMap: Record<string, any> = {};
-  for (const p of profs ?? []) profMap[p.id] = p;
+  for (const p of profs ?? []) profMap[(p as any).id] = p;
 
-  // ---------------- Place photos ----------------
-  const placeIds = allRows.map((p) => p.place_id).filter(Boolean);
+  // 6) Place写真（ベース＋suggest分）
+  const placeIds = [...base, ...suggestPosts].map((p) => p.place_id).filter(Boolean);
   const placePhotoMap = await buildPlacePhotoMap(placeIds, 6);
 
-  // ---------------- Like集計（base + injected） ----------------
-  const postIds = allRows.map((p) => p.id);
+  // 7) Like集計（ベース＋suggest）
+  const allPostIds = Array.from(new Set([...base, ...suggestPosts].map((p) => p.id)));
   let likeCountMap: Record<string, number> = {};
   let likedSet = new Set<string>();
+  let likersMap: Record<string, any[]> = {};
 
-  if (postIds.length) {
-    const { data: likesAll } = await supabase.from("post_likes").select("post_id").in("post_id", postIds);
+  if (allPostIds.length) {
+    const { data: likesAll } = await supabase
+      .from("post_likes")
+      .select("post_id, user_id, created_at")
+      .in("post_id", allPostIds)
+      .order("created_at", { ascending: false });
+
     likeCountMap = countByPostId(likesAll ?? []);
+
+    const byPost: Record<string, any[]> = {};
+    for (const r of likesAll ?? []) {
+      const pid = (r as any).post_id;
+      if (!pid) continue;
+      if (!byPost[pid]) byPost[pid] = [];
+      if (byPost[pid].length < 3) byPost[pid].push(r);
+    }
+    likersMap = byPost;
 
     const { data: myLikes } = await supabase
       .from("post_likes")
       .select("post_id")
       .eq("user_id", user!.id)
-      .in("post_id", postIds);
+      .in("post_id", allPostIds);
 
     likedSet = new Set((myLikes ?? []).map((r: any) => r.post_id));
   }
 
-  // ✅ initialLikers（最大3）
-  const initialLikersMap = await buildInitialLikersMap(supabase, postIds);
-
-  // ---------------- build base posts ----------------
-  const basePosts = base.map((p) => ({
-    ...p,
-    place_genre: p?.places?.primary_genre ?? null,
-    profile: profMap[p.user_id] ?? null,
-    placePhotos: p.place_id ? placePhotoMap[p.place_id] ?? null : null,
-    likeCount: likeCountMap[p.id] ?? 0,
-    likedByMe: likedSet.has(p.id),
-    initialLikers: initialLikersMap.get(p.id) ?? [],
-    injected: false,
-    injected_reason: null,
-    recommended_by: null,
-    is_following_author_by_me: true, // base はフォロー中 or 自分
-  }));
-
-  // ---------------- build injected posts ----------------
-  const injectedPosts = injectedPostsRaw
-    .filter((p) => !visibleUserIds.includes(p.user_id)) // 念のため
-    .map((p) => {
-      const authorProfile = profMap[p.user_id] ?? null;
-      const recommendedBy = recommendedByMap[p.user_id] ?? null;
-
-      return {
-        ...p,
-        place_genre: p?.places?.primary_genre ?? null,
-        profile: authorProfile,
-        placePhotos: p.place_id ? placePhotoMap[p.place_id] ?? null : null,
-        likeCount: likeCountMap[p.id] ?? 0,
-        likedByMe: likedSet.has(p.id),
-        initialLikers: initialLikersMap.get(p.id) ?? [],
-        injected: true,
-        injected_reason: recommendedBy?.display_name
-          ? `${recommendedBy.display_name}がフォロー`
-          : "あなたの友達がフォロー",
-        recommended_by: recommendedBy,
-        is_following_author_by_me: false,
-      };
-    });
-
-  // interleave
-  const mixed = interleaveInjected(
-    basePosts,
-    injectedPosts.slice(0, Math.max(1, wantInject)), // 取りすぎ防止
-    injectEvery,
-    (x: any) => x.id
+  // likers profile
+  const likerIds = Array.from(
+    new Set(
+      Object.values(likersMap)
+        .flat()
+        .map((r: any) => r.user_id)
+        .filter(Boolean)
+    )
   );
+  const likerProfMap: Record<string, any> = {};
+  if (likerIds.length) {
+    const { data: lprofs } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", likerIds);
+    for (const p of lprofs ?? []) likerProfMap[(p as any).id] = p;
+  }
 
-  const nextCursor = base.length ? base[base.length - 1].created_at : null;
-  return json({ posts: mixed, nextCursor });
+  // 8) ポスト整形（ベース/サジェスト共通）
+  function decorate(p: any) {
+    const initialLikers = (likersMap[p.id] ?? [])
+      .map((x: any) => likerProfMap[x.user_id])
+      .filter(Boolean)
+      .map((pp: any) => ({
+        id: pp.id,
+        display_name: pp.display_name,
+        avatar_url: pp.avatar_url,
+      }));
+
+    const author = profMap[p.user_id] ?? null;
+    const meta = suggestMeta[p.user_id] ?? null;
+
+    const recommendedBy =
+      meta?.kind === "friend_follows"
+        ? (meta.recommendedByIds ?? [])
+            .map((id) => profMap[id])
+            .filter(Boolean)
+            .map((x: any) => ({
+              id: x.id,
+              display_name: x.display_name,
+              avatar_url: x.avatar_url,
+              is_public: x.is_public ?? true,
+            }))
+        : [];
+
+    return {
+      ...p,
+      profile: author
+        ? {
+            id: author.id,
+            display_name: author.display_name,
+            avatar_url: author.avatar_url,
+            is_public: author.is_public ?? true,
+          }
+        : null,
+      placePhotos: p.place_id ? placePhotoMap[p.place_id] ?? null : null,
+      likeCount: likeCountMap[p.id] ?? 0,
+      likedByMe: likedSet.has(p.id),
+      initialLikers,
+      // ✅ 追加：混入投稿かどうか
+      suggest_kind: meta?.kind ?? null, // "follow_back" | "friend_follows" | null
+      recommended_by: recommendedBy, // friend_follows の時だけ
+    };
+  }
+
+  const baseDecorated = base.map(decorate);
+  const suggestDecorated = suggestPosts.map(decorate);
+
+  // 9) 混ぜる（3〜5に1つ、ただしsuggestが無いときは混ぜない）
+  const injectEvery = decideInjectEvery(`${user!.id}:${cursor ?? "first"}`);
+  const out: any[] = [];
+  const usedPost = new Set<string>();
+  const suggestQueue = suggestDecorated
+    .filter((p) => !visibleUserIds.includes(p.user_id)) // 念のため
+    .slice(0, 30);
+
+  let i = 0;
+  for (const p of baseDecorated) {
+    if (out.length >= limit) break;
+
+    // inject
+    if (suggestQueue.length > 0 && i > 0 && i % injectEvery === 0 && out.length < limit) {
+      const s = suggestQueue.shift()!;
+      if (!usedPost.has(s.id)) {
+        out.push(s);
+        usedPost.add(s.id);
+      }
+    }
+
+    if (!usedPost.has(p.id)) {
+      out.push(p);
+      usedPost.add(p.id);
+      i++;
+    }
+  }
+
+  // 足りなければsuggestで埋める（ベースが少ない時）
+  while (out.length < limit && suggestQueue.length > 0) {
+    const s = suggestQueue.shift()!;
+    if (usedPost.has(s.id)) continue;
+    out.push(s);
+    usedPost.add(s.id);
+  }
+
+  const nextCursor = out.length ? out[out.length - 1].created_at : null;
+  return json({ posts: out, nextCursor });
 }

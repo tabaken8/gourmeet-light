@@ -4,27 +4,26 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Lock, ChevronDown, ChevronUp, UserPlus } from "lucide-react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
-import PostActions, { type LikerLite } from "@/components/PostActions";
+import PostActions, { LikerLite } from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
 import LoginCard from "@/components/LoginCard";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-type ImageVariant = {
-  thumb?: string | null;
-  full?: string | null;
-  [k: string]: any;
-};
+type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
+type ImageAsset = { pin?: string | null; square?: string | null; full?: string | null; [k: string]: any };
 
-type ImageAsset = {
-  pin?: string | null;
-  square?: string | null;
-  full?: string | null;
-  [k: string]: any;
+type PlaceRow = {
+  place_id: string;
+  name: string | null;
+  address?: string | null;
+  primary_genre: string | null;
+  area_label_ja?: string | null;
+  search_text?: string | null;
 };
 
 type ProfileLite = {
@@ -51,7 +50,9 @@ type PostRow = {
   place_name: string | null;
   place_address: string | null;
   place_id: string | null;
-  place_genre?: string | null;
+
+  // ✅ joinして返す
+  places?: PlaceRow | null;
 
   recommend_score?: number | null;
   price_yen?: number | null;
@@ -63,11 +64,9 @@ type PostRow = {
   likedByMe?: boolean;
   initialLikers?: LikerLite[];
 
-  // friends injection
-  injected?: boolean;
-  injected_reason?: string | null;
-  recommended_by?: ProfileLite | null;
-  is_following_author_by_me?: boolean;
+  // ✅ “最新”タブ混入用
+  suggest_kind?: "follow_back" | "friend_follows" | null;
+  recommended_by?: ProfileLite[]; // friend_follows の時だけ
 };
 
 type DiscoverTile = { p: PostRow; big: boolean };
@@ -84,38 +83,28 @@ function formatJST(iso: string) {
   }).format(dt);
 }
 
-/**
- * ✅ friends Timelineでは「正方形URLのみ」を返す
- */
 function getTimelineSquareUrls(p: PostRow): string[] {
   const cover = p.cover_square_url ? [p.cover_square_url] : [];
-
   const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
   const squaresFromAssets = assets.map((a) => a?.square ?? null).filter((x): x is string => !!x);
-
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
   const thumbsFromVariants = variants.map((v) => v?.thumb ?? null).filter((x): x is string => !!x);
-
   const all = [...cover, ...squaresFromAssets, ...thumbsFromVariants];
   return Array.from(new Set(all)).filter(Boolean);
 }
 
 function getFirstSquareThumb(p: PostRow): string | null {
   if (p.cover_square_url) return p.cover_square_url;
-
   const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
   if (assets[0]?.square) return assets[0].square;
-
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
   if (variants[0]?.thumb) return variants[0].thumb;
-
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   return legacy[0] ?? null;
 }
 
 function extractPrefCity(address: string | null | undefined): string | null {
   if (!address) return null;
-
   const s = address
     .replace(/^日本[、,\s]*/u, "")
     .replace(/〒\s*\d{3}-?\d{4}\s*/u, "")
@@ -125,31 +114,16 @@ function extractPrefCity(address: string | null | undefined): string | null {
     /(東京都|北海道|大阪府|京都府|.{2,3}県)([^0-9\s,、]{1,20}?(市|区|町|村))/u
   );
   if (!m) return null;
-
-  const pref = m[1];
-  const city = m[2];
-  return `${pref}${city}`;
+  return `${m[1]}${m[2]}`;
 }
 
 function GoogleMark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className={className}>
-      <path
-        fill="#EA4335"
-        d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"
-      />
-      <path
-        fill="#4285F4"
-        d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z"
-      />
-      <path
-        fill="#FBBC04"
-        d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z"
-      />
-      <path
-        fill="#34A853"
-        d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
-      />
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z" />
+      <path fill="#FBBC04" d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z" />
     </svg>
   );
 }
@@ -168,30 +142,21 @@ function formatPrice(p: PostRow): string | null {
   }
   if (p.price_range) {
     switch (p.price_range) {
-      case "~999":
-        return "〜¥999";
-      case "1000-1999":
-        return "¥1,000〜¥1,999";
-      case "2000-2999":
-        return "¥2,000〜¥2,999";
-      case "3000-3999":
-        return "¥3,000〜¥3,999";
-      case "4000-4999":
-        return "¥4,000〜¥4,999";
-      case "5000-6999":
-        return "¥5,000〜¥6,999";
-      case "7000-9999":
-        return "¥7,000〜¥9,999";
-      case "10000+":
-        return "¥10,000〜";
-      default:
-        return p.price_range;
+      case "~999": return "〜¥999";
+      case "1000-1999": return "¥1,000〜¥1,999";
+      case "2000-2999": return "¥2,000〜¥2,999";
+      case "3000-3999": return "¥3,000〜¥3,999";
+      case "4000-4999": return "¥4,000〜¥4,999";
+      case "5000-6999": return "¥5,000〜¥6,999";
+      case "7000-9999": return "¥7,000〜¥9,999";
+      case "10000+": return "¥10,000〜";
+      default: return p.price_range;
     }
   }
   return null;
 }
 
-// ---- seed & hash helpers ----
+// ---- seed & hash helpers (discover用は省略、君の元コードのままでもOK) ----
 function hashString(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -200,7 +165,6 @@ function hashString(s: string): number {
   }
   return h >>> 0;
 }
-
 function makeSeed(): string {
   try {
     if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
@@ -211,51 +175,28 @@ function makeSeed(): string {
   } catch {}
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
-
-function planDiscoverTiles(
-  ordered: PostRow[],
-  seed: string,
-  opts?: { bigDenom?: number; minIndexForBig?: number; tailGuard?: number; maxBig?: number }
-): DiscoverTile[] {
+function planDiscoverTiles(ordered: PostRow[], seed: string, opts?: { bigDenom?: number; minIndexForBig?: number; tailGuard?: number; maxBig?: number; }): DiscoverTile[] {
   const bigDenom = opts?.bigDenom ?? 4;
   const minIndexForBig = opts?.minIndexForBig ?? 3;
   const tailGuard = opts?.tailGuard ?? 7;
   const maxBig = opts?.maxBig ?? 4;
 
   const occ: boolean[][] = [];
-  const ensureRow = (r: number) => {
-    while (occ.length <= r) occ.push([false, false, false]);
-  };
-
+  const ensureRow = (r: number) => { while (occ.length <= r) occ.push([false, false, false]); };
   const firstEmpty = () => {
-    for (let r = 0; r < occ.length; r++) {
-      for (let c = 0; c < 3; c++) {
-        if (!occ[r][c]) return { r, c };
-      }
-    }
+    for (let r = 0; r < occ.length; r++) for (let c = 0; c < 3; c++) if (!occ[r][c]) return { r, c };
     ensureRow(occ.length);
     return { r: occ.length - 1, c: 0 };
   };
-
   const canBigAt = (r: number, c: number) => {
     if (c > 1) return false;
-    ensureRow(r);
-    ensureRow(r + 1);
+    ensureRow(r); ensureRow(r + 1);
     return !occ[r][c] && !occ[r][c + 1] && !occ[r + 1][c] && !occ[r + 1][c + 1];
   };
-
-  const markSmall = (r: number, c: number) => {
-    ensureRow(r);
-    occ[r][c] = true;
-  };
-
+  const markSmall = (r: number, c: number) => { ensureRow(r); occ[r][c] = true; };
   const markBig = (r: number, c: number) => {
-    ensureRow(r);
-    ensureRow(r + 1);
-    occ[r][c] = true;
-    occ[r][c + 1] = true;
-    occ[r + 1][c] = true;
-    occ[r + 1][c + 1] = true;
+    ensureRow(r); ensureRow(r + 1);
+    occ[r][c] = true; occ[r][c + 1] = true; occ[r + 1][c] = true; occ[r + 1][c + 1] = true;
   };
 
   let bigCount = 0;
@@ -270,89 +211,82 @@ function planDiscoverTiles(
     const wantBigByRand = h % bigDenom === 0;
     const allowByTail = remain > tailGuard;
 
-    const wantBig =
-      i > minIndexForBig && allowByTail && wantBigByRand && bigCount < maxBig && canBigAt(r, c);
+    const wantBig = i > minIndexForBig && allowByTail && wantBigByRand && bigCount < maxBig && canBigAt(r, c);
 
-    if (wantBig) {
-      markBig(r, c);
-      bigCount++;
-      out.push({ p, big: true });
-    } else {
-      markSmall(r, c);
-      out.push({ p, big: false });
-    }
+    if (wantBig) { markBig(r, c); bigCount++; out.push({ p, big: true }); }
+    else { markSmall(r, c); out.push({ p, big: false }); }
   }
 
   return out;
 }
 
-function FollowButton({
+// ✅ 追加：右上フォロー/フォローバック（最低限動く版）
+function SuggestFollowButton({
   targetUserId,
-  targetProfile,
+  kind,
+  recommendedBy,
   meId,
-  initialFollowing,
+  isPublic,
 }: {
   targetUserId: string;
-  targetProfile: ProfileLite | null;
+  kind: "follow_back" | "friend_follows";
+  recommendedBy?: ProfileLite[];
   meId: string | null;
-  initialFollowing: boolean;
+  isPublic: boolean;
 }) {
   const supabase = createClientComponentClient();
-  const [state, setState] = useState<"none" | "pending" | "accepted">(initialFollowing ? "accepted" : "none");
   const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
 
-  useEffect(() => {
-    setState(initialFollowing ? "accepted" : "none");
-  }, [initialFollowing]);
+  const label = kind === "follow_back" ? "フォローバック" : "フォロー";
 
-  const onFollow = async () => {
-    if (!meId) return alert("ログインが必要です");
-    if (loading) return;
-    if (state !== "none") return;
-    if (meId === targetUserId) return;
+  const hint =
+    kind === "friend_follows" && recommendedBy && recommendedBy.length
+      ? `${recommendedBy[0]?.display_name ?? "友達"}がフォロー`
+      : kind === "follow_back"
+        ? "あなたをフォロー中"
+        : "";
 
+  const onClick = async () => {
+    if (!meId || loading || done) return;
     setLoading(true);
-
-    // public なら即 accepted、そうでなければ pending（あなたの仕様に無難に寄せる）
-    const nextStatus = targetProfile?.is_public ? "accepted" : "pending";
-    setState(nextStatus);
-
-    const { error } = await supabase
-      .from("follows")
-      .upsert(
-        { follower_id: meId, followee_id: targetUserId, status: nextStatus },
-        { onConflict: "follower_id,followee_id" }
-      );
-
-    if (error) {
-      console.error("follow upsert error:", error);
-      setState("none");
-      alert("フォローに失敗しました");
+    try {
+      // 公開アカウントは即accepted、非公開はpending（あなたの運用に合わせて調整OK）
+      const status = isPublic ? "accepted" : "pending";
+      const { error } = await supabase
+        .from("follows")
+        .upsert(
+          { follower_id: meId, followee_id: targetUserId, status },
+          { onConflict: "follower_id,followee_id" }
+        );
+      if (error) throw error;
+      setDone(true);
+    } catch (e) {
+      console.error("follow error:", e);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  const label = state === "accepted" ? "フォロー中" : state === "pending" ? "申請中" : "フォロー";
-
   return (
-    <button
-      type="button"
-      onClick={onFollow}
-      disabled={loading || state !== "none"}
-      className={[
-        "inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold",
-        state === "none"
-          ? "bg-blue-600 text-white hover:bg-blue-700"
-          : "bg-slate-100 text-slate-700",
-        "disabled:opacity-70",
-      ].join(" ")}
-      aria-label="フォロー"
-      title="フォロー"
-    >
-      <UserPlus size={14} />
-      {label}
-    </button>
+    <div className="flex items-center gap-2">
+      {hint ? <span className="hidden sm:inline text-[11px] text-slate-500">{hint}</span> : null}
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!meId || loading || done}
+        className={[
+          "inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold",
+          done ? "bg-slate-100 text-slate-600" : "bg-blue-600 text-white hover:bg-blue-700",
+          "disabled:opacity-60",
+        ].join(" ")}
+        aria-label={label}
+        title={hint || label}
+      >
+        <UserPlus size={14} />
+        {done ? "申請済み" : label}
+      </button>
+    </div>
   );
 }
 
@@ -371,7 +305,6 @@ export default function TimelineFeed({
 
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
   const [seed] = useState(() => makeSeed());
-
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   async function loadMore(reset = false) {
@@ -383,12 +316,13 @@ export default function TimelineFeed({
 
     const params = new URLSearchParams();
     params.set("tab", activeTab);
-    params.set("limit", activeTab === "discover" ? "24" : "10");
+    params.set("limit", activeTab === "discover" ? "24" : "7");
     if (!reset && cursor) params.set("cursor", cursor);
 
     try {
       const res = await fetch(`/api/timeline?${params.toString()}`);
       const payload = await res.json().catch(() => ({}));
+
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
       const newPosts: PostRow[] = payload.posts ?? [];
@@ -529,19 +463,17 @@ export default function TimelineFeed({
 
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
 
-                  <div className="hidden md:flex absolute left-2 top-2 items-center gap-2 text-[11px] font-medium text-white drop-shadow">
+                  <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
                     <span className="max-w-[120px] truncate">{display}</span>
                     {!isPublic && <Lock size={12} className="text-white/90" />}
                   </div>
 
-                  {/* ✅ genre label */}
-                  {p.place_genre ? (
-                    <div className="pointer-events-none absolute left-2 bottom-2">
-                      <div className="inline-flex max-w-[75vw] items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
-                        <span className="truncate">{p.place_genre}</span>
-                      </div>
+                  {/* ジャンルをうっすら */}
+                  <div className="pointer-events-none absolute left-2 bottom-2">
+                    <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
+                      <span className="truncate">{p.places?.primary_genre ?? ""}</span>
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               </Link>
             );
@@ -549,6 +481,7 @@ export default function TimelineFeed({
         </div>
 
         <div ref={sentinelRef} className="h-10" />
+
         {loading && <div className="pb-8 pt-4 text-center text-xs text-slate-500">読み込み中...</div>}
         {error && !error.includes("Unauthorized") && (
           <div className="pb-8 pt-4 text-center text-xs text-red-600">{error}</div>
@@ -561,7 +494,7 @@ export default function TimelineFeed({
   }
 
   // =========================
-  // FRIENDS
+  // FRIENDS（= 最新）
   // =========================
   return (
     <div className="flex flex-col items-stretch gap-6">
@@ -577,14 +510,15 @@ export default function TimelineFeed({
               p.place_name ?? "place"
             )}&query_place_id=${encodeURIComponent(p.place_id)}`
           : p.place_address
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
-          : null;
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
+            : null;
 
         const areaLabel = extractPrefCity(p.place_address);
         const timelineImageUrls = getTimelineSquareUrls(p);
 
         const initialLikeCount = p.likeCount ?? 0;
         const initialLiked = p.likedByMe ?? false;
+        const initialLikers = p.initialLikers ?? [];
 
         const hasPlace = !!p.place_id;
         const isPhotosOpen = !!openPhotos[p.id];
@@ -600,7 +534,8 @@ export default function TimelineFeed({
             : null;
 
         const priceLabel = formatPrice(p);
-        const injected = !!p.injected;
+
+        const isSuggested = !!p.suggest_kind && p.user_id !== meId;
 
         return (
           <article key={p.id} className="gm-card gm-press overflow-hidden">
@@ -638,25 +573,34 @@ export default function TimelineFeed({
                         {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
                       </div>
 
-                      {/* ✅ injected説明 */}
-                      {injected ? (
-                        <div className="text-[11px] text-slate-500">
-                          {p.injected_reason ?? "あなたの友達がフォロー"}
-                        </div>
-                      ) : (
-                        <div className="text-[11px] text-slate-500">最新</div>
-                      )}
+                      {/* ✅ ここ：混入理由を明記 */}
+                      <div className="text-[11px] text-slate-500">
+                        {isSuggested ? (
+                          p.suggest_kind === "follow_back" ? (
+                            <span>あなたをフォロー中</span>
+                          ) : (
+                            <span>
+                              {p.recommended_by?.[0]?.display_name
+                                ? `${p.recommended_by[0].display_name}がフォロー`
+                                : "友達がフォロー"}
+                            </span>
+                          )
+                        ) : (
+                          <span>最新</span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* ✅ injectedだけフォローボタン */}
-                    {injected && meId && meId !== p.user_id && !p.is_following_author_by_me ? (
-                      <FollowButton
+                    {/* ✅ 右上フォロー */}
+                    {isSuggested && p.suggest_kind ? (
+                      <SuggestFollowButton
                         targetUserId={p.user_id}
-                        targetProfile={p.profile}
+                        kind={p.suggest_kind}
+                        recommendedBy={p.recommended_by ?? []}
                         meId={meId}
-                        initialFollowing={false}
+                        isPublic={!!(p.profile?.is_public ?? true)}
                       />
                     ) : null}
 
@@ -670,7 +614,6 @@ export default function TimelineFeed({
                     {p.place_name ? (
                       <div className="gm-chip inline-flex items-center gap-1 px-2 py-1 text-[11px] text-slate-800">
                         <MapPin size={13} className="opacity-70" />
-
                         {mapUrl ? (
                           <a
                             href={mapUrl}
@@ -691,9 +634,10 @@ export default function TimelineFeed({
                       </div>
                     ) : null}
 
-                    {p.place_genre ? (
+                    {/* ✅ ジャンル */}
+                    {p.places?.primary_genre ? (
                       <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-slate-700">
-                        {p.place_genre}
+                        {p.places.primary_genre}
                       </span>
                     ) : null}
 
@@ -731,11 +675,7 @@ export default function TimelineFeed({
                       >
                         <GoogleMark className="h-4 w-4" />
                         <span className="leading-none">写真</span>
-                        {isPhotosOpen ? (
-                          <ChevronUp size={14} className="text-slate-700" />
-                        ) : (
-                          <ChevronDown size={14} className="text-slate-700" />
-                        )}
+                        {isPhotosOpen ? <ChevronUp size={14} className="text-slate-700" /> : <ChevronDown size={14} className="text-slate-700" />}
                       </button>
                     )}
                   </div>
@@ -770,7 +710,7 @@ export default function TimelineFeed({
                     postUserId={p.user_id}
                     initialLiked={initialLiked}
                     initialLikeCount={initialLikeCount}
-                    initialLikers={p.initialLikers ?? []}
+                    initialLikers={initialLikers}
                     meId={meId}
                     initialWanted={false}
                     initialBookmarked={false}
@@ -812,7 +752,9 @@ export default function TimelineFeed({
       {error && !error.includes("Unauthorized") && (
         <div className="pb-8 text-center text-xs text-red-600">{error}</div>
       )}
-      {done && posts.length > 0 && <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>}
+      {done && posts.length > 0 && (
+        <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>
+      )}
     </div>
   );
 }
