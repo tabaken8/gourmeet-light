@@ -1,6 +1,7 @@
+// src/app/(app)/search/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -10,13 +11,15 @@ import TimelinePostList, { PostRow } from "@/components/TimelinePostList";
 
 function buildUrl(searchParams: URLSearchParams, nextQ: string, followOnly: boolean) {
   const sp = new URLSearchParams(searchParams.toString());
+
   if (nextQ.trim()) sp.set("q", nextQ.trim());
   else sp.delete("q");
 
   if (followOnly) sp.set("follow", "1");
   else sp.delete("follow");
 
-  return `?${sp.toString()}`;
+  const s = sp.toString();
+  return s ? `?${s}` : "";
 }
 
 export default function SearchPage() {
@@ -29,7 +32,13 @@ export default function SearchPage() {
 
   const [meId, setMeId] = useState<string | null>(null);
 
-  const [q, setQ] = useState(qFromUrl);
+  // ✅ 入力中（まだ検索しない）
+  const [qInput, setQInput] = useState(qFromUrl);
+
+  // ✅ 確定済み（この値で検索する / URLにも入れる）
+  const [qCommitted, setQCommitted] = useState(qFromUrl);
+
+  // follow は URL と同期（チェック操作でURLは更新する）
   const [followOnly, setFollowOnly] = useState(followFromUrl);
 
   const [posts, setPosts] = useState<PostRow[]>([]);
@@ -38,9 +47,10 @@ export default function SearchPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // URL -> state（戻る/進む対応）
+  // 戻る/進む等でURLが変わったら state を揃える
   useEffect(() => {
-    setQ(qFromUrl);
+    setQInput(qFromUrl);
+    setQCommitted(qFromUrl);
     setFollowOnly(followFromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qFromUrl, followFromUrl]);
@@ -53,42 +63,35 @@ export default function SearchPage() {
     })();
   }, [supabase]);
 
-  const isEmpty = !q.trim();
+  const isEmpty = !qCommitted.trim();
 
-  // debounceしてURL固定（入力した瞬間検索でも “戻ったら保持” できる）
-  const debounceRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-
-    debounceRef.current = window.setTimeout(() => {
-      const next = buildUrl(new URLSearchParams(sp.toString()), q, followOnly);
-      router.replace(`/search${next}`, { scroll: false });
-    }, 250);
-
-    return () => {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, followOnly]);
+  // 同時実行ガード（古いリクエスト破棄）
+  const reqIdRef = useRef(0);
 
   async function loadMore(reset = false) {
     if (loading) return;
     if (!reset && done) return;
-    if (!q.trim()) return;
+    if (!qCommitted.trim()) return;
 
     setLoading(true);
     setError(null);
 
     const params = new URLSearchParams();
-    params.set("q", q.trim());
+    params.set("q", qCommitted.trim());
     params.set("limit", "10");
     if (followOnly) params.set("follow", "1");
     if (!reset && cursor) params.set("cursor", cursor);
+
+    reqIdRef.current += 1;
+    const reqId = reqIdRef.current;
 
     try {
       const res = await fetch(`/api/search?${params.toString()}`);
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+
+      // ✅ 途中で別検索が走ったら捨てる
+      if (reqIdRef.current !== reqId) return;
 
       const newPosts: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
       const nextCursor: string | null = payload?.nextCursor ?? null;
@@ -103,24 +106,53 @@ export default function SearchPage() {
       setCursor(nextCursor);
       if (!nextCursor || newPosts.length === 0) setDone(true);
     } catch (e: any) {
+      if (reqIdRef.current !== reqId) return;
       const msg = e?.message ?? "読み込みに失敗しました";
       setError(msg);
       if (String(msg).includes("Unauthorized")) setDone(true);
     } finally {
-      setLoading(false);
+      if (reqIdRef.current === reqId) setLoading(false);
     }
   }
 
-  // q変化で検索をやり直す
-  useEffect(() => {
+  // ✅ 確定条件：Enter / 検索キー（フォームsubmit）でだけ検索
+  function commitSearch(nextQ: string) {
+    const nq = nextQ.trim();
+
+    // URL更新（scrollしない）
+    const next = buildUrl(new URLSearchParams(sp.toString()), nq, followOnly);
+    router.replace(`/search${next}`, { scroll: false });
+
+    // 状態確定
+    setQCommitted(nq);
+
+    // 検索リセット＆実行
     setPosts([]);
     setCursor(null);
     setDone(false);
     setError(null);
-    if (!q.trim()) return;
+
+    if (!nq) return;
     loadMore(true);
+  }
+
+  // ✅ followOnly 切替時：検索中なら即再検索（入力中は走らせない）
+  useEffect(() => {
+    // URLを更新（qCommittedで維持）
+    const next = buildUrl(new URLSearchParams(sp.toString()), qCommitted, followOnly);
+    router.replace(`/search${next}`, { scroll: false });
+
+    // 確定済み検索がある時だけ再検索
+    if (!qCommitted.trim()) return;
+
+    setPosts([]);
+    setCursor(null);
+    setDone(false);
+    setError(null);
+    loadMore(true);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qFromUrl, followFromUrl]);
+  }, [followOnly]);
 
   // 無限スクロール（検索結果側のみ）
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -138,20 +170,33 @@ export default function SearchPage() {
     io.observe(el);
     return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor, done, loading, qFromUrl, followFromUrl, isEmpty]);
+  }, [cursor, done, loading, qCommitted, followOnly, isEmpty]);
 
   const header = (
     <div className="gm-card px-4 py-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="relative w-full md:w-[520px]">
+        {/* ✅ ボタンなし：submit(Enter/🔍)でだけ検索 */}
+        <form
+          className="relative w-full md:w-[520px]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            commitSearch(qInput);
+          }}
+        >
           <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
             placeholder="店名・ジャンル・エリア・住所・投稿内容で検索"
             className="w-full rounded-full border border-black/10 bg-white px-10 py-2.5 text-sm font-medium outline-none focus:border-orange-200"
+            // ✅ モバイルはここが重要：検索キーを出す
+            inputMode="search"
+            enterKeyHint="search"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
-        </div>
+        </form>
 
         <label className="inline-flex items-center gap-2 text-sm text-slate-700">
           <input
@@ -163,6 +208,11 @@ export default function SearchPage() {
           フォローのみ
         </label>
       </div>
+
+      {/* ✅ 変換中フリーズ防止：ヒントを小さく */}
+      <div className="mt-2 text-[11px] text-slate-500">
+        入力したら、キーボードの「検索」/ Enter で実行
+      </div>
     </div>
   );
 
@@ -170,7 +220,7 @@ export default function SearchPage() {
     <div className="space-y-4">
       {header}
 
-      {/* ✅ 何も入れてない時は timelinefeed の discover */}
+      {/* ✅ 何も確定検索がない時は timelinefeed の discover */}
       {isEmpty ? (
         <TimelineFeed activeTab="discover" meId={meId} />
       ) : (
@@ -180,9 +230,13 @@ export default function SearchPage() {
           <div ref={sentinelRef} className="h-10" />
 
           {loading && <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>}
-          {error && !error.includes("Unauthorized") && <div className="pb-8 text-center text-xs text-red-600">{error}</div>}
+          {error && !error.includes("Unauthorized") && (
+            <div className="pb-8 text-center text-xs text-red-600">{error}</div>
+          )}
           {done && posts.length > 0 && <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>}
-          {!loading && posts.length === 0 && !error && <div className="py-10 text-center text-xs text-slate-500">該当する投稿がありません。</div>}
+          {!loading && posts.length === 0 && !error && (
+            <div className="py-10 text-center text-xs text-slate-500">該当する投稿がありません。</div>
+          )}
         </div>
       )}
     </div>
