@@ -75,8 +75,8 @@ export default async function TimelinePage({
 
             <p className="mt-2 text-[11px] text-slate-500">
               {activeTab === "friends"
-                ? "フォローしている人の投稿が流れます。"
-                : "公開プロフィールのユーザーから、気になる人を見つけられます。"}
+                ? "おすすめ投稿"
+                : "気になる人を見つけられます。"}
             </p>
           </div>
 

@@ -80,7 +80,7 @@ function EmptyStateCard() {
     <div className="gm-card p-5">
       <div className="text-sm font-semibold text-slate-900">こんにちは！</div>
       <div className="mt-2 text-xs text-slate-600">
-        自然な言葉でOKです。場所や好み（雰囲気・予算など）を入れると、より精度が上がります。
+        あなたの今日の気分に合わせたお店をGourmeetの投稿から探します。自然な言葉でOKです。場所や好み（雰囲気・予算など）を入れると、より精度が上がります。
       </div>
       <div className="mt-3 inline-flex flex-wrap gap-2">
         <span className="gm-chip px-3 py-1 text-[11px] text-slate-700">
