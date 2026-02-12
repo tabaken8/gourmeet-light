@@ -245,33 +245,30 @@ export default function PostImageCarousel({
   const inner = (
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden">
       {/* track */}
-      <motion.div
-        className="absolute inset-0 flex"
-        style={{ x }}
-        drag={total > 1 ? "x" : false}
-        dragConstraints={{ left: -wrapW * (total - 1), right: 0 }}
-        dragElastic={0.08}
-        onDragEnd={onDragEnd}
-        // 縦スクロールは生かす（横ドラッグだけ取る）
-        // framer-motion なので touchAction を指定
-        // @ts-ignore
-        style={{ x, touchAction: "pan-y" }}
-      >
-        {urls.map((u, i) => (
-          <div key={`${postId}-${i}`} className="relative h-full w-full shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={u}
-              alt=""
-              className={["absolute inset-0 h-full w-full", fitCls].join(" ")}
-              loading={i === index ? loadingMode : "lazy"}
-              decoding="async"
-              fetchPriority={i === index && loadingMode === "eager" ? "high" : "auto"}
-              draggable={false}
-            />
-          </div>
-        ))}
-      </motion.div>
+<motion.div
+  className="absolute inset-0 flex"
+  style={{ x, touchAction: "pan-y" }} // ✅ style二重を解消（duplicate props 回避）
+  drag={total > 1 ? "x" : false}
+  dragConstraints={{ left: -wrapW * (total - 1), right: 0 }}
+  dragElastic={0.08}
+  onDragEnd={onDragEnd}
+>
+  {urls.map((u, i) => (
+    <div key={`${postId}-${i}`} className="relative h-full w-full shrink-0">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={u}
+        alt=""
+        className={["absolute inset-0 h-full w-full", fitCls].join(" ")}
+        loading={i === index ? loadingMode : "lazy"}
+        decoding="async"
+        fetchPriority={i === index && loadingMode === "eager" ? "high" : "auto"}
+        draggable={false}
+      />
+    </div>
+  ))}
+</motion.div>
+
 
       {pendingIndex != null && showOverlay && Overlay}
 
