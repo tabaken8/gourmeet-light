@@ -299,7 +299,7 @@ export default function AlbumBrowser({
                       title="Google Mapsで開く"
                     >
                       <MapPin size={12} />
-                      Maps
+                      Google Maps
                     </a>
 
                     {/* ✅ pin UI: 本人のみ */}
@@ -360,7 +360,6 @@ export default function AlbumBrowser({
       aria-label="並び替え"
     >
       <option value="score">おすすめ度順</option>
-      <option value="visited">来店日順</option>
       <option value="created">投稿日時順</option>
     </select>
   );
