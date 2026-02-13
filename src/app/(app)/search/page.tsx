@@ -207,7 +207,7 @@ export default function SearchPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="店名・ジャンル・エリア・住所・投稿内容で検索"
-              className="w-full rounded-full border border-black/10 bg-white px-10 py-2.5 text-sm font-medium outline-none focus:border-orange-200"
+              className="w-full rounded-full border border-black/10 bg-white px-10 py-2.5 text-base font-medium outline-none focus:border-orange-200"
               inputMode="search"
               enterKeyHint="search"
               onKeyDown={(e) => {
@@ -233,12 +233,11 @@ export default function SearchPage() {
               }}
               className="h-4 w-4 accent-orange-500"
             />
-            フォローのみ
+            フォローしている人のみ
           </label>
         </div>
 
         <div className="mt-2 text-[11px] text-slate-500">
-          入力中は検索しません。<span className="font-semibold">Enter / 検索キー</span>で実行します。
         </div>
       </div>
     );
