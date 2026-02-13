@@ -399,35 +399,22 @@ export default function AlbumBrowser({
           </div>
 
           {/* ✅ RIGHT: 検索 + sort */}
-<div className="relative w-full md:w-80">
-  <Search
-    size={16}
-    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-  />
+          <div className="flex items-center justify-between gap-2 md:justify-end">
+            <div className="relative w-full md:w-80">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="店名・エリア・ジャンルで検索"
+                className="w-full rounded-full border border-orange-100 bg-white px-9 pr-9 py-2 text-base md:text-sm outline-none focus:border-orange-200"
+              />
+            </div>
 
-  <input
-    value={q}
-    onChange={(e) => setQ(e.target.value)}
-    placeholder="銀座 焼肉"
-    className="w-full rounded-full border border-orange-100 bg-white px-9 pr-9 py-2 text-sm outline-none focus:border-orange-200"
-  />
-
-  {/* ❌ clear */}
-  {q && (
-    <button
-      type="button"
-      onClick={() => setQ("")}
-      aria-label="Clear"
-      className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-    >
-      <span className="text-lg leading-none">×</span>
-      {/* もし lucide の X を使うなら:
-      <X size={16} />
-      */}
-    </button>
-  )}
-</div>
-
+            <div className="shrink-0">{sortSelect}</div>
+          </div>
         </div>
       </div>
 

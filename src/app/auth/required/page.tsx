@@ -8,7 +8,7 @@ export default async function RequiredPage({
 }) {
   const nextPath = searchParams?.next
     ? decodeURIComponent(searchParams.next)
-    : "/timeline?tab=friends";
+    : "/search";
 
   return (
     <LoginCard
