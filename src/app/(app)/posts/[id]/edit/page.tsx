@@ -32,7 +32,10 @@ export default async function PostEditPage({ params }: { params: { id: string } 
       place_name,
       place_address,
       image_variants,
-      image_urls
+      image_urls,
+      taste_score,
+      atmosphere_score,
+      service_score
     `
     )
     .eq("id", params.id)
@@ -43,24 +46,30 @@ export default async function PostEditPage({ params }: { params: { id: string } 
   // 自分の投稿のみ編集可
   if (data.user_id !== user.id) return notFound();
 
+  const finiteOrNull = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
   const initial: EditInitialPost = {
     id: String(data.id),
     user_id: String(data.user_id),
     created_at: String(data.created_at),
     visited_on: data.visited_on ?? null,
     content: data.content ?? "",
-    recommend_score:
-      typeof data.recommend_score === "number" && Number.isFinite(data.recommend_score)
-        ? data.recommend_score
-        : null,
-    price_yen:
-      typeof data.price_yen === "number" && Number.isFinite(data.price_yen) ? data.price_yen : null,
+
+    recommend_score: finiteOrNull(data.recommend_score),
+    price_yen: finiteOrNull(data.price_yen),
     price_range: data.price_range ?? null,
+
     place_id: data.place_id ?? null,
     place_name: data.place_name ?? null,
     place_address: data.place_address ?? null,
+
     image_variants: (data as any).image_variants ?? null,
     image_urls: (data as any).image_urls ?? null,
+
+    // ✅ NEW
+    taste_score: finiteOrNull((data as any).taste_score),
+    atmosphere_score: finiteOrNull((data as any).atmosphere_score),
+    service_score: finiteOrNull((data as any).service_score),
   };
 
   return (
@@ -69,7 +78,9 @@ export default async function PostEditPage({ params }: { params: { id: string } 
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-slate-900">投稿を編集</h1>
-            <p className="mt-1 text-xs text-slate-500">内容・お店・スコア・価格・来店日を変更できます。</p>
+            <p className="mt-1 text-xs text-slate-500">
+              内容・お店・スコア・価格・来店日を変更できます。
+            </p>
           </div>
 
           <Link

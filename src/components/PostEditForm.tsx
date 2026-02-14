@@ -23,6 +23,11 @@ export type EditInitialPost = {
 
   image_variants: any[] | null;
   image_urls: string[] | null;
+
+  // ✅ NEW: 任意の内訳（0..10 / 0.1刻み想定）
+  taste_score: number | null;
+  atmosphere_score: number | null;
+  service_score: number | null;
 };
 
 type PlaceResult = {
@@ -35,6 +40,13 @@ type PhotoItem = { thumb: string; full: string };
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
+}
+function clampScoreOrNull(v: any): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return null;
+  const clamped = clamp(n, 0, 10);
+  return Math.round(clamped * 10) / 10;
 }
 
 function jstTodayKey() {
@@ -173,6 +185,12 @@ function normalizeNullableString(v: unknown): string | null {
   return s === "" ? null : s;
 }
 
+function sameNumberOrNull(a: number | null, b: number | null) {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return a === b;
+}
+
 export default function PostEditForm({ initial }: { initial: EditInitialPost }) {
   const router = useRouter();
 
@@ -184,6 +202,11 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
   const [score, setScore] = useState<number | null>(
     typeof initial.recommend_score === "number" ? initial.recommend_score : null
   );
+
+  // ✅ NEW: 任意スコア（味/雰囲気/サービス）
+  const [tasteScore, setTasteScore] = useState<number | null>(clampScoreOrNull(initial.taste_score));
+  const [atmosphereScore, setAtmosphereScore] = useState<number | null>(clampScoreOrNull(initial.atmosphere_score));
+  const [serviceScore, setServiceScore] = useState<number | null>(clampScoreOrNull(initial.service_score));
 
   const initialMode: "exact" | "range" = useMemo(() => {
     if (typeof initial.price_yen === "number" && initial.price_yen > 0) return "exact";
@@ -232,14 +255,12 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
         const data = await res.json().catch(() => ({}));
 
-        // ✅ 新規投稿側と同じ shape に寄せる（place_id/name/formatted_address）
         const normalized: PlaceResult[] = Array.isArray(data?.results)
           ? data.results
               .map((r: any) => ({
                 place_id: r?.place_id ?? "",
                 name: r?.name ?? "",
-                formatted_address:
-                  r?.formatted_address ?? r?.vicinity ?? r?.formattedAddress ?? "",
+                formatted_address: r?.formatted_address ?? r?.vicinity ?? r?.formattedAddress ?? "",
               }))
               .filter((r: PlaceResult) => r.place_id && r.name)
               .slice(0, 6)
@@ -267,6 +288,14 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
   const currentPlaceId = selectedPlace?.place_id ?? null;
   const placeChanged = initialPlaceId !== currentPlaceId;
 
+  // ✅ 任意スコアの「変更判定」（未変更ならpayloadに含めない）
+  const tasteChanged = !sameNumberOrNull(clampScoreOrNull(initial.taste_score), clampScoreOrNull(tasteScore));
+  const atmosphereChanged = !sameNumberOrNull(
+    clampScoreOrNull(initial.atmosphere_score),
+    clampScoreOrNull(atmosphereScore)
+  );
+  const serviceChanged = !sameNumberOrNull(clampScoreOrNull(initial.service_score), clampScoreOrNull(serviceScore));
+
   // ✅ places に必ず作る（placeChanged かつ place_id がある時だけ呼ぶ）
   async function ensurePlace(placeId: string) {
     const res = await fetch("/api/places/ensure", {
@@ -286,7 +315,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
 
     try {
       let scoreVal: number | null = null;
-      if (score !== null && Number.isFinite(score)) scoreVal = clamp(score, 0, 10);
+      if (score !== null && Number.isFinite(score)) scoreVal = clampScoreOrNull(score);
 
       const visited = visitedOn?.trim() ? visitedOn.trim() : jstTodayKey();
 
@@ -300,7 +329,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         price_range = priceRange || null;
       }
 
-      // ✅ payload は「place を変更したときだけ」 place_* を含める
+      // ✅ payload は「基本項目」
       const payload: Record<string, any> = {
         content,
         visited_on: visited,
@@ -309,17 +338,21 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         price_range,
       };
 
+      // ✅ 任意の内訳（変更されたものだけ送る）
+      if (tasteChanged) payload.taste_score = clampScoreOrNull(tasteScore);
+      if (atmosphereChanged) payload.atmosphere_score = clampScoreOrNull(atmosphereScore);
+      if (serviceChanged) payload.service_score = clampScoreOrNull(serviceScore);
+
+      // ✅ place は「変更したときだけ」送る
       if (placeChanged) {
         const pid = normalizeNullableString(selectedPlace?.place_id ?? null);
 
-        // 変更後が「設定あり」なら、先に ensure して FK を確実に満たす
         if (pid) {
           await ensurePlace(pid);
           payload.place_id = pid;
           payload.place_name = normalizeNullableString(selectedPlace?.name) ?? null;
           payload.place_address = normalizeNullableString(selectedPlace?.formatted_address) ?? null;
         } else {
-          // 変更後が「クリア」なら null を明示送信
           payload.place_id = null;
           payload.place_name = null;
           payload.place_address = null;
@@ -346,6 +379,64 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     }
   }
 
+  // ✅ 任意スコアの入力UI（簡潔に）
+  function ScoreRow({
+    label,
+    value,
+    onChange,
+  }: {
+    label: string;
+    value: number | null;
+    onChange: (v: number | null) => void;
+  }) {
+    const text = value == null ? "" : String(Math.round(clamp(value, 0, 10) * 10) / 10);
+
+    return (
+      <div className="rounded-2xl border border-black/[.06] bg-white/70 p-3">
+        <div className="flex items-end justify-between gap-3">
+          <label className="block text-xs font-semibold text-slate-800">{label}</label>
+          <input
+            inputMode="decimal"
+            value={text}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") return onChange(null);
+              const n = Number(v);
+              if (!Number.isFinite(n)) return;
+              onChange(clampScoreOrNull(n));
+            }}
+            className="w-24 rounded-xl border border-black/[.08] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-orange-300/60"
+            placeholder="0.0-10.0"
+            aria-label={`${label}（数値）`}
+          />
+        </div>
+
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={0.1}
+          value={value ?? 0}
+          onChange={(e) => onChange(clampScoreOrNull(Number(e.target.value)))}
+          className="mt-2 w-full"
+          aria-label={`${label}（スライダー）`}
+        />
+
+        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+          <span>0.0</span>
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+          >
+            クリア
+          </button>
+          <span>10.0</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section className="gm-card overflow-hidden">
       <div className="px-4 py-4 md:px-5 md:py-5">
@@ -365,11 +456,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
                   aria-label="open photo"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.thumb}
-                    alt={`photo-${i + 1}`}
-                    className="h-24 w-24 rounded-2xl object-cover shadow-sm"
-                  />
+                  <img src={p.thumb} alt={`photo-${i + 1}`} className="h-24 w-24 rounded-2xl object-cover shadow-sm" />
                 </a>
               ))}
             </div>
@@ -466,10 +553,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
             )}
           </div>
 
-          {/* 変更検知の表示（デバッグしやすい） */}
-          <div className="mt-2 text-[11px] text-slate-500">
-            {placeChanged ? "お店：変更あり（保存時に反映）" : "お店：変更なし"}
-          </div>
+          <div className="mt-2 text-[11px] text-slate-500">{placeChanged ? "お店：変更あり（保存時に反映）" : "お店：変更なし"}</div>
         </div>
 
         {/* 来店日 */}
@@ -496,7 +580,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
                 if (v === "") return setScore(null);
                 const n = Number(v);
                 if (!Number.isFinite(n)) return;
-                setScore(clamp(n, 0, 10));
+                setScore(clampScoreOrNull(n));
               }}
               className="w-24 rounded-xl border border-black/[.08] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-orange-300/60"
               placeholder="0.0-10.0"
@@ -509,10 +593,21 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
             max={10}
             step={0.1}
             value={score ?? 0}
-            onChange={(e) => setScore(Number(e.target.value))}
+            onChange={(e) => setScore(clampScoreOrNull(Number(e.target.value)))}
             className="mt-2 w-full"
           />
           <div className="mt-1 text-[11px] text-slate-500">0.0〜10.0（スライダー or 手入力）</div>
+        </div>
+
+        {/* ✅ NEW: 任意の内訳（味・雰囲気・サービス） */}
+        <div className="mb-4 space-y-2">
+          <div className="text-xs font-semibold text-slate-800">詳細（任意）</div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <ScoreRow label="味" value={tasteScore} onChange={setTasteScore} />
+            <ScoreRow label="雰囲気" value={atmosphereScore} onChange={setAtmosphereScore} />
+            <ScoreRow label="サービス" value={serviceScore} onChange={setServiceScore} />
+          </div>
+          <div className="text-[11px] text-slate-500">未設定のままでもOK。設定すると投稿の「三角チャート」に反映できます。</div>
         </div>
 
         {/* 価格 */}
@@ -566,9 +661,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
                   </option>
                 ))}
               </select>
-              <div className="mt-1 text-[11px] text-slate-500">
-                〜¥999 / ¥1,000刻み / ¥10,000以上は大きめ刻み
-              </div>
+              <div className="mt-1 text-[11px] text-slate-500">〜¥999 / ¥1,000刻み / ¥10,000以上は大きめ刻み</div>
             </div>
           )}
         </div>
