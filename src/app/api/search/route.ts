@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ posts: [], nextCursor: null });
   }
 
-  const { data, error } = await supabase.rpc("search_posts", {
+  const { data, error } = await supabase.rpc("search_posts_v3", {
     q,
     me,
     follow_only: followOnly,

@@ -3,12 +3,9 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Search, Tag, Pin } from "lucide-react";
+import { MapPin, Search, Tag, MoreHorizontal, Sparkles } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-// ---------------------
-// types
-// ---------------------
 type PlaceRow = {
   place_id: string;
   name: string | null;
@@ -32,9 +29,6 @@ export type AlbumPost = {
 type View = "all" | "area" | "genre";
 type SortKey = "score" | "visited" | "created";
 
-// ---------------------
-// helpers
-// ---------------------
 function toScore(x: any): number | null {
   if (typeof x === "number" && Number.isFinite(x)) return x;
   if (typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x))) return Number(x);
@@ -53,19 +47,15 @@ function areaLabel(place: PlaceRow | null | undefined): string {
   const ja = (place?.area_label_ja ?? "").trim();
   return ja || "不明";
 }
-
 function genreLabel(place: PlaceRow | null | undefined): string {
   const g = (place?.primary_genre ?? "").trim();
   return g || "未分類";
 }
-
 function normSpace(s: string) {
   return s.replace(/\s+/g, " ").trim();
 }
-
 function stableId(p: AlbumPost) {
-  const pid = p.place_id ?? p.places?.place_id ?? "no-place";
-  return `${String(p.id)}::${pid}`;
+  return String(p.id); // ✅ post_idで一意
 }
 
 function buildMapUrl(p: AlbumPost): string | null {
@@ -74,9 +64,9 @@ function buildMapUrl(p: AlbumPost): string | null {
   const placeAddress = place?.address ?? null;
 
   const mapUrl = p.place_id
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        placeName ?? "place"
-      )}&query_place_id=${encodeURIComponent(p.place_id)}`
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName ?? "place")}&query_place_id=${encodeURIComponent(
+        p.place_id
+      )}`
     : placeAddress
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeAddress)}`
       : null;
@@ -84,38 +74,49 @@ function buildMapUrl(p: AlbumPost): string | null {
   return mapUrl;
 }
 
-// ---------------------
-// main
-// ---------------------
+function comparePosts(a: AlbumPost, b: AlbumPost) {
+  const sa = toScore(a.recommend_score);
+  const sb = toScore(b.recommend_score);
+  const d = (sb ?? -Infinity) - (sa ?? -Infinity);
+  if (d !== 0) return d;
+
+  const va = a.visited_on ?? "";
+  const vb = b.visited_on ?? "";
+  if (va !== vb) return va < vb ? 1 : -1;
+
+  const ca = a.created_at ?? "";
+  const cb = b.created_at ?? "";
+  if (ca !== cb) return ca < cb ? 1 : -1;
+
+  return String(a.id) < String(b.id) ? 1 : -1;
+}
+
 export default function AlbumBrowser({
   posts,
-  pinnedPlaceIdsInitial,
+  pinnedPostIdsInitial,
   isOwner,
 }: {
   posts: AlbumPost[];
-  pinnedPlaceIdsInitial: string[];
+  pinnedPostIdsInitial: string[]; // ✅ place → post
   isOwner: boolean;
 }) {
   const supabase = createClientComponentClient();
 
-  // ✅ デフォルトは「無選択 = 全体」
   const [view, setView] = useState<View>("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("score");
 
-  // pins
-  const [pinned, setPinned] = useState<string[]>(pinnedPlaceIdsInitial ?? []);
+  const [pinned, setPinned] = useState<string[]>(pinnedPostIdsInitial ?? []);
   const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
 
-  // ✅ エリア/ジャンルボタンは「偶数回で全体に戻る」
+  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
+
   const toggleArea = () => setView((cur) => (cur === "area" ? "all" : "area"));
   const toggleGenre = () => setView((cur) => (cur === "genre" ? "all" : "genre"));
 
-  // 検索（店名 / search_text / エリア / ジャンル / 住所）
   const filtered = useMemo(() => {
     const key = normSpace(q).toLowerCase();
     if (!key) return posts;
-
     return posts.filter((p) => {
       const place = p.places;
       const name = (place?.name ?? "").toLowerCase();
@@ -127,54 +128,58 @@ export default function AlbumBrowser({
     });
   }, [posts, q]);
 
-  // sort
   const sortedPosts = useMemo(() => {
     const arr = filtered.slice();
     arr.sort((a, b) => {
-      const sa = toScore(a.recommend_score);
-      const sb = toScore(b.recommend_score);
-
-      if (sort === "score") {
-        const d = (sb ?? -Infinity) - (sa ?? -Infinity);
-        if (d !== 0) return d;
-      }
-
+      if (sort === "score") return comparePosts(a, b);
       if (sort === "visited") {
         const da = a.visited_on ?? "";
         const db = b.visited_on ?? "";
         if (da !== db) return da < db ? 1 : -1;
       }
-
       const ca = a.created_at ?? "";
       const cb = b.created_at ?? "";
       if (ca !== cb) return ca < cb ? 1 : -1;
-
       return String(a.id) < String(b.id) ? 1 : -1;
     });
     return arr;
   }, [filtered, sort]);
 
-  // ✅ all の時だけ pinned place の投稿を最上部に固定
-  const postsWithPinTop = useMemo(() => {
-    if (view !== "all") return sortedPosts;
-
-    const pinnedArr: AlbumPost[] = [];
-    const restArr: AlbumPost[] = [];
-
+  // ✅ all view: HRを分離
+  const { hrPosts, restPosts } = useMemo(() => {
+    const hr: AlbumPost[] = [];
+    const rest: AlbumPost[] = [];
     for (const p of sortedPosts) {
-      const pid = p.place_id ?? p.places?.place_id ?? null;
-      if (pid && pinnedSet.has(pid)) pinnedArr.push(p);
-      else restArr.push(p);
+      const isHR = pinnedSet.has(p.id); // ✅ post_id
+      (isHR ? hr : rest).push(p);
     }
-    return [...pinnedArr, ...restArr];
-  }, [sortedPosts, view, pinnedSet]);
+    hr.sort(comparePosts);
+    return { hrPosts: hr, restPosts: rest };
+  }, [sortedPosts, pinnedSet]);
 
-  // pin toggle
-  const togglePin = async (placeId: string) => {
+  // ✅ ジャンル代表HR（イタリアンならこれ）
+  const hrPickByGenre = useMemo(() => {
+    const m = new Map<string, AlbumPost[]>();
+    for (const p of hrPosts) {
+      const key = genreLabel(p.places);
+      const arr = m.get(key) ?? [];
+      arr.push(p);
+      m.set(key, arr);
+    }
+    const pick = new Map<string, AlbumPost>();
+    for (const [k, arr] of m.entries()) {
+      arr.sort(comparePosts);
+      pick.set(k, arr[0]);
+    }
+    return pick;
+  }, [hrPosts]);
+
+  // ✅ post_pins toggle
+  const toggleHighlyRecommended = async (postId: string) => {
     if (!isOwner) return;
 
-    const already = pinnedSet.has(placeId);
-    setPinned((prev) => (already ? prev.filter((x) => x !== placeId) : [placeId, ...prev]));
+    const already = pinnedSet.has(postId);
+    setPinned((prev) => (already ? prev.filter((x) => x !== postId) : [postId, ...prev]));
 
     try {
       const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -184,32 +189,27 @@ export default function AlbumBrowser({
 
       if (already) {
         const { error, status, statusText } = await supabase
-          .from("place_pins")
+          .from("post_pins")
           .delete()
           .eq("user_id", uid)
-          .eq("place_id", placeId);
+          .eq("post_id", postId);
 
-        if (error) {
-          throw new Error(`delete failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
-        }
+        if (error) throw new Error(`delete failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
       } else {
         const { error, status, statusText } = await supabase
-          .from("place_pins")
-          .upsert({ user_id: uid, place_id: placeId, sort_order: 0 }, { onConflict: "user_id,place_id" });
+          .from("post_pins")
+          .upsert({ user_id: uid, post_id: postId, sort_order: 0 }, { onConflict: "user_id,post_id" });
 
-        if (error) {
-          throw new Error(`upsert failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
-        }
+        if (error) throw new Error(`upsert failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
       }
     } catch (e: any) {
-      // 巻き戻し
-      setPinned((prev) => (already ? [placeId, ...prev] : prev.filter((x) => x !== placeId)));
-      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e);
-      console.error("togglePin error:", msg, e);
+      setPinned((prev) => (already ? [postId, ...prev] : prev.filter((x) => x !== postId)));
+      console.error("toggleHighlyRecommended error:", e);
+    } finally {
+      setMenuOpenFor(null);
     }
   };
 
-  // blocks
   const areaBlocks = useMemo(() => {
     const m = new Map<string, AlbumPost[]>();
     for (const p of sortedPosts) {
@@ -236,16 +236,74 @@ export default function AlbumBrowser({
     return out;
   }, [sortedPosts]);
 
-  // ---------------------
-  // UI: Post Card
-  // ---------------------
+  function MoreMenu({ post, isHR, mapUrl }: { post: AlbumPost; isHR: boolean; mapUrl: string | null }) {
+    const id = stableId(post);
+    const open = menuOpenFor === id;
+
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMenuOpenFor((cur) => (cur === id ? null : id));
+          }}
+          className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          title="More"
+        >
+          <MoreHorizontal size={16} />
+        </button>
+
+        {open ? (
+          <div className="absolute right-0 top-10 z-[60] w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg" role="menu">
+            <div className="px-3 py-2 text-[11px] font-bold text-slate-500">ACTIONS</div>
+
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => toggleHighlyRecommended(post.id)}
+                className={["w-full px-3 py-2 text-left text-sm font-bold hover:bg-slate-50", isHR ? "text-red-700" : "text-slate-800"].join(" ")}
+                role="menuitem"
+              >
+                {isHR ? "Highly Recommended を解除" : "Highly Recommended にする"}
+              </button>
+            ) : null}
+
+            {mapUrl ? (
+              <a
+                href={mapUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50"
+                role="menuitem"
+              >
+                Google Mapsで開く
+              </a>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setMenuOpenFor(null)}
+              className="w-full px-3 py-2 text-left text-sm font-bold text-slate-500 hover:bg-slate-50"
+              role="menuitem"
+            >
+              閉じる
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   function PostGrid({ items }: { items: AlbumPost[] }) {
     return (
       <div className="grid grid-cols-2 gap-0 md:grid-cols-3 md:gap-[2px]">
         {items.map((p) => {
+          const isHR = pinnedSet.has(p.id);
           const place = p.places;
-          const pid = p.place_id ?? place?.place_id ?? null;
-          const pinnedHere = !!(pid && pinnedSet.has(pid));
 
           const name = place?.name ?? "Unknown";
           const genre = genreLabel(place);
@@ -258,91 +316,56 @@ export default function AlbumBrowser({
           return (
             <div
               key={stableId(p)}
-              className="overflow-hidden border border-orange-100 bg-white shadow-sm"
+              className={[
+                // ✅ ここが重要：カード全体の overflow-hidden をやめる（メニューを外に出すため）
+                "bg-white shadow-sm",
+                isHR ? "border-2 border-red-300" : "border border-orange-100",
+              ].join(" ")}
               style={{ borderRadius: 0 }}
             >
               <Link href={`/posts/${encodeURIComponent(String(p.id))}`} className="block">
-                <div className="relative aspect-square bg-orange-50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {thumb ? (
-                    <img
-                      src={thumb}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
+                {/* ✅ 画像領域だけ overflow-hidden */}
+                <div className={["relative aspect-square", isHR ? "bg-red-50" : "bg-orange-50", "overflow-hidden"].join(" ")}>
+                  {isHR ? (
+                    <div className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full border border-red-200 bg-white/90 px-2 py-1 text-[11px] font-extrabold text-red-700 backdrop-blur">
+                      <Sparkles size={12} />
+                      Highly Recommended
+                    </div>
                   ) : null}
+
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : null}
+
+                  {isHR ? <div className="pointer-events-none absolute inset-0 ring-2 ring-red-300/60" /> : null}
                 </div>
               </Link>
 
-              {/* info */}
               <div className="px-3 py-2">
                 <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
-
-                <div className="mt-0.5 truncate text-[12px] font-semibold text-slate-600">
-                  {genre || "未分類"}
-                </div>
-
+                <div className="mt-0.5 truncate text-[12px] font-semibold text-slate-600">{genre || "未分類"}</div>
                 <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-slate-500">
                   <span className="shrink-0 font-semibold text-slate-700">{scoreText}</span>
                 </div>
 
-                {/* ✅ Google Maps button */}
-                {mapUrl ? (
-                  <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  {mapUrl ? (
                     <a
                       href={mapUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                       title="Google Mapsで開く"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <MapPin size={12} />
                       Google Maps
                     </a>
+                  ) : (
+                    <span />
+                  )}
 
-                    {/* ✅ pin UI: 本人のみ */}
-                    {isOwner && pid ? (
-                      <button
-                        type="button"
-                        onClick={() => togglePin(pid)}
-                        className={[
-                          "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                          pinnedHere
-                            ? "border-orange-200 bg-orange-50 text-orange-700"
-                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                        ].join(" ")}
-                        title="ピン（全体表示の最上部に固定）"
-                      >
-                        <Pin size={12} />
-                        {pinnedHere ? "固定中" : "ピン"}
-                      </button>
-                    ) : (
-                      <span />
-                    )}
-                  </div>
-                ) : (
-                  // mapsが無い時でも pin は右寄せで出す
-                  isOwner && pid ? (
-                    <div className="mt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => togglePin(pid)}
-                        className={[
-                          "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                          pinnedHere
-                            ? "border-orange-200 bg-orange-50 text-orange-700"
-                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                        ].join(" ")}
-                        title="ピン（全体表示の最上部に固定）"
-                      >
-                        <Pin size={12} />
-                        {pinnedHere ? "固定中" : "ピン"}
-                      </button>
-                    </div>
-                  ) : null
-                )}
+                  <MoreMenu post={p} isHR={isHR} mapUrl={mapUrl} />
+                </div>
               </div>
             </div>
           );
@@ -351,7 +374,43 @@ export default function AlbumBrowser({
     );
   }
 
-  // header controls
+  function GenrePickCard({ pick }: { pick: AlbumPost }) {
+    const place = pick.places;
+    const name = place?.name ?? "Unknown";
+    const genre = genreLabel(place);
+    const thumb = getThumbUrl(pick);
+    const mapUrl = buildMapUrl(pick);
+
+    return (
+      <div className="px-4 md:px-0">
+        <div className="border-2 border-red-300 bg-white shadow-sm" style={{ borderRadius: 0 }}>
+          <div className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-3 py-2">
+            <div className="inline-flex items-center gap-2 text-xs font-extrabold text-red-700">
+              <Sparkles size={14} />
+              Highly Recommended
+            </div>
+            <MoreMenu post={pick} isHR={true} mapUrl={mapUrl} />
+          </div>
+
+          <Link href={`/posts/${encodeURIComponent(String(pick.id))}`} className="block">
+            <div className="flex gap-3 p-3">
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden bg-red-50" style={{ borderRadius: 0 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : null}
+                <div className="pointer-events-none absolute inset-0 ring-2 ring-red-300/60" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-extrabold text-slate-900">{name}</div>
+                <div className="mt-0.5 truncate text-xs font-semibold text-slate-600">{genre}</div>
+
+              </div>
+            </div>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const sortSelect = (
     <select
       value={sort}
@@ -361,6 +420,7 @@ export default function AlbumBrowser({
     >
       <option value="score">おすすめ度順</option>
       <option value="created">投稿日時順</option>
+      <option value="visited">訪問日順</option>
     </select>
   );
 
@@ -370,41 +430,24 @@ export default function AlbumBrowser({
 
   return (
     <section className="border border-orange-100 bg-white/95 px-0 py-4 shadow-sm backdrop-blur md:px-5 md:py-5">
-      {/* header row */}
       <div className="px-4 md:px-0">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          {/* ✅ LEFT: エリア/ジャンル */}
           <div className="flex items-center gap-2">
             <div className="flex gap-2 overflow-x-auto pb-1">
-              <button
-                type="button"
-                onClick={toggleArea}
-                className={[chipBase, view === "area" ? chipActive : chipIdle].join(" ")}
-                aria-pressed={view === "area"}
-              >
+              <button type="button" onClick={toggleArea} className={[chipBase, view === "area" ? chipActive : chipIdle].join(" ")} aria-pressed={view === "area"}>
                 <MapPin size={14} />
                 エリア別
               </button>
-
-              <button
-                type="button"
-                onClick={toggleGenre}
-                className={[chipBase, view === "genre" ? chipActive : chipIdle].join(" ")}
-                aria-pressed={view === "genre"}
-              >
+              <button type="button" onClick={toggleGenre} className={[chipBase, view === "genre" ? chipActive : chipIdle].join(" ")} aria-pressed={view === "genre"}>
                 <Tag size={14} />
                 ジャンル別
               </button>
             </div>
           </div>
 
-          {/* ✅ RIGHT: 検索 + sort */}
           <div className="flex items-center justify-between gap-2 md:justify-end">
             <div className="relative w-full md:w-80">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -412,46 +455,69 @@ export default function AlbumBrowser({
                 className="w-full rounded-full border border-orange-100 bg-white px-9 pr-9 py-2 text-base md:text-sm outline-none focus:border-orange-200"
               />
             </div>
-
             <div className="shrink-0">{sortSelect}</div>
           </div>
         </div>
       </div>
 
-      {/* body */}
       <div className="mt-4 space-y-6">
         {posts.length === 0 ? (
-          <div className="mx-4 md:mx-0 border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
-            投稿はまだありません。
-          </div>
+          <div className="mx-4 md:mx-0 border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">投稿はまだありません。</div>
         ) : view === "all" ? (
-          <PostGrid items={postsWithPinTop} />
+          <>
+            {hrPosts.length > 0 ? (
+              <section className="space-y-3">
+                <div className="px-4 md:px-0 flex items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-2 rounded-full border-2 border-red-200 bg-red-50 px-3 py-1 text-xs font-extrabold text-red-700">
+                    <Sparkles size={14} />
+                    Highly Recommended
+                  </div>
+                  <div className="text-xs font-semibold text-slate-500">“本当に推す”だけ</div>
+                </div>
+                <PostGrid items={hrPosts} />
+              </section>
+            ) : null}
+
+            <PostGrid items={restPosts} />
+          </>
         ) : view === "area" ? (
           areaBlocks.map((b) => (
             <section key={b.key} className="space-y-3">
               <div className="px-4 md:px-0 flex items-center gap-2">
-                <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
-                  {b.key}
-                </div>
+                <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">{b.key}</div>
                 <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
               </div>
               <PostGrid items={b.posts} />
             </section>
           ))
         ) : (
-          genreBlocks.map((b) => (
-            <section key={b.key} className="space-y-3">
-              <div className="px-4 md:px-0 flex items-center gap-2">
-                <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
-                  {b.key}
+          genreBlocks.map((b) => {
+            const pick = hrPickByGenre.get(b.key) ?? null;
+            return (
+              <section key={b.key} className="space-y-3">
+                <div className="px-4 md:px-0 flex items-center gap-2">
+                  <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">{b.key}</div>
+                  <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
                 </div>
-                <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
-              </div>
-              <PostGrid items={b.posts} />
-            </section>
-          ))
+
+                {pick ? <GenrePickCard pick={pick} /> : null}
+
+                <PostGrid items={b.posts} />
+              </section>
+            );
+          })
         )}
       </div>
+
+      {/* 背景クリックで閉じる */}
+      {menuOpenFor ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-50 cursor-default bg-transparent"
+          onClick={() => setMenuOpenFor(null)}
+          aria-label="close menu overlay"
+        />
+      ) : null}
     </section>
   );
 }

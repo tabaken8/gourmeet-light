@@ -18,7 +18,7 @@ export default async function AlbumBlock({
 }) {
   const supabase = await createClient();
 
-  // ✅ ここも並列
+  // ✅ 並列
   const [postsRes, pinsRes] = await Promise.all([
     supabase
       .from("posts")
@@ -47,16 +47,18 @@ export default async function AlbumBlock({
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(400),
+
+    // ✅ place_pins -> post_pins に置換（post_id を取る）
     supabase
-      .from("place_pins")
-      .select("place_id")
+      .from("post_pins")
+      .select("post_id")
       .eq("user_id", viewerId)
       .order("sort_order", { ascending: true })
       .limit(80),
   ]);
 
   const albumPosts: AlbumPost[] = (postsRes.data ?? []).map(normalizePlacesShape) as any;
-  const pinnedPlaceIds: string[] = (pinsRes.data ?? []).map((r: any) => String(r.place_id));
+  const pinnedPostIds: string[] = (pinsRes.data ?? []).map((r: any) => String(r.post_id));
 
-  return <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={isOwner} />;
+  return <AlbumBrowser posts={albumPosts} pinnedPostIdsInitial={pinnedPostIds} isOwner={isOwner} />;
 }

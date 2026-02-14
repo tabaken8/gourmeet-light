@@ -46,16 +46,21 @@ export default async function AlbumBlock({
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(400),
+
+    // ✅ post_pins からは post_id を取る
     supabase
-      .from("place_pins")
-      .select("place_id")
+      .from("post_pins")
+      .select("post_id")
       .eq("user_id", viewerId)
       .order("sort_order", { ascending: true })
       .limit(80),
   ]);
 
   const albumPosts: AlbumPost[] = (postsRes.data ?? []).map(normalizePlacesShape) as any;
-  const pinnedPlaceIds: string[] = (pinsRes.data ?? []).map((r: any) => String(r.place_id));
 
-  return <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={isOwner} />;
+  // ✅ pinned は post_id 配列
+  const pinnedPostIds: string[] = (pinsRes.data ?? []).map((r: any) => String(r.post_id));
+
+  // ✅ props名も変更
+  return <AlbumBrowser posts={albumPosts} pinnedPostIdsInitial={pinnedPostIds} isOwner={isOwner} />;
 }
