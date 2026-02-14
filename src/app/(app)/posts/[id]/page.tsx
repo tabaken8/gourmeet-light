@@ -7,13 +7,13 @@ import { createClient } from "@/lib/supabase/server";
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostActions, { LikerLite } from "@/components/PostActions";
-// ✅ PostCollectionButton は一旦削除
-// import PostCollectionButton from "@/components/PostCollectionButton";
 import GenreVoteInline from "@/components/GenreVoteInline";
 import FollowButton from "@/components/FollowButton";
-import { MapPin } from "lucide-react";
+import { MapPin, Sparkles } from "lucide-react";
 
-// ✅ 重いのは遅延読み込み
+// ✅ あなたが作ったコンポーネント
+import  TriRadar from "@/components/TriRadar"; // ← named exportなら { TriRadar } に
+
 import PostCommentsBlock from "./parts/PostCommentsBlock";
 import PlacePhotosBlock from "./parts/PlacePhotosBlock";
 import MoreDiscoverBlock from "./parts/MoreDiscoverBlock";
@@ -47,6 +47,11 @@ type PostRow = {
   price_yen?: number | null;
   price_range?: string | null;
 
+  // ✅ NEW: optional breakdown
+  taste_score?: number | null;
+  atmosphere_score?: number | null;
+  service_score?: number | null;
+
   profiles: ProfileLite | null;
 };
 
@@ -62,11 +67,9 @@ function formatJST(iso: string) {
 }
 
 function formatVisitedYYYYMMDD(isoOrDate: string) {
-  // visited_on が "YYYY-MM-DD" でも ISO でも OK
   const d = new Date(isoOrDate);
 
   if (Number.isNaN(d.getTime())) {
-    // すでに "YYYY-MM-DD" っぽいならスラッシュに
     const m = isoOrDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
     return m ? `${m[1]}/${m[2]}/${m[3]}` : isoOrDate;
   }
@@ -135,7 +138,6 @@ function getAllImageUrls(p: PostRow): string[] {
   return legacy.filter((x): x is string => !!x);
 }
 
-// TimelineFeed と同じ：都道府県+市区町村くらいを抜く
 function extractPrefCity(address: string | null | undefined): string | null {
   if (!address) return null;
 
@@ -148,6 +150,14 @@ function extractPrefCity(address: string | null | undefined): string | null {
   if (!m) return null;
 
   return `${m[1]}${m[2]}`;
+}
+
+function clampScore(n: any): number | null {
+  const v = typeof n === "number" ? n : n === null || n === undefined ? null : Number(n);
+  if (v === null) return null;
+  if (!Number.isFinite(v)) return null;
+  const clamped = Math.min(10, Math.max(0, v));
+  return Math.round(clamped * 10) / 10;
 }
 
 export default async function PostPage({
@@ -188,6 +198,9 @@ export default async function PostPage({
       recommend_score,
       price_yen,
       price_range,
+      taste_score,
+      atmosphere_score,
+      service_score,
       profiles (
         id,
         display_name,
@@ -301,7 +314,7 @@ export default async function PostPage({
   const initial = (display || "U").slice(0, 1).toUpperCase();
 
   const score =
-    typeof post.recommend_score === "number" && post.recommend_score >= 1 && post.recommend_score <= 10
+    typeof post.recommend_score === "number" && post.recommend_score >= 0 && post.recommend_score <= 10
       ? post.recommend_score
       : null;
 
@@ -316,6 +329,14 @@ export default async function PostPage({
 
   const areaLabel = extractPrefCity(post.place_address);
   const imageUrls = getAllImageUrls(post);
+
+  // ✅ breakdown
+  const taste = clampScore(post.taste_score);
+  const atmos = clampScore(post.atmosphere_score);
+  const service = clampScore(post.service_score);
+
+  const hasAnyBreakdown = taste !== null || atmos !== null || service !== null;
+  const triangleReady = taste !== null && atmos !== null && service !== null;
 
   return (
     <main className="mx-auto max-w-5xl px-3 md:px-6 py-6 md:py-10">
@@ -346,13 +367,11 @@ export default async function PostPage({
                 {!isPublic ? <span className="text-[11px] text-slate-400">🔒</span> : null}
               </div>
 
-              {/* ✅ 時刻はそのまま（“フォローされています”はここには置かない） */}
               <div className="mt-0.5 text-[11px] text-slate-500">{formatJST(post.created_at)}</div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* ✅ 未フォロー時だけフォローボタン（フォロー中表示は不要） */}
             {showFollowButton ? (
               <FollowButton
                 targetUserId={post.user_id}
@@ -377,14 +396,14 @@ export default async function PostPage({
                     target="_blank"
                     rel="noopener noreferrer"
                     href={mapUrl}
-                    className="max-w-[300px] truncate hover:underline"
+                    className="max-w-[320px] truncate hover:underline"
                     title={post.place_address ?? undefined}
                   >
                     {post.place_name}
                     {areaLabel ? <span className="ml-2 text-slate-500">{areaLabel}</span> : null}
                   </a>
                 ) : (
-                  <span className="max-w-[300px] truncate" title={post.place_address ?? undefined}>
+                  <span className="max-w-[320px] truncate" title={post.place_address ?? undefined}>
                     {post.place_name}
                     {areaLabel ? <span className="ml-2 text-slate-500">{areaLabel}</span> : null}
                   </span>
@@ -392,13 +411,12 @@ export default async function PostPage({
               </div>
             ) : null}
 
-            {score ? (
+            {score !== null ? (
               <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-orange-800">
                 おすすめ <span className="ml-1 font-semibold">{score}/10</span>
               </span>
             ) : null}
 
-            {/* ✅ visited_on：おすすめの右に、同じ“プレート”で「来店日: yyyy/mm/dd」 */}
             {visitedChip ? (
               <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-slate-700">
                 {visitedChip}
@@ -439,13 +457,69 @@ export default async function PostPage({
           </div>
         )}
 
-        {/* ✅ ここにあったジャンル投票ブロックは削除（空白の原因になりがち） */}
-        {/* {post.place_id ? ( ...GenreVoteInline... ) : null} */}
-
         {/* Content */}
         {post.content ? (
           <section className="px-4 pt-4 pb-2">
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{post.content}</p>
+          </section>
+        ) : null}
+
+        {/* ✅ Optional details (triangle only when complete) */}
+        {hasAnyBreakdown ? (
+          <section className="px-4 pt-2 pb-2">
+            <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
+              <div className="flex items-center gap-2">
+                <div className="grid h-8 w-8 place-items-center rounded-2xl bg-white shadow-sm ring-1 ring-black/[.06]">
+                  <Sparkles className="h-4 w-4 text-orange-600" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[12px] font-semibold text-slate-900">詳細</div>
+                  <div className="text-[11px] text-slate-500"></div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-start gap-3">
+                {/* left: numbers */}
+                <div className="flex-1 space-y-2">
+                  {taste !== null ? (
+                    <div className="flex items-center justify-between text-[12px]">
+                      <span className="font-semibold text-slate-800">味</span>
+                      <span className="font-semibold tabular-nums text-slate-700">
+                        {taste.toFixed(1)}
+                        <span className="text-slate-400">/10.0</span>
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {atmos !== null ? (
+                    <div className="flex items-center justify-between text-[12px]">
+                      <span className="font-semibold text-slate-800">雰囲気</span>
+                      <span className="font-semibold tabular-nums text-slate-700">
+                        {atmos.toFixed(1)}
+                        <span className="text-slate-400">/10.0</span>
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {service !== null ? (
+                    <div className="flex items-center justify-between text-[12px]">
+                      <span className="font-semibold text-slate-800">サービス</span>
+                      <span className="font-semibold tabular-nums text-slate-700">
+                        {service.toFixed(1)}
+                        <span className="text-slate-400">/10.0</span>
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* right: triangle only when complete */}
+                {triangleReady ? (
+                  <div className="shrink-0 rounded-2xl bg-white/70 p-2 ring-1 ring-black/[.06]">
+                    <TriRadar taste={taste} atmosphere={atmos} service={service} size={120} />
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </section>
         ) : null}
 
@@ -464,7 +538,7 @@ export default async function PostPage({
             initialBookmarkCount={0}
           />
 
-          {/* ✅ PostCollectionButtonを外して、ここにジャンル投票を置く */}
+          {/* ✅ 右側にジャンル投票 */}
           {post.place_id ? (
             <div className="flex justify-end">
               <div className="inline-block w-auto max-w-full">
