@@ -268,7 +268,7 @@ export default function AlbumBrowser({
                 className={["w-full px-3 py-2 text-left text-sm font-bold hover:bg-slate-50", isHR ? "text-red-700" : "text-slate-800"].join(" ")}
                 role="menuitem"
               >
-                {isHR ? "Highly Recommended を解除" : "Highly Recommended にする"}
+                {isHR ? "My Picks を解除" : "My Picks にする"}
               </button>
             ) : null}
 
@@ -329,7 +329,7 @@ export default function AlbumBrowser({
                   {isHR ? (
                     <div className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full border border-red-200 bg-white/90 px-2 py-1 text-[11px] font-extrabold text-red-700 backdrop-blur">
                       <Sparkles size={12} />
-                      Highly Recommended
+                      My Picks
                     </div>
                   ) : null}
 
@@ -387,7 +387,7 @@ export default function AlbumBrowser({
           <div className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-3 py-2">
             <div className="inline-flex items-center gap-2 text-xs font-extrabold text-red-700">
               <Sparkles size={14} />
-              Highly Recommended
+              My Pickes
             </div>
             <MoreMenu post={pick} isHR={true} mapUrl={mapUrl} />
           </div>
@@ -470,7 +470,7 @@ export default function AlbumBrowser({
                 <div className="px-4 md:px-0 flex items-center justify-between gap-2">
                   <div className="inline-flex items-center gap-2 rounded-full border-2 border-red-200 bg-red-50 px-3 py-1 text-xs font-extrabold text-red-700">
                     <Sparkles size={14} />
-                    Highly Recommended
+                    My Picks
                   </div>
                   <div className="text-xs font-semibold text-slate-500">“本当に推す”だけ</div>
                 </div>

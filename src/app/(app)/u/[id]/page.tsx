@@ -285,18 +285,18 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   }
 
   // -----------------------------
-  // Pins (viewer = me)
+  // Pins (viewer = me)  ✅ place_pins -> post_pins / place_id -> post_id
   // -----------------------------
-  let pinnedPlaceIds: string[] = [];
+  let pinnedPostIds: string[] = [];
   {
     const { data } = await supabase
-      .from("place_pins")
-      .select("place_id")
+      .from("post_pins")
+      .select("post_id")
       .eq("user_id", me.id)
       .order("sort_order", { ascending: true })
       .limit(80);
 
-    pinnedPlaceIds = (data ?? []).map((r: any) => String(r.place_id));
+    pinnedPostIds = (data ?? []).map((r: any) => String(r.post_id));
   }
 
   return (
@@ -420,7 +420,8 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             ) : (
-              <AlbumBrowser posts={albumPosts} pinnedPlaceIdsInitial={pinnedPlaceIds} isOwner={false} />
+              // ✅ props名を pinnedPostIdsInitial に変更
+              <AlbumBrowser posts={albumPosts} pinnedPostIdsInitial={pinnedPostIds} isOwner={false} />
             )}
           </section>
         </div>
