@@ -120,11 +120,7 @@ async function canvasToFile(
   opts: { mime: string; quality: number; ext: string }
 ): Promise<File> {
   const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
-      opts.mime,
-      opts.quality
-    );
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), opts.mime, opts.quality);
   });
   return new File([blob], `${nameBase}.${opts.ext}`, { type: opts.mime });
 }
@@ -256,11 +252,7 @@ async function prepareImage(file: File): Promise<PreparedImage> {
 }
 
 /** 同時実行数を制限する簡易プール */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, idx: number) => Promise<R>
-) {
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>) {
   const results: R[] = new Array(items.length);
   let i = 0;
 
@@ -315,11 +307,7 @@ function ProgressPill({ ok, label }: { ok: boolean; label: string }) {
         ok ? "border-orange-200 bg-orange-50 text-orange-700" : "border-slate-200 bg-white text-slate-500",
       ].join(" ")}
     >
-      {ok ? (
-        <Check className="h-3.5 w-3.5" />
-      ) : (
-        <span className="h-3.5 w-3.5 rounded-full border border-slate-300" />
-      )}
+      {ok ? <Check className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5 rounded-full border border-slate-300" />}
       <span>{label}</span>
     </div>
   );
@@ -388,8 +376,7 @@ export default function NewPostPage() {
   // 価格
   const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
-  const [priceRange, setPriceRange] =
-    useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
+  const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
 
   // 来店日（任意）
   const [visitedOn, setVisitedOn] = useState<string>("");
@@ -412,14 +399,12 @@ export default function NewPostPage() {
         const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
         const data = await res.json().catch(() => ({}));
 
-        // ✅ Google Places TextSearch の結果を PlaceResult に整形
         const normalized: PlaceResult[] = Array.isArray(data?.results)
           ? data.results
               .map((r: any) => ({
                 place_id: r?.place_id ?? "",
                 name: r?.name ?? "",
-                formatted_address:
-                  r?.formatted_address ?? r?.vicinity ?? r?.formattedAddress ?? "",
+                formatted_address: r?.formatted_address ?? r?.vicinity ?? r?.formattedAddress ?? "",
               }))
               .filter((r: PlaceResult) => r.place_id && r.name)
               .slice(0, 6)
@@ -515,13 +500,16 @@ export default function NewPostPage() {
 
   const isContentComplete = content.trim().length > 0;
   const isPhotoComplete = imgs.length > 0;
+  const isPlaceComplete = !!selectedPlace?.place_id; // ✅ 必須化
   const isRecommendComplete = recommendSelected;
+
   const isAllRequiredComplete =
-    isPhotoComplete && isRecommendComplete && isPriceComplete && isContentComplete;
+    isPhotoComplete && isPlaceComplete && isRecommendComplete && isPriceComplete && isContentComplete;
 
   const progressRow = (
     <div className="flex flex-wrap gap-2">
       <ProgressPill ok={isPhotoComplete} label="写真" />
+      <ProgressPill ok={isPlaceComplete} label="お店" />
       <ProgressPill ok={isRecommendComplete} label="おすすめ度" />
       <ProgressPill ok={isPriceComplete} label="価格" />
       <ProgressPill ok={isContentComplete} label="本文" />
@@ -554,11 +542,9 @@ export default function NewPostPage() {
 
   /**
    * ✅ places ensure（投稿時に lat/lng まで埋める）
-   * - /api/places/ensure が Place Details を叩いて places を upsert する前提
-   * - 成功したら place_id を返す
    */
-  const ensurePlaceWithLatLngIfNeeded = async (): Promise<string | null> => {
-    if (!selectedPlace?.place_id) return null;
+  const ensurePlaceWithLatLngIfNeeded = async (): Promise<string> => {
+    if (!selectedPlace?.place_id) throw new Error("お店を選んでください。");
 
     const res = await fetch("/api/places/ensure", {
       method: "POST",
@@ -578,6 +564,10 @@ export default function NewPostPage() {
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
     if (!imgs.length) return setMsg("写真を追加してください。");
+
+    // ✅ 店舗必須
+    if (!selectedPlace?.place_id) return setMsg("お店を選んでください。");
+
     if (!recommendSelected) return setMsg("おすすめ度を選んでください。");
     if (!isPriceComplete)
       return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
@@ -587,7 +577,6 @@ export default function NewPostPage() {
     setMsg(null);
 
     try {
-      // ✅ 投稿時点で places を ensure（lat/lngまで埋める）
       const ensuredPlaceId = await ensurePlaceWithLatLngIfNeeded();
 
       const CACHE = "31536000"; // 1年
@@ -640,7 +629,7 @@ export default function NewPostPage() {
 
       const visited_on = visitedOn ? visitedOn : null;
 
-      const place_id = ensuredPlaceId; // ✅ ensure済み or null
+      const place_id = ensuredPlaceId; // ✅ 必須
       const place_name = selectedPlace?.name ?? null;
       const place_address = selectedPlace?.formatted_address ?? null;
 
@@ -648,17 +637,14 @@ export default function NewPostPage() {
         user_id: uid,
         content,
 
-        // ✅ 新：統一アセット
         image_assets,
         cover_pin_url,
         cover_square_url,
         cover_full_url,
 
-        // ✅ 互換
         image_variants,
         image_urls,
 
-        // ✅ place（FKは place_id のみが重要）
         place_id,
         place_name,
         place_address,
@@ -681,14 +667,93 @@ export default function NewPostPage() {
     }
   };
 
+  // ✅ ヘッダー内に「おすすめ度」を置く（キャプションの直下）
+  const recommendHeaderBlock = (
+    <div className="mt-3 rounded-2xl border border-orange-100 bg-white/70 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[12px] font-semibold text-slate-700">おすすめ度</div>
+        <div className="text-[12px] font-semibold">
+          {recommendSelected ? (
+            <>
+              <span className="text-orange-600">{recommendScore.toFixed(1)}</span>
+              <span className="text-slate-400"> / 10.0</span>
+            </>
+          ) : (
+            <span className="text-slate-400">未選択</span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-3">
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={0.1}
+          value={recommendScore}
+          onChange={(e) => {
+            setRecommendSelected(true);
+            setRecommendScore(Number(e.target.value));
+          }}
+          className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
+          aria-label="おすすめ度"
+        />
+
+        <div className="w-[92px]">
+          <input
+            type="number"
+            min={0}
+            max={10}
+            step={0.1}
+            inputMode="decimal"
+            value={recommendSelected ? recommendScore.toFixed(1) : ""}
+            placeholder="0.0"
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") {
+                setRecommendSelected(false);
+                return;
+              }
+              const n = Number(v);
+              if (!Number.isFinite(n)) return;
+              const clamped = Math.min(10, Math.max(0, n));
+              const rounded = Math.round(clamped * 10) / 10;
+              setRecommendSelected(true);
+              setRecommendScore(rounded);
+            }}
+            className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
+            aria-label="おすすめ度（数値入力）"
+          />
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+        <span>0.0</span>
+        <span>10.0</span>
+      </div>
+
+      {recommendSelected && (
+        <button
+          type="button"
+          onClick={() => setRecommendSelected(false)}
+          className="mt-2 rounded-full bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+        >
+          クリア
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
       <div className="w-full pb-32 pt-6">
         <header className="border-b border-orange-100 bg-white/70 p-3 backdrop-blur">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
-            New Post
-          </h1>
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">New Post</h1>
           <p className="mt-1 text-sm text-slate-600">いまの “おいしい” を、写真と一緒にふわっと残す。</p>
+
+          {/* ✅ キャプションの直下におすすめ度 */}
+          {recommendHeaderBlock}
+
           <div className="mt-3">{progressRow}</div>
         </header>
 
@@ -749,12 +814,8 @@ export default function NewPostPage() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {imgs.length ? "写真を追加する" : "ここに写真を追加"}
-                  </div>
-                  <div className="mt-0.5 text-[12px] text-slate-500">
-                    {processing ? "変換 / 生成中…" : "タップして選択、またはドラッグ＆ドロップ"}
-                  </div>
+                  <div className="text-sm font-semibold text-slate-900">{imgs.length ? "写真を追加する" : "ここに写真を追加"}</div>
+                  <div className="mt-0.5 text-[12px] text-slate-500">{processing ? "変換 / 生成中…" : "タップして選択、またはドラッグ＆ドロップ"}</div>
                 </div>
               </div>
             </div>
@@ -779,11 +840,7 @@ export default function NewPostPage() {
                   {imgs.map((img) => (
                     <div key={img.id} className="relative shrink-0">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.previewUrl}
-                        alt={img.label}
-                        className="h-24 w-24 rounded-2xl object-cover shadow-sm"
-                      />
+                      <img src={img.previewUrl} alt={img.label} className="h-24 w-24 rounded-2xl object-cover shadow-sm" />
                       <button
                         type="button"
                         onClick={() => removeImage(img.id)}
@@ -795,93 +852,116 @@ export default function NewPostPage() {
                     </div>
                   ))}
                 </div>
-
-                <div className="mt-2 text-[11px] text-slate-500">
-                
-                </div>
               </div>
             )}
           </Section>
 
-          {/* おすすめ度 */}
+          {/* ✅ お店（写真の次に移動 & 必須） */}
           <Section
-            title="おすすめ度"
+            title="お店"
             required
             subtitle={
-              recommendSelected ? (
-                <span>
-                  <span className="font-semibold text-orange-600">{recommendScore.toFixed(1)}</span>
-                  <span className="text-slate-400"> / 10.0</span>
-                </span>
+              selectedPlace ? (
+                <span className="text-slate-500">選択済み（変更したい場合はクリアして再検索）</span>
               ) : (
-                <span className="text-slate-400">未選択</span>
+                <span className="text-slate-500">店名やエリアで検索して、候補から選択</span>
               )
             }
             right={
-              recommendSelected ? (
-                <button
-                  type="button"
-                  onClick={() => setRecommendSelected(false)}
-                  className="rounded-full bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  クリア
-                </button>
+              isSearchingPlace ? (
+                <div className="inline-flex items-center gap-2 text-xs font-semibold text-orange-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  検索中
+                </div>
               ) : null
             }
           >
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  step={0.1}
-                  value={recommendScore}
-                  onChange={(e) => {
-                    setRecommendSelected(true);
-                    setRecommendScore(Number(e.target.value));
-                  }}
-                  className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
-                  aria-label="おすすめ度"
-                />
-
-                <div className="w-[92px]">
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.1}
-                    inputMode="decimal"
-                    value={recommendSelected ? recommendScore.toFixed(1) : ""}
-                    placeholder="0.0"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "") {
-                        setRecommendSelected(false);
-                        return;
-                      }
-                      const n = Number(v);
-                      if (!Number.isFinite(n)) return;
-                      const clamped = Math.min(10, Math.max(0, n));
-                      const rounded = Math.round(clamped * 10) / 10;
-                      setRecommendSelected(true);
-                      setRecommendScore(rounded);
+              {selectedPlace && (
+                <div className="flex items-center justify-between rounded-2xl border border-orange-100 bg-orange-50/60 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-slate-900">{selectedPlace.name}</div>
+                    <div className="truncate text-[12px] text-slate-500">{selectedPlace.formatted_address}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPlace(null);
+                      setPlaceQuery("");
+                      setPlaceResults([]);
                     }}
-                    className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
-                    aria-label="おすすめ度（数値入力）"
+                    className="ml-3 inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-1 text-[12px] font-semibold text-slate-600 hover:bg-white"
+                    aria-label="clear place"
+                  >
+                    <X className="h-4 w-4" />
+                    クリア
+                  </button>
+                </div>
+              )}
+
+              <div className="relative">
+                <div className="flex items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/40 px-3 py-2 focus-within:border-orange-300 focus-within:bg-white">
+                  <MapPin className="h-4 w-4 text-orange-600" />
+                  <input
+                    type="text"
+                    value={placeQuery}
+                    onChange={(e) => {
+                      setPlaceQuery(e.target.value);
+                      // クリアしない限り selectedPlace は維持（「選択済み」状態を保つ）
+                    }}
+                    placeholder="例: 渋谷 カフェ / 焼肉"
+                    className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                    aria-label="店舗検索"
                   />
                 </div>
+
+                {placeQuery.trim().length >= 2 && (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-2">
+                    {placeResults.length > 0 ? (
+                      <div className="overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-lg">
+                        <ul className="max-h-64 overflow-y-auto py-1">
+                          {placeResults.map((p) => (
+                            <li
+                              key={p.place_id}
+                              className="cursor-pointer px-3 py-2 transition hover:bg-orange-50"
+                              onClick={() => {
+                                setSelectedPlace(p);
+                                setPlaceQuery("");
+                                setPlaceResults([]);
+                              }}
+                            >
+                              <div className="flex items-start gap-2">
+                                <MapPin className="mt-1 h-4 w-4 text-orange-600" />
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
+                                  <div className="truncate text-[12px] text-slate-500">{p.formatted_address}</div>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      !isSearchingPlace && (
+                        <div className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-[12px] text-slate-500 shadow-sm">
+                          候補が見つかりませんでした。
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>0.0</span>
-                <span>10.0</span>
-              </div>
+              {!selectedPlace && (
+                <div className="text-[12px] font-semibold text-red-600">
+                  お店が未選択です（候補からタップして選択）。
+                </div>
+              )}
             </div>
           </Section>
 
           {/* 価格 */}
-          <Section title="価格" required right={priceModeSwitch}>
+          <Section title="1人あたりの料金" required right={priceModeSwitch}>
             <div className="space-y-3">
               {priceMode === "exact" && (
                 <div className="flex items-center gap-2">
@@ -919,14 +999,12 @@ export default function NewPostPage() {
                 </div>
               )}
 
-              {priceMode === "exact" && !isPriceComplete && (
-                <div className="text-[12px] text-slate-500">実額を入力してください。</div>
-              )}
+              {priceMode === "exact" && !isPriceComplete && <div className="text-[12px] text-slate-500">実額を入力してください。</div>}
             </div>
           </Section>
 
           {/* 本文 */}
-          <Section title="本文" required subtitle={<span className="hidden sm:inline">Cmd/Ctrl + Enter で投稿</span>}>
+          <Section title="本文" required>
             <textarea
               className="h-28 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white md:h-36"
               placeholder="いま何食べてる？"
@@ -964,92 +1042,6 @@ export default function NewPostPage() {
             </div>
           </Section>
 
-          {/* 店舗（任意） */}
-          <Section
-            title="お店をつける"
-            subtitle={<span className="text-slate-400">任意</span>}
-            right={
-              isSearchingPlace ? (
-                <div className="inline-flex items-center gap-2 text-xs font-semibold text-orange-600">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  検索中
-                </div>
-              ) : null
-            }
-          >
-            <div className="space-y-3">
-              {selectedPlace && (
-                <div className="flex items-center justify-between rounded-2xl border border-orange-100 bg-orange-50/60 px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-900">{selectedPlace.name}</div>
-                    <div className="truncate text-[12px] text-slate-500">{selectedPlace.formatted_address}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPlace(null)}
-                    className="ml-3 inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-1 text-[12px] font-semibold text-slate-600 hover:bg-white"
-                    aria-label="clear place"
-                  >
-                    <X className="h-4 w-4" />
-                    クリア
-                  </button>
-                </div>
-              )}
-
-              <div className="relative">
-                <div className="flex items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/40 px-3 py-2 focus-within:border-orange-300 focus-within:bg-white">
-                  <MapPin className="h-4 w-4 text-orange-600" />
-                  <input
-                    type="text"
-                    value={placeQuery}
-                    onChange={(e) => setPlaceQuery(e.target.value)}
-                    placeholder="店名やエリアで検索（例: 渋谷 カフェ）"
-                    className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
-                    aria-label="店舗検索"
-                  />
-                </div>
-
-                {placeQuery.length >= 2 && (
-                  <div className="absolute left-0 right-0 top-full z-20 mt-2">
-                    {placeResults.length > 0 ? (
-                      <div className="overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-lg">
-                        <ul className="max-h-64 overflow-y-auto py-1">
-                          {placeResults.map((p) => (
-                            <li
-                              key={p.place_id}
-                              className="cursor-pointer px-3 py-2 transition hover:bg-orange-50"
-                              onClick={() => {
-                                setSelectedPlace(p);
-                                setPlaceQuery("");
-                                setPlaceResults([]);
-                              }}
-                            >
-                              <div className="flex items-start gap-2">
-                                <MapPin className="mt-1 h-4 w-4 text-orange-600" />
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
-                                  <div className="truncate text-[12px] text-slate-500">{p.formatted_address}</div>
-                                </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : (
-                      !isSearchingPlace && (
-                        <div className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-[12px] text-slate-500 shadow-sm">
-                          候補が見つかりませんでした。
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="text-[11px] text-slate-500" />
-            </div>
-          </Section>
-
           {msg && <div className="px-3 pb-3 text-sm font-semibold text-red-600">{msg}</div>}
         </form>
       </div>
@@ -1062,9 +1054,7 @@ export default function NewPostPage() {
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-700">
-                {isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}
-              </div>
+              <div className="text-[12px] font-semibold text-slate-700">{isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}</div>
               <div className="mt-1">{progressRow}</div>
             </div>
 
