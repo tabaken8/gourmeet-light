@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Image as ImageIcon, MapPin, X, Check, Loader2 } from "lucide-react";
+import { Image as ImageIcon, MapPin, X, Check, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import confetti from "canvas-confetti";
 
 // =====================
@@ -18,7 +18,6 @@ type PlaceResult = {
 type PreparedImage = {
   id: string;
 
-  // 生成済みファイル（正方形統一）
   pin: File; // map pin 用（超軽量）
   square: File; // timeline/card 用（統一）
   full: File; // 詳細用（高画質・元アスペクト保持）
@@ -299,6 +298,11 @@ function formatYen(n: number) {
   }
 }
 
+function clamp01to10(n: number) {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(10, Math.max(0, n));
+}
+
 function ProgressPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <div
@@ -348,6 +352,86 @@ function Section({
   );
 }
 
+function ScoreRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const v = value ?? 0;
+  const selected = value !== null;
+
+  return (
+    <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[12px] font-semibold text-slate-700">{label}</div>
+        <div className="text-[12px] font-semibold">
+          {selected ? (
+            <>
+              <span className="text-orange-600">{v.toFixed(1)}</span>
+              <span className="text-slate-400"> / 10.0</span>
+            </>
+          ) : (
+            <span className="text-slate-400">未設定</span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-3">
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={0.1}
+          value={v}
+          onChange={(e) => onChange(Math.round(clamp01to10(Number(e.target.value)) * 10) / 10)}
+          className={["w-full", selected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
+          aria-label={`${label}（スライダー）`}
+        />
+
+        <div className="w-[92px]">
+          <input
+            type="number"
+            min={0}
+            max={10}
+            step={0.1}
+            inputMode="decimal"
+            value={selected ? v.toFixed(1) : ""}
+            placeholder="任意"
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") return onChange(null);
+              const n = clamp01to10(Number(raw));
+              const rounded = Math.round(n * 10) / 10;
+              onChange(rounded);
+            }}
+            className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
+            aria-label={`${label}（数値入力）`}
+          />
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between">
+        <div className="text-[11px] text-slate-400">0.0</div>
+        {selected ? (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            クリア
+          </button>
+        ) : (
+          <div className="text-[11px] text-slate-400">10.0</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // =====================
 // main
 // =====================
@@ -362,24 +446,29 @@ export default function NewPostPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [attempted, setAttempted] = useState(false); // ✅ バリデーション表示用（気分悪い常時表示を避ける）
 
-  // 店舗関連
+  // 店舗関連（必須）
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
   const [isSearchingPlace, setIsSearchingPlace] = useState(false);
 
-  // おすすめ度
-  const [recommendSelected, setRecommendSelected] = useState(false);
-  const [recommendScore, setRecommendScore] = useState<number>(7.0);
-
-  // 価格
+  // 価格（必須）
   const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
   const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
 
-  // 来店日（任意）
-  const [visitedOn, setVisitedOn] = useState<string>("");
+  // 本体おすすめ度（必須）※contentの直下に配置する
+  const [recommendSelected, setRecommendSelected] = useState(false);
+  const [recommendScore, setRecommendScore] = useState<number>(7.0);
+
+  // 詳細（任意）
+  const [showOptional, setShowOptional] = useState(false);
+  const [tasteScore, setTasteScore] = useState<number | null>(null);
+  const [atmosphereScore, setAtmosphereScore] = useState<number | null>(null);
+  const [serviceScore, setServiceScore] = useState<number | null>(null);
+  const [visitedOn, setVisitedOn] = useState<string>(""); // ✅ 任意タブの最後へ
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -444,7 +533,7 @@ export default function NewPostPage() {
       const limited = imageFiles.slice(0, Math.max(0, MAX - imgs.length));
       if (limited.length === 0) return;
 
-      // visitedOn 自動推定（1枚目）
+      // visitedOn 自動推定（1枚目）※任意タブ内だが自動で埋めてOK
       if (!visitedOn && imgs.length === 0 && limited.length > 0) {
         let guessed = await tryAutofillVisitedOnFromFirstPhoto(limited[0]);
         if (!guessed && isHeicLike(limited[0])) {
@@ -498,21 +587,23 @@ export default function NewPostPage() {
     return !!priceYenValue && priceYenValue > 0;
   }, [priceMode, priceYenValue]);
 
-  const isContentComplete = content.trim().length > 0;
+  // ✅ 必須判定
   const isPhotoComplete = imgs.length > 0;
-  const isPlaceComplete = !!selectedPlace?.place_id; // ✅ 必須化
+  const isPlaceComplete = !!selectedPlace?.place_id;
+  const isPriceOk = isPriceComplete;
+  const isContentComplete = content.trim().length > 0;
   const isRecommendComplete = recommendSelected;
 
   const isAllRequiredComplete =
-    isPhotoComplete && isPlaceComplete && isRecommendComplete && isPriceComplete && isContentComplete;
+    isPhotoComplete && isPlaceComplete && isPriceOk && isContentComplete && isRecommendComplete;
 
   const progressRow = (
     <div className="flex flex-wrap gap-2">
       <ProgressPill ok={isPhotoComplete} label="写真" />
       <ProgressPill ok={isPlaceComplete} label="お店" />
-      <ProgressPill ok={isRecommendComplete} label="おすすめ度" />
-      <ProgressPill ok={isPriceComplete} label="価格" />
+      <ProgressPill ok={isPriceOk} label="価格" />
       <ProgressPill ok={isContentComplete} label="本文" />
+      <ProgressPill ok={isRecommendComplete} label="おすすめ度" />
     </div>
   );
 
@@ -543,7 +634,7 @@ export default function NewPostPage() {
   /**
    * ✅ places ensure（投稿時に lat/lng まで埋める）
    */
-  const ensurePlaceWithLatLngIfNeeded = async (): Promise<string> => {
+  const ensurePlaceWithLatLng = async (): Promise<string> => {
     if (!selectedPlace?.place_id) throw new Error("お店を選んでください。");
 
     const res = await fetch("/api/places/ensure", {
@@ -561,23 +652,22 @@ export default function NewPostPage() {
   };
 
   const submit = async () => {
+    setAttempted(true);
+
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
     if (!imgs.length) return setMsg("写真を追加してください。");
-
-    // ✅ 店舗必須
     if (!selectedPlace?.place_id) return setMsg("お店を選んでください。");
-
-    if (!recommendSelected) return setMsg("おすすめ度を選んでください。");
     if (!isPriceComplete)
       return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
     if (!content.trim()) return setMsg("本文を入力してください。");
+    if (!recommendSelected) return setMsg("おすすめ度を選んでください。");
 
     setBusy(true);
     setMsg(null);
 
     try {
-      const ensuredPlaceId = await ensurePlaceWithLatLngIfNeeded();
+      const ensuredPlaceId = await ensurePlaceWithLatLng();
 
       const CACHE = "31536000"; // 1年
       const bucket = supabase.storage.from("post-images");
@@ -627,11 +717,16 @@ export default function NewPostPage() {
       const price_yen = priceMode === "exact" ? priceYenValue : null;
       const price_range = priceMode === "range" ? priceRange : null;
 
-      const visited_on = visitedOn ? visitedOn : null;
-
-      const place_id = ensuredPlaceId; // ✅ 必須
+      const place_id = ensuredPlaceId;
       const place_name = selectedPlace?.name ?? null;
       const place_address = selectedPlace?.formatted_address ?? null;
+
+      const visited_on = visitedOn ? visitedOn : null;
+
+      // ✅ 任意の内訳スコア（null可）
+      const taste_score = tasteScore === null ? null : Number(tasteScore.toFixed(1));
+      const atmosphere_score = atmosphereScore === null ? null : Number(atmosphereScore.toFixed(1));
+      const service_score = serviceScore === null ? null : Number(serviceScore.toFixed(1));
 
       const { error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
@@ -652,6 +747,12 @@ export default function NewPostPage() {
         recommend_score: Number(recommendScore.toFixed(1)),
         price_yen,
         price_range,
+
+        // ✅ 追加カラム
+        taste_score,
+        atmosphere_score,
+        service_score,
+
         visited_on,
       });
 
@@ -667,93 +768,12 @@ export default function NewPostPage() {
     }
   };
 
-  // ✅ ヘッダー内に「おすすめ度」を置く（キャプションの直下）
-  const recommendHeaderBlock = (
-    <div className="mt-3 rounded-2xl border border-orange-100 bg-white/70 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[12px] font-semibold text-slate-700">おすすめ度</div>
-        <div className="text-[12px] font-semibold">
-          {recommendSelected ? (
-            <>
-              <span className="text-orange-600">{recommendScore.toFixed(1)}</span>
-              <span className="text-slate-400"> / 10.0</span>
-            </>
-          ) : (
-            <span className="text-slate-400">未選択</span>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-center gap-3">
-        <input
-          type="range"
-          min={0}
-          max={10}
-          step={0.1}
-          value={recommendScore}
-          onChange={(e) => {
-            setRecommendSelected(true);
-            setRecommendScore(Number(e.target.value));
-          }}
-          className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
-          aria-label="おすすめ度"
-        />
-
-        <div className="w-[92px]">
-          <input
-            type="number"
-            min={0}
-            max={10}
-            step={0.1}
-            inputMode="decimal"
-            value={recommendSelected ? recommendScore.toFixed(1) : ""}
-            placeholder="0.0"
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "") {
-                setRecommendSelected(false);
-                return;
-              }
-              const n = Number(v);
-              if (!Number.isFinite(n)) return;
-              const clamped = Math.min(10, Math.max(0, n));
-              const rounded = Math.round(clamped * 10) / 10;
-              setRecommendSelected(true);
-              setRecommendScore(rounded);
-            }}
-            className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
-            aria-label="おすすめ度（数値入力）"
-          />
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-        <span>0.0</span>
-        <span>10.0</span>
-      </div>
-
-      {recommendSelected && (
-        <button
-          type="button"
-          onClick={() => setRecommendSelected(false)}
-          className="mt-2 rounded-full bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-        >
-          クリア
-        </button>
-      )}
-    </div>
-  );
-
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
       <div className="w-full pb-32 pt-6">
         <header className="border-b border-orange-100 bg-white/70 p-3 backdrop-blur">
           <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">New Post</h1>
           <p className="mt-1 text-sm text-slate-600">いまの “おいしい” を、写真と一緒にふわっと残す。</p>
-
-          {/* ✅ キャプションの直下におすすめ度 */}
-          {recommendHeaderBlock}
-
           <div className="mt-3">{progressRow}</div>
         </header>
 
@@ -856,13 +876,13 @@ export default function NewPostPage() {
             )}
           </Section>
 
-          {/* ✅ お店（写真の次に移動 & 必須） */}
+          {/* お店（必須） */}
           <Section
             title="お店"
             required
             subtitle={
               selectedPlace ? (
-                <span className="text-slate-500">選択済み（変更したい場合はクリアして再検索）</span>
+                <span className="text-slate-500">選択済み（変更するならクリア→再検索）</span>
               ) : (
                 <span className="text-slate-500">店名やエリアで検索して、候補から選択</span>
               )
@@ -905,10 +925,7 @@ export default function NewPostPage() {
                   <input
                     type="text"
                     value={placeQuery}
-                    onChange={(e) => {
-                      setPlaceQuery(e.target.value);
-                      // クリアしない限り selectedPlace は維持（「選択済み」状態を保つ）
-                    }}
+                    onChange={(e) => setPlaceQuery(e.target.value)}
                     placeholder="例: 渋谷 カフェ / 焼肉"
                     className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
                     aria-label="店舗検索"
@@ -952,10 +969,9 @@ export default function NewPostPage() {
                 )}
               </div>
 
-              {!selectedPlace && (
-                <div className="text-[12px] font-semibold text-red-600">
-                  お店が未選択です（候補からタップして選択）。
-                </div>
+              {/* ✅ 常時のネガ表示はしない。投稿しようとして初めて優しく出す */}
+              {attempted && !selectedPlace && (
+                <div className="text-[12px] font-semibold text-red-600">候補からお店を1つ選んでください。</div>
               )}
             </div>
           </Section>
@@ -999,11 +1015,13 @@ export default function NewPostPage() {
                 </div>
               )}
 
-              {priceMode === "exact" && !isPriceComplete && <div className="text-[12px] text-slate-500">実額を入力してください。</div>}
+              {attempted && priceMode === "exact" && !isPriceComplete && (
+                <div className="text-[12px] text-red-600 font-semibold">実額を入力してください。</div>
+              )}
             </div>
           </Section>
 
-          {/* 本文 */}
+          {/* 本文（キャプション） */}
           <Section title="本文" required>
             <textarea
               className="h-28 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white md:h-36"
@@ -1018,29 +1036,166 @@ export default function NewPostPage() {
               }}
               aria-label="本文"
             />
+            {attempted && !content.trim() && (
+              <div className="mt-2 text-[12px] text-red-600 font-semibold">本文を入力してください。</div>
+            )}
           </Section>
 
-          {/* 来店日（任意） */}
-          <Section title="いつ行った？" subtitle={<span className="text-slate-400">任意</span>}>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={visitedOn}
-                onChange={(e) => setVisitedOn(e.target.value)}
-                className="w-full rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300 focus:bg-white"
-                aria-label="来店日"
-              />
-              {visitedOn && (
+          {/* ✅ おすすめ度（contentの直下に配置） */}
+          <Section
+            title="おすすめ度"
+            required
+            subtitle={
+              recommendSelected ? (
+                <span>
+                  <span className="font-semibold text-orange-600">{recommendScore.toFixed(1)}</span>
+                  <span className="text-slate-400"> / 10.0</span>
+                </span>
+              ) : (
+                <span className="text-slate-400">未選択</span>
+              )
+            }
+            right={
+              recommendSelected ? (
                 <button
                   type="button"
-                  onClick={() => setVisitedOn("")}
-                  className="shrink-0 rounded-full bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  onClick={() => setRecommendSelected(false)}
+                  className="rounded-full bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
                 >
                   クリア
                 </button>
+              ) : null
+            }
+          >
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  value={recommendScore}
+                  onChange={(e) => {
+                    setRecommendSelected(true);
+                    setRecommendScore(Number(e.target.value));
+                  }}
+                  className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
+                  aria-label="おすすめ度"
+                />
+
+                <div className="w-[92px]">
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={0.1}
+                    inputMode="decimal"
+                    value={recommendSelected ? recommendScore.toFixed(1) : ""}
+                    placeholder="0.0"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "") {
+                        setRecommendSelected(false);
+                        return;
+                      }
+                      const n = Number(v);
+                      if (!Number.isFinite(n)) return;
+                      const clamped = Math.min(10, Math.max(0, n));
+                      const rounded = Math.round(clamped * 10) / 10;
+                      setRecommendSelected(true);
+                      setRecommendScore(rounded);
+                    }}
+                    className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
+                    aria-label="おすすめ度（数値入力）"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>0.0</span>
+                <span>10.0</span>
+              </div>
+
+              {attempted && !recommendSelected && (
+                <div className="text-[12px] text-red-600 font-semibold">おすすめ度を選んでください。</div>
               )}
             </div>
           </Section>
+
+          {/* ✅ 詳細（任意）タブ：内訳 + 来店日（最後） */}
+          <section className="space-y-2">
+            <div className="flex items-end justify-between gap-3 px-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-slate-900">詳細</h2>
+                  <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                    任意
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[12px] text-slate-500">
+                  おすすめ度の内訳（味・雰囲気・サービス）や来店日など
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOptional((v) => !v)}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                {showOptional ? (
+                  <>
+                    <ChevronUp className="h-4 w-4" />
+                    閉じる
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4" />
+                    開く
+                  </>
+                )}
+              </button>
+            </div>
+
+            {showOptional && (
+              <div className="border-t border-orange-100 bg-white p-3">
+                <div className="space-y-3">
+                  <ScoreRow label="味" value={tasteScore} onChange={setTasteScore} />
+                  <ScoreRow label="雰囲気の良さ" value={atmosphereScore} onChange={setAtmosphereScore} />
+                  <ScoreRow label="サービス" value={serviceScore} onChange={setServiceScore} />
+
+                  {/* 来店日（任意 / 最後） */}
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[12px] font-semibold text-slate-700">いつ行った？</div>
+                      {visitedOn ? (
+                        <button
+                          type="button"
+                          onClick={() => setVisitedOn("")}
+                          className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          クリア
+                        </button>
+                      ) : (
+                        <div className="text-[11px] text-slate-400">任意</div>
+                      )}
+                    </div>
+
+                    <div className="mt-2">
+                      <input
+                        type="date"
+                        value={visitedOn}
+                        onChange={(e) => setVisitedOn(e.target.value)}
+                        className="w-full rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
+                        aria-label="来店日"
+                      />
+                      <div className="mt-2 text-[11px] text-slate-500">
+
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
 
           {msg && <div className="px-3 pb-3 text-sm font-semibold text-red-600">{msg}</div>}
         </form>
@@ -1054,7 +1209,9 @@ export default function NewPostPage() {
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-700">{isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}</div>
+              <div className="text-[12px] font-semibold text-slate-700">
+                {isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}
+              </div>
               <div className="mt-1">{progressRow}</div>
             </div>
 
