@@ -499,7 +499,7 @@ export default function AlbumBrowser({
                     <Sparkles size={14} />
                     My Special Picks
                   </div>
-                  <div className="text-xs font-semibold text-slate-500">“本当に推す”だけ</div>
+
                 </div>
                 <PostGrid items={hrPosts} />
               </section>
@@ -520,24 +520,20 @@ export default function AlbumBrowser({
             </section>
           ))
         ) : (
-          genreBlocks.map((b) => {
-            const pick = hrPickByGenre.get(b.key) ?? null;
-            return (
-              <section key={b.key} className="space-y-3">
-                <div className="px-4 md:px-0 flex items-center gap-2">
-                  <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
-                    {b.key}
-                  </div>
-                  <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
-                </div>
+  genreBlocks.map((b) => (
+    <section key={b.key} className="space-y-3">
+      <div className="px-4 md:px-0 flex items-center gap-2">
+        <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
+          {b.key}
+        </div>
+        <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
+      </div>
 
-                {pick ? <GenrePickCard pick={pick} /> : null}
+      <PostGrid items={b.posts} />
+    </section>
+  ))
+)}
 
-                <PostGrid items={b.posts} />
-              </section>
-            );
-          })
-        )}
       </div>
 
       {/* 背景クリックで閉じる */}
