@@ -112,6 +112,8 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   ]);
 
   // 投稿閲覧権限
+  // - 公開ならOK
+  // - 非公開は accepted follower のみ
   const canViewPosts = isPublic || initiallyFollowing;
 
   // -----------------------------
@@ -285,14 +287,15 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   }
 
   // -----------------------------
-  // Pins (viewer = me)  ✅ place_pins -> post_pins / place_id -> post_id
+  // Pins (owner = profile user) ✅ Twitterの固定ツイ相当
   // -----------------------------
   let pinnedPostIds: string[] = [];
-  {
+  if (canViewPosts) {
+    // ✅ ここが重要：viewer(me)ではなく owner(userId) の pins を取る
     const { data } = await supabase
       .from("post_pins")
       .select("post_id")
-      .eq("user_id", me.id)
+      .eq("user_id", userId)
       .order("sort_order", { ascending: true })
       .limit(80);
 
@@ -420,7 +423,6 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             ) : (
-              // ✅ props名を pinnedPostIdsInitial に変更
               <AlbumBrowser posts={albumPosts} pinnedPostIdsInitial={pinnedPostIds} isOwner={false} />
             )}
           </section>
