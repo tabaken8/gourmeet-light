@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Lock, ChevronDown, ChevronUp } from "lucide-react";
+import { MapPin, Lock, ChevronDown, ChevronUp, TrainFront } from "lucide-react";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
@@ -21,11 +21,13 @@ export type ProfileLite = {
   is_public: boolean | null;
 };
 
+export type SearchMode = "geo" | "station" | "auto";
+
 export type PostRow = {
   id: string;
   content: string | null;
   user_id: string;
-  created_at: string;
+  created_at: any;
 
   image_urls: string[] | null;
   image_variants: ImageVariant[] | null;
@@ -44,6 +46,12 @@ export type PostRow = {
   price_yen?: number | null;
   price_range?: string | null;
 
+  // ✅ station UI fields (RPCの実フィールド名に合わせる)
+  search_station_distance_m?: number | null;
+  search_station_minutes?: number | null;
+  nearest_station_name?: string | null;
+  nearest_station_distance_m?: number | null;
+
   profile: ProfileLite | null;
 
   likeCount?: number;
@@ -51,8 +59,10 @@ export type PostRow = {
   initialLikers?: LikerLite[];
 };
 
-function formatJST(iso: string) {
+function formatJST(iso: any) {
+  if (!iso) return "";
   const dt = new Date(iso);
+  if (!Number.isFinite(dt.getTime())) return String(iso);
   return new Intl.DateTimeFormat("ja-JP", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -110,6 +120,7 @@ function extractPrefCity(address: string | null | undefined): string | null {
   if (!m) return null;
   return `${m[1]}${m[2]}`;
 }
+
 function getTimelineSquareUrls(p: PostRow): string[] {
   const cover = p.cover_square_url ? [p.cover_square_url] : [];
 
@@ -119,14 +130,10 @@ function getTimelineSquareUrls(p: PostRow): string[] {
   const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
   const thumbsFromVariants = variants.map((v) => v?.thumb ?? null).filter((x): x is string => !!x);
 
-  // ✅ square系が取れているなら legacy(image_urls)は混ぜない（重複源）
   const base = [...cover, ...squaresFromAssets, ...thumbsFromVariants];
-
-  // ✅ 何も取れなかった時だけ保険で legacy を使う
   const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
   const all = base.length > 0 ? base : legacy;
 
-  // ✅ 同一画像の別URL（署名/クエリ違い）も潰す
   const keyOf = (u: string) => {
     try {
       const x = new URL(u);
@@ -145,37 +152,56 @@ function getTimelineSquareUrls(p: PostRow): string[] {
     seen.add(k);
     out.push(u);
   }
-
   return out;
 }
-
 
 function GoogleMark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className={className}>
-      <path fill="#EA4335" d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z" />
-      <path fill="#FBBC04" d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z" />
-      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z" />
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.5 0 6.7 1.2 9.1 3.5l6.8-6.8C35.3 2.7 29.9 0 24 0 14.8 0 6.7 5.1 2.4 12.6l7.9 6.1C12.4 12.1 17.8 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.1 24.5c0-1.6-.2-3.2-.5-4.7H24v9h12.3c-.5 2.7-2.1 5-4.5 6.5v5.4h7.3c4.3-4 6.8-9.9 6.8-16.2z"
+      />
+      <path
+        fill="#FBBC04"
+        d="M10.3 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6v-5.4H2.4c-1.6 3.2-2.4 6.9-2.4 10.9s.9 7.7 2.4 10.9l7.9-6.2z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
+      />
     </svg>
   );
+}
+
+function metersToWalkMin(m: number | null | undefined): number | null {
+  if (typeof m !== "number" || !Number.isFinite(m) || m < 0) return null;
+  return Math.max(1, Math.round(m / 80)); // 徒歩80m/分
 }
 
 export default function TimelinePostList({
   posts,
   meId,
+  mode = "auto",
+  searchedStationName = null,
 }: {
   posts: PostRow[];
   meId: string | null;
+  mode?: SearchMode;
+  searchedStationName?: string | null;
 }) {
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
 
   const normalized = useMemo(() => {
-    // profile が jsonb のまま来る場合もあるので吸収
     return posts.map((p: any) => {
       const prof = p?.profile && typeof p.profile === "object" && !Array.isArray(p.profile) ? p.profile : null;
       return {
         ...p,
+        id: String(p?.id ?? p?.post_id ?? ""), // 保険（station joinなどで変な型来ても落ちない）
         profile: prof,
         place_genre: p.place_genre ?? null,
         likeCount: p.likeCount ?? 0,
@@ -187,7 +213,9 @@ export default function TimelinePostList({
 
   return (
     <div className="flex flex-col items-stretch gap-6">
-      {normalized.map((p) => {
+      {normalized.map((p, idx) => {
+        const key = p.id ? `${p.id}` : `row-${idx}`;
+
         const prof = p.profile;
         const display = prof?.display_name ?? "ユーザー";
         const avatar = prof?.avatar_url ?? null;
@@ -218,8 +246,34 @@ export default function TimelinePostList({
 
         const priceLabel = formatPrice(p);
 
+        const searchDistM = p.search_station_distance_m ?? null;
+        const searchMinFromPayload =
+          typeof p.search_station_minutes === "number" && Number.isFinite(p.search_station_minutes)
+            ? Math.max(1, Math.round(p.search_station_minutes))
+            : null;
+        const searchMin = searchMinFromPayload ?? metersToWalkMin(searchDistM);
+
+        const nearestName = p.nearest_station_name ?? null;
+        const nearestDistM = p.nearest_station_distance_m ?? null;
+        const nearestMin = metersToWalkMin(nearestDistM);
+
+        // ✅ 表示ルール
+        // - station: 検索駅（解釈駅）+ 最寄駅（可能なら両方）
+        // - geo: 最寄駅だけ
+        const isStationMode = mode === "station";
+
+        const showSearchStation =
+          isStationMode && !!searchedStationName && searchMin !== null;
+
+        const showNearestStation =
+          !!nearestName && nearestMin !== null;
+
+        const showStationChip =
+          (isStationMode && (showSearchStation || showNearestStation)) ||
+          (!isStationMode && showNearestStation);
+
         return (
-          <article key={p.id} className="gm-card gm-press overflow-hidden">
+          <article key={key} className="gm-card gm-press overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
               <div className="md:border-r md:border-black/[.05]">
                 {/* Header */}
@@ -231,7 +285,13 @@ export default function TimelinePostList({
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={avatar} alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" decoding="async" />
+                        <img
+                          src={avatar}
+                          alt=""
+                          className="h-10 w-10 rounded-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         initial
                       )}
@@ -244,7 +304,6 @@ export default function TimelinePostList({
                         </Link>
                         {!isPublic && <Lock size={14} className="shrink-0 text-slate-500" />}
                       </div>
-
                       <div className="text-[12px] text-slate-500">検索結果</div>
                     </div>
                   </div>
@@ -286,6 +345,40 @@ export default function TimelinePostList({
                       </span>
                     ) : null}
 
+                    {/* ✅ 駅/最寄情報チップ */}
+                    {showStationChip ? (
+                      <span className="gm-chip inline-flex items-center gap-2 px-3 py-1.5 text-[12px] text-slate-700">
+                        <TrainFront size={16} className="opacity-70" />
+                        <span className="truncate">
+                          {/* stationモード：検索駅（解釈駅） */}
+                          {showSearchStation ? (
+                            <>
+                              <span className="font-semibold">{searchedStationName}</span>
+                              <span className="ml-1 text-slate-500">から徒歩</span>
+                              <span className="ml-1 font-semibold">{searchMin}</span>
+                              <span className="text-slate-500">分</span>
+                            </>
+                          ) : null}
+
+                          {/* 区切り */}
+                          {isStationMode && showSearchStation && showNearestStation ? (
+                            <span className="mx-2 text-slate-400">/</span>
+                          ) : null}
+
+                          {/* 最寄 */}
+                          {showNearestStation ? (
+                            <>
+                              <span className="text-slate-500">{isStationMode ? "最寄" : "最寄"}</span>
+                              <span className="ml-1 font-semibold">{nearestName}</span>
+                              <span className="ml-1 text-slate-500">徒歩</span>
+                              <span className="ml-1 font-semibold">{nearestMin}</span>
+                              <span className="text-slate-500">分</span>
+                            </>
+                          ) : null}
+                        </span>
+                      </span>
+                    ) : null}
+
                     {score !== null ? (
                       <span className="gm-chip inline-flex items-center px-3 py-1.5 text-[12px] text-orange-800">
                         おすすめ <span className="ml-1 font-semibold">{score}/10</span>
@@ -300,7 +393,10 @@ export default function TimelinePostList({
 
                     <span className="flex-1" />
 
-                    <Link href={`/posts/${p.id}`} className="gm-chip inline-flex items-center px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:underline">
+                    <Link
+                      href={`/posts/${p.id}`}
+                      className="gm-chip inline-flex items-center px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:underline"
+                    >
                       詳細
                     </Link>
 
