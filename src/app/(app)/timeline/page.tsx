@@ -41,7 +41,6 @@ export default async function TimelinePage({
             Timeline
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            友達や公開ユーザーの “いま食べてるもの” を、ふわっと流し見する場所。
           </p>
         </header>
 
