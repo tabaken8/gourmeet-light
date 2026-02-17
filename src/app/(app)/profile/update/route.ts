@@ -77,7 +77,7 @@ export async function POST(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/auth/login", req.url));
+  if (!user) return NextResponse.redirect(new URL("/auth/login", req.url), 303);
 
   // フォーム取得
   const form = await req.formData();
@@ -220,5 +220,5 @@ export async function POST(req: Request) {
   }
 
   // 正常終了
-  return NextResponse.redirect(new URL("/profile", req.url));
+  return NextResponse.redirect(new URL("/profile", req.url), 303);
 }
