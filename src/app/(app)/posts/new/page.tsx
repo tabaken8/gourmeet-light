@@ -1162,36 +1162,40 @@ export default function NewPostPage() {
                   <ScoreRow label="雰囲気の良さ" value={atmosphereScore} onChange={setAtmosphereScore} />
                   <ScoreRow label="サービス" value={serviceScore} onChange={setServiceScore} />
 
-                  {/* 来店日（任意 / 最後） */}
-                  <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[12px] font-semibold text-slate-700">いつ行った？</div>
-                      {visitedOn ? (
-                        <button
-                          type="button"
-                          onClick={() => setVisitedOn("")}
-                          className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                        >
-                          クリア
-                        </button>
-                      ) : (
-                        <div className="text-[11px] text-slate-400">任意</div>
-                      )}
-                    </div>
+{/* 来店日（任意 / 最後） */}
+<div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
+  <div className="flex items-center justify-between gap-2">
+    <div className="min-w-0 text-[12px] font-semibold text-slate-700">いつ行った？</div>
 
-                    <div className="mt-2">
-                      <input
-                        type="date"
-                        value={visitedOn}
-                        onChange={(e) => setVisitedOn(e.target.value)}
-                        className="w-full rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
-                        aria-label="来店日"
-                      />
-                      <div className="mt-2 text-[11px] text-slate-500">
+    {visitedOn ? (
+      <button
+        type="button"
+        onClick={() => setVisitedOn("")}
+        className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+      >
+        クリア
+      </button>
+    ) : (
+      <div className="shrink-0 text-[11px] text-slate-400">任意</div>
+    )}
+  </div>
 
-                      </div>
-                    </div>
-                  </div>
+  <div className="mt-2">
+    <div className="min-w-0 overflow-hidden">
+      <input
+        type="date"
+        value={visitedOn}
+        onChange={(e) => setVisitedOn(e.target.value)}
+        className="block w-full min-w-0 max-w-full rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
+        style={{ WebkitAppearance: "none" }}
+        aria-label="来店日"
+      />
+    </div>
+
+    <div className="mt-2 text-[11px] text-slate-500"></div>
+  </div>
+</div>
+
                 </div>
               </div>
             )}
