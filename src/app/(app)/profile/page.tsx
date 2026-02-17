@@ -6,9 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { Globe2, Lock, Plus } from "lucide-react";
 
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
-
-// ✅ 遅延ブロック（posts）
 import AlbumBlock from "./parts/AlbumBlock";
+
+import InstagramIcon from "@/components/icons/InstagramIcon";
+import XIcon from "@/components/icons/XIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -29,42 +30,109 @@ function getRepresentativeDayKey(r: any): string {
   return "0000-00-00";
 }
 
+function cleanHandle(v: any): string {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s.replace(/^@+/, "");
+}
+
+function joinLabelFromCreatedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  try {
+    return new Intl.DateTimeFormat("ja-JP", {
+      year: "numeric",
+      month: "short",
+    }).format(new Date(iso));
+  } catch {
+    return null;
+  }
+}
+
+function SnsChip({
+  kind,
+  handle,
+}: {
+  kind: "instagram" | "x";
+  handle: string;
+}) {
+  const h = cleanHandle(handle);
+  if (!h) return null;
+
+  const href =
+    kind === "instagram"
+      ? `https://www.instagram.com/${encodeURIComponent(h)}`
+      : `https://x.com/${encodeURIComponent(h)}`;
+
+  const Icon =
+    kind === "instagram" ? (
+      <InstagramIcon className="h-4 w-4" />
+    ) : (
+      <XIcon className="h-4 w-4 text-slate-900" />
+    );
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={[
+        "group inline-flex items-center gap-2 rounded-full border border-black/[.08] bg-white",
+        "px-3 py-1.5 text-[13px] font-semibold text-slate-700",
+        "shadow-[0_1px_0_rgba(0,0,0,0.02)] transition",
+        "hover:border-black/[.12] hover:bg-slate-50",
+        "focus:outline-none focus:ring-4 focus:ring-orange-200/40",
+      ].join(" ")}
+      aria-label={`${kind}を開く`}
+    >
+      <span className="grid h-6 w-6 place-items-center">{Icon}</span>
+      <span className="text-slate-400">@</span>
+      <span className="tracking-tight text-slate-900">{h}</span>
+    </a>
+  );
+}
+
 export default async function AccountPage() {
   const supabase = await createClient();
 
-  // 認証
+  // auth
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  // ✅ プロフィール（軽い）
+  // profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, bio, avatar_url, username, is_public")
+    .select(
+      "display_name, bio, avatar_url, username, is_public, instagram_username, x_username"
+    )
     .eq("id", user.id)
     .single();
 
-  const displayName = profile?.display_name ?? user.email?.split("@")[0] ?? "User";
+  const displayName =
+    profile?.display_name ?? user.email?.split("@")[0] ?? "User";
   const bio = profile?.bio ?? "";
-  const avatarUrl = profile?.avatar_url ?? "";
+  const avatarUrl =
+    profile?.avatar_url ??
+    ((user.user_metadata as any)?.avatar_url ?? "") ??
+    "";
   const username = profile?.username ?? "";
   const isPublic = profile?.is_public ?? true;
 
-  // Joined 表示
-  let joinedLabel: string | null = null;
-  if (user.created_at) {
-    try {
-      joinedLabel = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "short" }).format(new Date(user.created_at));
-    } catch {
-      joinedLabel = null;
-    }
-  }
+  const instagram = cleanHandle((profile as any)?.instagram_username ?? "");
+  const x = cleanHandle((profile as any)?.x_username ?? "");
 
-  // ✅ カウント（並列）
+  const joinedLabel = joinLabelFromCreatedAt(user.created_at);
+
+  // counts
   const [postsQ, wantsQ, followersQ, followingQ] = await Promise.all([
-    supabase.from("posts").select("*", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("post_wants").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase
+      .from("posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id),
+    supabase
+      .from("post_wants")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id),
     supabase
       .from("follows")
       .select("*", { count: "exact", head: true })
@@ -82,9 +150,7 @@ export default async function AccountPage() {
   const followersCount = followersQ.count ?? 0;
   const followingCount = followingQ.count ?? 0;
 
-  // -----------------------------
-  // earliestKey (visited_on or created_at)
-  // -----------------------------
+  // earliestKey
   let earliestKey: string | null = null;
   {
     const [earliestVisitedQ, earliestCreatedQ] = await Promise.all([
@@ -103,17 +169,19 @@ export default async function AccountPage() {
         .limit(1),
     ]);
 
-    const v = (earliestVisitedQ.data ?? [])[0]?.visited_on ? String((earliestVisitedQ.data ?? [])[0].visited_on) : null;
-    const cIso = (earliestCreatedQ.data ?? [])[0]?.created_at ? String((earliestCreatedQ.data ?? [])[0].created_at) : null;
+    const v = (earliestVisitedQ.data ?? [])[0]?.visited_on
+      ? String((earliestVisitedQ.data ?? [])[0].visited_on)
+      : null;
+    const cIso = (earliestCreatedQ.data ?? [])[0]?.created_at
+      ? String((earliestCreatedQ.data ?? [])[0].created_at)
+      : null;
     const c = cIso ? formatJstYmdFromIso(cIso) : null;
 
     if (v && c) earliestKey = v < c ? v : c;
     else earliestKey = v ?? c ?? null;
   }
 
-  // -----------------------------
-  // heatmapDays (initial = 1 year only)
-  // -----------------------------
+  // heatmapDays (1 year)
   let heatmapDays: HeatmapDay[] = [];
   {
     const dtf = new Intl.DateTimeFormat("en-CA", {
@@ -125,9 +193,13 @@ export default async function AccountPage() {
 
     const today = new Date();
     const todayJst = dtf.format(today);
-    const startJst = dtf.format(new Date(today.getTime() - 364 * 24 * 60 * 60 * 1000));
+    const startJst = dtf.format(
+      new Date(today.getTime() - 364 * 24 * 60 * 60 * 1000)
+    );
 
-    const startIso = new Date(Date.now() - 364 * 24 * 60 * 60 * 1000).toISOString();
+    const startIso = new Date(
+      Date.now() - 364 * 24 * 60 * 60 * 1000
+    ).toISOString();
     const endIso = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: withVisited } = await supabase
@@ -158,9 +230,11 @@ export default async function AccountPage() {
 
     const getThumbUrlFromPostRow = (r: any): string | null => {
       const v = r?.image_variants;
-      if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string") return v[0].thumb;
+      if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string")
+        return v[0].thumb;
       const urls = r?.image_urls;
-      if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string") return urls[0];
+      if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string")
+        return urls[0];
       return null;
     };
 
@@ -175,15 +249,21 @@ export default async function AccountPage() {
             ? sRaw
             : null
           : typeof sRaw === "string"
-            ? Number.isFinite(Number(sRaw))
-              ? Number(sRaw)
-              : null
-            : null;
+          ? Number.isFinite(Number(sRaw))
+            ? Number(sRaw)
+            : null
+          : null;
 
-      const cur: DayAcc = dayMap.get(dateKey) ?? { date: dateKey, count: 0, maxScore: null, posts: [] };
+      const cur: DayAcc = dayMap.get(dateKey) ?? {
+        date: dateKey,
+        count: 0,
+        maxScore: null,
+        posts: [],
+      };
 
       cur.count += 1;
-      if (score !== null) cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
+      if (score !== null)
+        cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
       cur.posts.push({ id: String(r.id), thumbUrl: getThumbUrlFromPostRow(r), score });
 
       dayMap.set(dateKey, cur);
@@ -191,19 +271,23 @@ export default async function AccountPage() {
 
     heatmapDays = Array.from(dayMap.values())
       .map((d) => {
-        const sorted = d.posts.slice().sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+        const sorted = d.posts
+          .slice()
+          .sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
         const top3 = sorted.slice(0, 3).map((p) => ({ id: p.id, thumbUrl: p.thumbUrl }));
         return { date: d.date, count: d.count, maxScore: d.maxScore, posts: top3 };
       })
       .sort((a, b) => (a.date < b.date ? 1 : -1));
   }
 
+  const initialLetter = displayName.slice(0, 1).toUpperCase();
+
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
       <div className="w-full overflow-x-hidden pb-24 pt-6">
         <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
           {/* ========================= PROFILE ========================= */}
-          <section className="w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
+          <section className="w-full overflow-hidden rounded-2xl border border-orange-100 bg-white/95 shadow-sm">
             <div className="px-4 py-5 md:px-6 md:py-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div className="flex items-start gap-4 min-w-0">
@@ -213,21 +297,27 @@ export default async function AccountPage() {
                       <img
                         src={avatarUrl}
                         alt="avatar"
-                        className="h-20 w-20 rounded-full border border-black/[.06] bg-orange-100 object-cover"
+                        className="h-20 w-20 rounded-full border border-black/[.08] bg-orange-100 object-cover"
                       />
                     ) : (
-                      <div className="flex h-20 w-20 items-center justify-center rounded-full border border-black/[.06] bg-orange-100 text-2xl font-bold text-orange-700">
-                        {displayName.slice(0, 1).toUpperCase()}
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full border border-black/[.08] bg-orange-100 text-2xl font-bold text-orange-700">
+                        {initialLetter}
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0">
-                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">{displayName}</h1>
+                    <h1 className="text-[20px] font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
+                      {displayName}
+                    </h1>
 
-                    {username ? <p className="mt-0.5 text-xs font-medium text-slate-500 md:text-sm">@{username}</p> : null}
+                    {username ? (
+                      <p className="mt-0.5 text-sm font-semibold text-slate-500">
+                        @{username}
+                      </p>
+                    ) : null}
 
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 md:text-xs">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
                       <span className="inline-flex items-center gap-1">
                         {isPublic ? (
                           <>
@@ -249,36 +339,60 @@ export default async function AccountPage() {
                         </>
                       ) : null}
                     </div>
+
+                    {/* SNS chips */}
+                    {(instagram || x) ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <SnsChip kind="instagram" handle={instagram} />
+                        <SnsChip kind="x" handle={x} />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
                 <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
                   <Link
                     href="/profile/edit"
-                    className="inline-flex w-full items-center justify-center rounded-none border border-black/[.08] bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 md:w-auto md:text-xs md:py-2"
+                    className={[
+                      "inline-flex w-full items-center justify-center rounded-xl",
+                      "border border-black/[.08] bg-white px-4 py-2",
+                      "text-sm font-semibold text-slate-700 hover:bg-slate-50",
+                      "transition focus:outline-none focus:ring-4 focus:ring-orange-200/40",
+                      "md:w-auto md:text-xs md:py-2",
+                    ].join(" ")}
                   >
                     プロフィールを編集
                   </Link>
                 </div>
               </div>
 
-              {bio ? <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p> : null}
+              {bio ? (
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                  {bio}
+                </p>
+              ) : null}
 
-              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
+              <ul className="mt-4 flex flex-wrap gap-6 text-sm text-slate-700">
                 <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900">{postsCount}</span>
                   <span>投稿</span>
                 </li>
 
                 <li className="flex items-center gap-1.5">
-                  <Link href={`/u/${user.id}/following`} className="flex items-center gap-1.5 hover:underline">
+                  <Link
+                    href={`/u/${user.id}/following`}
+                    className="flex items-center gap-1.5 hover:underline"
+                  >
                     <span className="font-semibold text-slate-900">{followingCount}</span>
                     <span>フォロー中</span>
                   </Link>
                 </li>
 
                 <li className="flex items-center gap-1.5">
-                  <Link href={`/u/${user.id}/followers`} className="flex items-center gap-1.5 hover:underline">
+                  <Link
+                    href={`/u/${user.id}/followers`}
+                    className="flex items-center gap-1.5 hover:underline"
+                  >
                     <span className="font-semibold text-slate-900">{followersCount}</span>
                     <span>フォロワー</span>
                   </Link>
@@ -295,9 +409,9 @@ export default async function AccountPage() {
           {/* ========================= HEATMAP ========================= */}
           <Suspense
             fallback={
-              <section className="w-full bg-white rounded-none border border-black/[.06] p-4">
-                <div className="h-5 w-32 bg-slate-100" />
-                <div className="mt-3 h-32 border border-black/[.06] bg-white" />
+              <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm">
+                <div className="h-5 w-32 rounded bg-slate-100" />
+                <div className="mt-3 h-32 rounded border border-black/[.06] bg-white" />
               </section>
             }
           >
@@ -305,22 +419,18 @@ export default async function AccountPage() {
           </Suspense>
 
           {/* ========================= POSTS (ALBUM) ========================= */}
-          <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
+          <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm md:p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
+              <h2 className="text-sm font-semibold text-slate-900 md:text-base">
+                投稿
+              </h2>
 
-              <Link
-                href="/posts/new"
-                className="inline-flex h-10 items-center gap-2 rounded-none bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700 md:h-9 md:text-xs"
-              >
-                <Plus size={16} />
-                Post
-              </Link>
+
             </div>
 
             <Suspense
               fallback={
-                <div className="border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
+                <div className="rounded-xl border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
                   投稿を読み込み中...
                 </div>
               }

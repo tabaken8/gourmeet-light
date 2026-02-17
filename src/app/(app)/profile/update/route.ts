@@ -3,9 +3,75 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 const USERNAME_RE = /^[a-z0-9._]{3,30}$/;
+const IG_RE = /^[A-Za-z0-9._]{1,30}$/;
+const X_RE = /^[A-Za-z0-9_]{1,15}$/;
+
+function cleanHandle(v: string | null): string | null {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  return s.replace(/^@+/, "").trim() || null;
+}
+
+/**
+ * ざっくりURL貼り付けにも対応してhandle抽出
+ * - instagram.com/<handle>
+ * - x.com/<handle>
+ * - twitter.com/<handle>
+ */
+function extractHandleFromUrlOrHandle(raw: string | null, kind: "ig" | "x"): string | null {
+  const v0 = cleanHandle(raw);
+  if (!v0) return null;
+
+  // URLっぽい場合
+  if (v0.includes("/") || v0.includes("instagram.com") || v0.includes("x.com") || v0.includes("twitter.com")) {
+    try {
+      const u = new URL(v0.startsWith("http") ? v0 : `https://${v0}`);
+      const host = u.hostname.toLowerCase();
+      const path = u.pathname.split("/").filter(Boolean);
+
+      if (kind === "ig") {
+        if (host === "instagram.com" || host === "www.instagram.com") {
+          const h = path[0] ? cleanHandle(path[0]) : null;
+          return h;
+        }
+      }
+
+      if (kind === "x") {
+        if (
+          host === "x.com" ||
+          host === "www.x.com" ||
+          host === "twitter.com" ||
+          host === "www.twitter.com"
+        ) {
+          const h = path[0] ? cleanHandle(path[0]) : null;
+          return h;
+        }
+      }
+    } catch {
+      // URLとして解釈できない → そのままhandle扱いにフォールバック
+    }
+  }
+
+  return v0;
+}
+
+function extFromFile(file: File, fallback = "jpg"): { ext: string; contentType: string } {
+  const contentType = file.type || "image/jpeg";
+  const rawExt =
+    (contentType.split("/")[1] || file.name.split(".").pop() || fallback)
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "") || fallback;
+
+  // 変な拡張子を適当に丸める
+  const allowed = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+  const ext = allowed.has(rawExt) ? rawExt : fallback;
+
+  return { ext, contentType };
+}
 
 export async function POST(req: Request) {
-  const supabase = await createClient();;
+  const supabase = await createClient();
 
   // 認証
   const {
@@ -19,12 +85,8 @@ export async function POST(req: Request) {
     (form.get("display_name") as string | null)?.trim() ?? null;
   const bio = (form.get("bio") as string | null)?.trim() ?? null;
 
-  const file = form.get("avatar") as File | null;
-  const headerFile = form.get("header_image") as File | null;
-
-  // 公開 / 非公開（チェックボックス）
+  // 公開 / 非公開
   const rawIsPublic = form.get("is_public") as string | null;
-  // チェックされていれば値が入る → true / 無ければ false
   const is_public: boolean = rawIsPublic != null;
 
   // username（@は保存しない）
@@ -37,22 +99,38 @@ export async function POST(req: Request) {
     );
   }
 
-  // 現在のプロフィール取得（自分と同じ名前なら「使用中」でもOKにするため）
-  const { data: currentProfile, error: curErr } = await supabase
+  // 公認SNS: Instagram / X
+  const igRaw = (form.get("instagram") as string | null) ?? null;
+  const xRaw = (form.get("x") as string | null) ?? null;
+
+  const instagram_username = extractHandleFromUrlOrHandle(igRaw, "ig");
+  const x_username = extractHandleFromUrlOrHandle(xRaw, "x");
+
+  if (instagram_username && !IG_RE.test(instagram_username)) {
+    return NextResponse.json(
+      { ok: false, error: "Instagram IDの形式が不正です。" },
+      { status: 400 }
+    );
+  }
+  if (x_username && !X_RE.test(x_username)) {
+    return NextResponse.json(
+      { ok: false, error: "X IDの形式が不正です。" },
+      { status: 400 }
+    );
+  }
+
+  // 現在のプロフィール取得（自分と同じusernameならOKにするため）
+  const { data: currentProfile } = await supabase
     .from("profiles")
-    .select("username, avatar_url, is_public, header_image_url")
+    .select("username, avatar_url, is_public, instagram_username, x_username")
     .eq("id", user.id)
     .single();
-
-  if (curErr) {
-    // 初回プロフィール未作成の場合もあるので、この時点では致命ではない
-  }
 
   // username の空き確認（RPC → フォールバック）
   if (username && username !== (currentProfile?.username ?? null)) {
     let available: boolean | null = null;
 
-    // ① RPC を試す
+    // ① RPC
     const { data: rpcOk, error: rpcErr } = await supabase.rpc(
       "is_username_available",
       { in_name: username }
@@ -60,11 +138,11 @@ export async function POST(req: Request) {
     if (!rpcErr && typeof rpcOk === "boolean") {
       available = rpcOk;
     } else {
-      // ② フォールバック（RPC未導入でも最低限の重複チェック）
+      // ② フォールバック（最低限）
       const { data: used, error: qErr } = await supabase
         .from("profiles")
         .select("id")
-        .ilike("username", username) // 大小同一視
+        .ilike("username", username)
         .limit(1);
       if (!qErr) {
         available = !(used && used.length > 0);
@@ -84,19 +162,11 @@ export async function POST(req: Request) {
     (currentProfile?.avatar_url as string | null) ??
     ((user.user_metadata as any)?.avatar_url ?? null);
 
-  // ホーム画像 URL（既存値をベース）
-  let headerImageUrl: string | null =
-    (currentProfile?.header_image_url as string | null) ?? null;
-
-  // アイコン画像アップロード
+  // アバター画像アップロード（ユニークパスでキャッシュ問題を潰す）
+  const file = form.get("avatar") as File | null;
   if (file && file.size > 0) {
-    const contentType = file.type || "image/jpeg";
-    const ext =
-      (contentType.split("/")[1] || file.name.split(".").pop() || "jpg")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "") || "jpg";
-
-    const path = `${user.id}/avatar.${ext}`;
+    const { ext, contentType } = extFromFile(file, "jpg");
+    const path = `${user.id}/avatar_${Date.now()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("avatars")
@@ -113,37 +183,7 @@ export async function POST(req: Request) {
     avatarUrl = pub.publicUrl;
   }
 
-  // ホーム画像アップロード
-  if (headerFile && headerFile.size > 0) {
-    const contentType = headerFile.type || "image/jpeg";
-    const ext =
-      (contentType.split("/")[1] || headerFile.name.split(".").pop() || "jpg")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "") || "jpg";
-
-    const path = `${user.id}/header.${ext}`;
-
-    const { error: headerUploadError } = await supabase.storage
-      .from("avatars")
-      .upload(path, headerFile, { upsert: true, contentType });
-
-    if (headerUploadError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `ホーム画像のアップロードに失敗しました: ${headerUploadError.message}`,
-        },
-        { status: 500 }
-      );
-    }
-
-    const { data: headerPub } = supabase.storage
-      .from("avatars")
-      .getPublicUrl(path);
-    headerImageUrl = headerPub.publicUrl;
-  }
-
-  // 1) user_metadata を更新（display_name / bio / avatar_url）
+  // 1) user_metadata 更新（display_name / bio / avatar_url）
   const { error: authErr } = await supabase.auth.updateUser({
     data: { display_name, bio, avatar_url: avatarUrl },
   });
@@ -154,27 +194,27 @@ export async function POST(req: Request) {
     );
   }
 
-  // 2) profiles を更新（bio / username / is_public / header_image_url など）
+  // 2) profiles 更新（username / is_public / sns / avatar_url / display_name / bio）
   const patch: Record<string, any> = { id: user.id };
+
   if (display_name !== null) patch.display_name = display_name;
   if (bio !== null) patch.bio = bio;
   if (avatarUrl !== null) patch.avatar_url = avatarUrl;
   if (username !== null) patch.username = username;
 
-  // null を潰して true / false どちらかを必ず保存
   patch.is_public = is_public ?? true;
 
-  if (headerImageUrl !== null) patch.header_image_url = headerImageUrl;
+  // 公認SNS
+  patch.instagram_username = instagram_username; // nullでも上書き（空にしたいことがある）
+  patch.x_username = x_username;
 
   const { error: upsertErr } = await supabase.from("profiles").upsert(patch, {
     onConflict: "id",
   });
+
   if (upsertErr) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: `プロフィール更新に失敗しました: ${upsertErr.message}`,
-      },
+      { ok: false, error: `プロフィール更新に失敗しました: ${upsertErr.message}` },
       { status: 500 }
     );
   }
