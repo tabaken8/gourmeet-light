@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, TrainFront } from "lucide-react";
+import { Search, TrainFront, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import TimelineFeed from "@/components/TimelineFeed";
@@ -29,7 +29,7 @@ type StationSuggest = {
 function normalizeModeFromUrl(m: string | null): SearchMode {
   if (m === "station") return "station";
   if (m === "auto") return "auto";
-  if (m === "free") return "geo"; // legacy
+  if (m === "free") return "geo";
   return "geo";
 }
 
@@ -41,6 +41,7 @@ function buildUrl(
     mode?: SearchMode;
     stationPlaceId?: string | null;
     stationName?: string | null;
+    genre?: string | null;
   }
 ) {
   const sp = new URLSearchParams(searchParams.toString());
@@ -50,6 +51,7 @@ function buildUrl(
   const mode = next.mode ?? normalizeModeFromUrl(sp.get("m"));
   const sid = next.stationPlaceId ?? sp.get("sid");
   const sname = next.stationName ?? sp.get("sname");
+  const genre = (next.genre ?? sp.get("genre") ?? "").trim();
 
   if (q) sp.set("q", q);
   else sp.delete("q");
@@ -57,13 +59,12 @@ function buildUrl(
   if (followOnly) sp.set("follow", "1");
   else sp.delete("follow");
 
-  if (q) {
-    sp.set("m", mode);
-  } else {
-    sp.delete("m");
-    sp.delete("sid");
-    sp.delete("sname");
-  }
+  if (genre) sp.set("genre", genre);
+  else sp.delete("genre");
+
+  // stationはsidがあればq空でも保持
+  if (mode === "station" ? !!sid : !!q) sp.set("m", mode);
+  else sp.delete("m");
 
   if (mode === "station") {
     if (sid) sp.set("sid", String(sid));
@@ -78,17 +79,27 @@ function buildUrl(
   return `?${sp.toString()}`;
 }
 
+const GENRES = [
+  "焼肉",
+  "寿司",
+  "ラーメン",
+  "カフェ",
+  "居酒屋",
+  "イタリアン",
+  "中華",
+  "和食",
+  "フレンチ",
+  "バー",
+] as const;
+
 export default function SearchPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
   const sp = useSearchParams();
 
-  // URL -> state
-  const qFromUrl = (sp.get("q") ?? "").trim();
-  const followFromUrl = sp.get("follow") === "1";
-  const modeFromUrl = normalizeModeFromUrl(sp.get("m"));
-  const stationIdFromUrl = sp.get("sid");
-  const stationNameFromUrl = sp.get("sname");
+  // ---- Hydration mismatch回避：mount後にURL同期 ----
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // me
   const [meId, setMeId] = useState<string | null>(null);
@@ -99,26 +110,28 @@ export default function SearchPage() {
     })();
   }, [supabase]);
 
-  // input state（入力中）
-  const [q, setQ] = useState(qFromUrl);
-  const [followOnly, setFollowOnly] = useState(followFromUrl);
+  // input（自由入力）
+  const [q, setQ] = useState<string>("");
+  const [followOnly, setFollowOnly] = useState<boolean>(false);
 
-  // 解釈 state（入力中の候補解釈）
-  const [mode, setMode] = useState<SearchMode>(modeFromUrl);
-  const [stationPlaceId, setStationPlaceId] = useState<string | null>(stationIdFromUrl);
-  const [stationName, setStationName] = useState<string | null>(stationNameFromUrl);
+  // station plate
+  const [mode, setMode] = useState<SearchMode>("geo");
+  const [stationPlaceId, setStationPlaceId] = useState<string | null>(null);
+  const [stationName, setStationName] = useState<string | null>(null);
 
-  // TimelinePostListへ渡す「検索駅名」（stationの時だけ）
-  const [searchedStationName, setSearchedStationName] = useState<string | null>(
-    modeFromUrl === "station" ? (stationNameFromUrl ?? qFromUrl ?? null) : null
-  );
+  // genre chip（←今回やりたいのはコレをinput内に出すだけ）
+  const [genre, setGenre] = useState<string>("");
 
-  // committed state（検索実行済み）
-  const [committedQ, setCommittedQ] = useState(qFromUrl);
-  const [committedFollow, setCommittedFollow] = useState(followFromUrl);
-  const [committedMode, setCommittedMode] = useState<SearchMode>(modeFromUrl);
-  const [committedStationId, setCommittedStationId] = useState<string | null>(stationIdFromUrl);
-  const [committedStationName, setCommittedStationName] = useState<string | null>(stationNameFromUrl);
+  // TimelinePostListに渡す駅名（検索確定後のみ）
+  const [searchedStationName, setSearchedStationName] = useState<string | null>(null);
+
+  // committed（検索確定済み）
+  const [committedQ, setCommittedQ] = useState<string>("");
+  const [committedFollow, setCommittedFollow] = useState<boolean>(false);
+  const [committedMode, setCommittedMode] = useState<SearchMode>("geo");
+  const [committedStationId, setCommittedStationId] = useState<string | null>(null);
+  const [committedStationName, setCommittedStationName] = useState<string | null>(null);
+  const [committedGenre, setCommittedGenre] = useState<string>("");
 
   // results
   const [users, setUsers] = useState<UserHit[]>([]);
@@ -130,40 +143,52 @@ export default function SearchPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // station suggest UI
+  // station suggest
   const [suggests, setSuggests] = useState<StationSuggest[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const suggestReqId = useRef(0);
+
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const justSelectedStationRef = useRef(false);
 
-  // ✅ 追加：選択直後に再サジェスト出るのを防ぐフラグ
-  const suppressSuggestRef = useRef(false);
-
-  // URL -> input state（戻る/進む対応）
+  // ---- URL -> state（mount後同期）----
   useEffect(() => {
-    setQ(qFromUrl);
-    setFollowOnly(followFromUrl);
+    if (!mounted) return;
 
+    const qFromUrl = (sp.get("q") ?? "").trim();
+    const followFromUrl = sp.get("follow") === "1";
+    const modeFromUrl = normalizeModeFromUrl(sp.get("m"));
+    const stationIdFromUrl = sp.get("sid");
+    const stationNameFromUrl = sp.get("sname");
+    const genreFromUrl = (sp.get("genre") ?? "").trim();
+
+    setFollowOnly(followFromUrl);
     setMode(modeFromUrl);
     setStationPlaceId(stationIdFromUrl);
     setStationName(stationNameFromUrl);
+    setGenre(genreFromUrl);
 
-    setSearchedStationName(modeFromUrl === "station" ? (stationNameFromUrl ?? qFromUrl ?? null) : null);
+    setQ(qFromUrl);
 
     setCommittedQ(qFromUrl);
     setCommittedFollow(followFromUrl);
     setCommittedMode(modeFromUrl);
     setCommittedStationId(stationIdFromUrl);
     setCommittedStationName(stationNameFromUrl);
+    setCommittedGenre(genreFromUrl);
 
-    // URL遷移はサジェスト復帰してOK
-    suppressSuggestRef.current = false;
-
+    setSearchedStationName(modeFromUrl === "station" ? (stationNameFromUrl ?? null) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qFromUrl, followFromUrl, modeFromUrl, stationIdFromUrl, stationNameFromUrl]);
+  }, [mounted, sp]);
 
-  const isEmpty = !committedQ.trim();
+  // stationは「駅だけ」でも検索OK
+  const isEmpty = !committedQ.trim() && !(committedMode === "station" && committedStationId);
+
+  function buildCombinedQuery(nextQ: string, nextGenre: string) {
+    const parts = [nextGenre.trim(), nextQ.trim()].filter(Boolean);
+    return parts.join(" ").trim();
+  }
 
   async function loadUsers(query: string) {
     const qq = query.trim();
@@ -198,13 +223,10 @@ export default function SearchPage() {
       const payload = await res.json().catch(() => ({}));
       if (suggestReqId.current !== my) return;
 
-      const rows: StationSuggest[] = Array.isArray(payload?.stations)
-        ? payload.stations
-        : Array.isArray(payload)
-        ? payload
-        : [];
+      const rows: StationSuggest[] = Array.isArray(payload?.stations) ? payload.stations : [];
       setSuggests(rows);
-      setSuggestOpen(rows.length > 0);
+
+      if (!justSelectedStationRef.current) setSuggestOpen(rows.length > 0);
     } catch {
       if (suggestReqId.current !== my) return;
       setSuggests([]);
@@ -214,20 +236,31 @@ export default function SearchPage() {
     }
   }
 
-  async function loadMore(
-    reset = false,
-    opts?: { q?: string; follow?: boolean; mode?: SearchMode; sid?: string | null; sname?: string | null }
+  // ★重要：loadMoreがcommitted stateに依存すると「1回目が前回条件」になりやすい。
+  // → 引数で条件を受け取って、その条件で必ず叩く。
+  async function loadMoreWith(
+    args: {
+      mode: SearchMode;
+      stationId: string | null;
+      stationName: string | null;
+      follow: boolean;
+      q: string;
+      genre: string;
+    },
+    reset: boolean
   ) {
     if (loading) return;
     if (!reset && done) return;
 
-    const qq = (opts?.q ?? committedQ).trim();
-    const ff = opts?.follow ?? committedFollow;
-    const mm = opts?.mode ?? committedMode;
-    const sid = opts?.sid ?? committedStationId;
-    const sname = opts?.sname ?? committedStationName;
+    const mm = args.mode;
+    const sid = args.stationId;
+    const sname = args.stationName;
+    const ff = args.follow;
+    const freeQ = args.q;
+    const g = args.genre;
 
-    if (!qq) return;
+    if (mm !== "station" && !freeQ.trim() && !g.trim()) return;
+    if (mm === "station" && !sid) return;
 
     setLoading(true);
     setError(null);
@@ -236,22 +269,25 @@ export default function SearchPage() {
 
     try {
       let url = "";
+      const combined = buildCombinedQuery(freeQ, g);
 
       if (mm === "station") {
-        if (!sid) throw new Error("駅IDが見つかりませんでした（sid）");
-
         const params = new URLSearchParams();
-        params.set("station_place_id", sid);
+        params.set("station_place_id", String(sid));
         params.set("radius_m", "3000");
         params.set("limit", String(limit));
         if (ff) params.set("follow", "1");
+
+        // resetじゃない時だけcursor
         if (!reset && cursor) params.set("cursor", cursor);
-        if (sname) params.set("station_name", sname); // UI用
+
+        if (sname) params.set("station_name", sname);
+        if (combined) params.set("q", combined);
 
         url = `/api/search/by-station-ui?${params.toString()}`;
       } else {
         const params = new URLSearchParams();
-        params.set("q", qq);
+        if (combined) params.set("q", combined);
         params.set("limit", String(limit));
         if (ff) params.set("follow", "1");
         if (!reset && cursor) params.set("cursor", cursor);
@@ -263,14 +299,7 @@ export default function SearchPage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
-      const newPosts: PostRow[] = Array.isArray(payload?.posts)
-        ? payload.posts
-        : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload)
-        ? payload
-        : [];
-
+      const newPosts: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
       const nextCursor: string | null = payload?.nextCursor ?? payload?.next_cursor ?? payload?.cursor ?? null;
 
       setPosts((prev) => {
@@ -291,26 +320,39 @@ export default function SearchPage() {
     }
   }
 
-  const commitSearch = (next: { q: string; follow: boolean; mode: SearchMode; sid?: string | null; sname?: string | null }) => {
-    const nq = next.q.trim();
+  // ✅ 検索確定（Enter / 検索ボタン）
+  const commitSearch = (next: {
+    q: string;
+    follow: boolean;
+    mode: SearchMode;
+    sid?: string | null;
+    sname?: string | null;
+    genre?: string | null;
+  }) => {
+    const nq = (next.q ?? "").trim();
+    const ng = (next.genre ?? "").trim();
+    const mm = next.mode;
 
+    // URL更新
     const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
       q: nq,
       followOnly: next.follow,
-      mode: next.mode,
+      mode: mm,
       stationPlaceId: next.sid ?? null,
       stationName: next.sname ?? null,
+      genre: ng || null,
     });
     router.replace(`/search${nextUrl}`, { scroll: false });
 
+    // committed更新
     setCommittedQ(nq);
+    setCommittedGenre(ng);
     setCommittedFollow(next.follow);
-    setCommittedMode(next.mode);
+    setCommittedMode(mm);
     setCommittedStationId(next.sid ?? null);
     setCommittedStationName(next.sname ?? null);
 
-    if (next.mode === "station") setSearchedStationName(next.sname ?? nq ?? null);
-    else setSearchedStationName(null);
+    setSearchedStationName(mm === "station" ? (next.sname ?? null) : null);
 
     // reset results
     setUsers([]);
@@ -319,31 +361,27 @@ export default function SearchPage() {
     setDone(false);
     setError(null);
 
-    if (!nq) return;
+    // geoは（q or genre）どっちか必要 / stationはsid必須（駅だけOK）
+    if (mm !== "station" && !nq && !ng) return;
+    if (mm === "station" && !next.sid) return;
 
-    loadUsers(nq);
-    loadMore(true, { q: nq, follow: next.follow, mode: next.mode, sid: next.sid ?? null, sname: next.sname ?? null });
+    if (nq) loadUsers(nq);
+
+    // ★ここが肝：committed stateに依存せず、このnext条件で1発目を叩く
+    loadMoreWith(
+      {
+        mode: mm,
+        stationId: next.sid ?? null,
+        stationName: next.sname ?? null,
+        follow: next.follow,
+        q: nq,
+        genre: ng,
+      },
+      true
+    );
   };
 
-  // URLから入ってきた時は自動検索
-  const didAutoRef = useRef(false);
-  useEffect(() => {
-    if (didAutoRef.current) return;
-    didAutoRef.current = true;
-
-    if (qFromUrl.trim()) {
-      commitSearch({
-        q: qFromUrl,
-        follow: followFromUrl,
-        mode: modeFromUrl,
-        sid: stationIdFromUrl,
-        sname: stationNameFromUrl,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 無限スクロール（検索結果側のみ）
+  // infinite scroll（検索結果があるときだけ）
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!sentinelRef.current) return;
@@ -352,78 +390,123 @@ export default function SearchPage() {
     const el = sentinelRef.current;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) loadMore(false);
+        if (entries[0]?.isIntersecting) {
+          loadMoreWith(
+            {
+              mode: committedMode,
+              stationId: committedStationId,
+              stationName: committedStationName,
+              follow: committedFollow,
+              q: committedQ,
+              genre: committedGenre,
+            },
+            false
+          );
+        }
       },
       { rootMargin: "800px" }
     );
     io.observe(el);
     return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor, done, loading, isEmpty, committedQ, committedFollow, committedMode, committedStationId]);
+  }, [cursor, done, loading, isEmpty, committedQ, committedFollow, committedMode, committedStationId, committedGenre]);
 
-  // ✅ 入力が変わったら station候補（※選択直後は抑制）
+  // suggest（駅プレートがない時だけ）
   useEffect(() => {
     const qq = q.trim();
+
+    if (stationPlaceId) {
+      setSuggestOpen(false);
+      setSuggests([]);
+      return;
+    }
+
     if (!qq) {
       setSuggests([]);
       setSuggestOpen(false);
       return;
     }
 
-    if (suppressSuggestRef.current) {
-      // 選択直後の「setQ」でここが走るので、1回だけ抑制して解除
-      suppressSuggestRef.current = false;
-      return;
-    }
+    justSelectedStationRef.current = false;
 
     const t = setTimeout(() => loadSuggestStations(qq), 150);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, stationPlaceId]);
 
-  // サジェスト選択（駅として確定）
   const selectStation = (s: StationSuggest) => {
-    const nextQ = (s.station_name ?? q).trim();
+    justSelectedStationRef.current = true;
 
-    // ✅ これが重要：この setQ で useEffect が走るので一度だけ抑制
-    suppressSuggestRef.current = true;
-
-    setQ(nextQ);
     setMode("station");
     setStationPlaceId(s.station_place_id);
     setStationName(s.station_name);
 
+    // 駅をプレート固定する時だけ入力は空にして“続き入力”促す（ここはあなたの好みで維持）
+    setQ("");
+
     setSuggestOpen(false);
     setSuggests([]);
 
-    commitSearch({
-      q: nextQ,
-      follow: followOnly,
+    // URLだけ更新（検索は走らせない）
+    const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
+      q: "",
+      followOnly,
       mode: "station",
-      sid: s.station_place_id,
-      sname: s.station_name,
+      stationPlaceId: s.station_place_id,
+      stationName: s.station_name,
+      genre: genre || null,
     });
+    router.replace(`/search${nextUrl}`, { scroll: false });
 
-    requestAnimationFrame(() => inputRef.current?.blur());
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  // Enter：サジェスト未選択なら geo として確定
-  const enterAsGeo = () => {
-    const nq = q.trim();
+  const clearStation = () => {
     setMode("geo");
     setStationPlaceId(null);
     setStationName(null);
+    setSearchedStationName(null);
 
-    setSuggestOpen(false);
+    const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
+      q: q.trim(),
+      followOnly,
+      mode: "geo",
+      stationPlaceId: null,
+      stationName: null,
+      genre: genre || null,
+    });
+    router.replace(`/search${nextUrl}`, { scroll: false });
 
-    commitSearch({ q: nq, follow: followOnly, mode: "geo", sid: null, sname: null });
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const clearGenre = () => {
+    setGenre("");
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const enterToSearch = () => {
+    if (mode === "station") {
+      commitSearch({
+        q,
+        genre,
+        follow: followOnly,
+        mode: "station",
+        sid: stationPlaceId,
+        sname: stationName,
+      });
+      return;
+    }
+    commitSearch({ q, genre, follow: followOnly, mode: "geo", sid: null, sname: null });
   };
 
   const toggleFollow = (next: boolean) => {
     setFollowOnly(next);
-    if (committedQ.trim()) {
+
+    if (!isEmpty) {
       commitSearch({
         q: q.trim() ? q : committedQ,
+        genre: genre || committedGenre,
         follow: next,
         mode: committedMode,
         sid: committedStationId,
@@ -432,80 +515,107 @@ export default function SearchPage() {
     }
   };
 
-  // ✅ 結果タイトル（ドン）
-  const resultTitle = useMemo(() => {
-    const qq = committedQ.trim();
-    if (!qq) return "";
+  const titleText = useMemo(() => {
+    if (isEmpty) return "";
     if (committedMode === "station") {
-      const name = committedStationName || qq;
-      return `${name}周辺の投稿一覧`;
+      const name = committedStationName ?? "駅";
+      const g = committedGenre ? ` × ${committedGenre}` : "";
+      const qq = committedQ ? `（${committedQ}）` : "";
+      return `${name}周辺の投稿一覧${g}${qq}`;
     }
-    return `「${qq}」の検索結果`;
-  }, [committedQ, committedMode, committedStationName]);
+    const g = committedGenre ? ` × ${committedGenre}` : "";
+    return `${committedQ}${g} の検索結果`;
+  }, [isEmpty, committedMode, committedStationName, committedGenre, committedQ]);
 
-  // ヘッダー（検索窓）
-  const header = useMemo(() => {
-    return (
+  return (
+    <div className="space-y-4">
+      {/* Header */}
       <div className="gm-card px-4 py-3">
+        <div className="mb-3">
+          {isEmpty ? (
+            <div className="text-[12px] text-slate-500">検索して投稿を探す</div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {committedMode === "station" ? <TrainFront size={18} className="text-slate-700" /> : null}
+              <div className="text-sm font-semibold text-slate-900">{titleText}</div>
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:w-[520px]">
             <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 
-            <input
-              ref={inputRef}
-              value={q}
-              onChange={(e) => {
-                suppressSuggestRef.current = false; // 手入力は抑制しない
-                setQ(e.target.value);
-                setMode("geo");
-                setStationPlaceId(null);
-                setStationName(null);
-              }}
-              onFocus={() => {
-                if (suggests.length > 0) setSuggestOpen(true);
-              }}
-              onBlur={() => {
-                setTimeout(() => setSuggestOpen(false), 120);
-              }}
-              placeholder="東京 焼肉 / 名古屋駅"
-              className="w-full rounded-full border border-black/10 bg-white px-10 pr-10 py-2.5 text-base font-medium outline-none focus:border-orange-200"
-              inputMode="search"
-              enterKeyHint="search"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") enterAsGeo();
-                if (e.key === "Escape") setSuggestOpen(false);
-              }}
-            />
+            {/* 枠内にチップ+input */}
+            <div className="flex items-center gap-2 w-full rounded-full border border-black/10 bg-white px-10 pr-10 py-2.5 focus-within:border-orange-200">
+              {/* 駅プレート */}
+              {stationPlaceId && stationName ? (
+                <div className="shrink-0 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-800">
+                  <TrainFront size={16} className="opacity-80" />
+                  <span className="max-w-[160px] truncate">{stationName}</span>
+                  <button
+                    type="button"
+                    onClick={clearStation}
+                    className="grid h-5 w-5 place-items-center rounded-full hover:bg-black/5"
+                    aria-label="駅を外す"
+                  >
+                    <X size={14} className="opacity-70" />
+                  </button>
+                </div>
+              ) : null}
 
-            {/* クリア */}
-            {q && (
-              <button
-                type="button"
-                onClick={() => {
-                  setQ("");
-                  setSuggestOpen(false);
-                  setSuggests([]);
-                  setMode("geo");
-                  setStationPlaceId(null);
-                  setStationName(null);
-                  setSearchedStationName(null);
+              {/* ★GENREチップ（今回の主役） */}
+              {genre ? (
+                <div className="shrink-0 inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-800">
+                  <span className="max-w-[140px] truncate">{genre}</span>
+                  <button
+                    type="button"
+                    onClick={clearGenre}
+                    className="grid h-5 w-5 place-items-center rounded-full hover:bg-black/5"
+                    aria-label="ジャンルを外す"
+                  >
+                    <X size={14} className="opacity-70" />
+                  </button>
+                </div>
+              ) : null}
 
-                  const nextUrl = buildUrl(new URLSearchParams(sp.toString()), { q: "", followOnly });
-                  router.replace(`/search${nextUrl}`, { scroll: false });
+              {/* 自由入力：ここは一切“勝手に消さない” */}
+              <input
+                ref={inputRef}
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  if (!stationPlaceId) setMode("geo");
                 }}
-                aria-label="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <span className="text-lg leading-none">×</span>
-              </button>
-            )}
+                onFocus={() => {
+                  if (!stationPlaceId && suggests.length > 0) setSuggestOpen(true);
+                }}
+                onBlur={() => setTimeout(() => setSuggestOpen(false), 120)}
+                placeholder={stationPlaceId ? "食べたいもの / 用途（例：デート）" : "東京 焼肉 / 名古屋駅"}
+                className="w-full bg-transparent text-base font-medium outline-none"
+                inputMode="search"
+                enterKeyHint="search"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") enterToSearch();
+                  if (e.key === "Escape") setSuggestOpen(false);
+                }}
+              />
+            </div>
 
-            {/* ✅ station suggests dropdown */}
-            {suggestOpen && q.trim() && suggests.length > 0 ? (
+            <button
+              type="button"
+              onClick={enterToSearch}
+              aria-label="Search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            >
+              <Search size={16} />
+            </button>
+
+            {/* Station Suggest dropdown */}
+            {!stationPlaceId && suggestOpen && q.trim() && suggests.length > 0 ? (
               <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-black/10 bg-white shadow-lg">
                 <div className="px-3 py-2 text-[11px] text-slate-500 border-b border-black/5">
-                  駅候補（選ぶと「駅として検索」）
+                  駅候補（選ぶと駅プレートが固定されます）
                   {suggestLoading ? <span className="ml-2 text-slate-400">…</span> : null}
                 </div>
                 <div className="max-h-[320px] overflow-auto">
@@ -518,9 +628,8 @@ export default function SearchPage() {
                       onClick={() => selectStation(s)}
                     >
                       <div className="flex items-center justify-between gap-3">
-                        {/* ✅ 電車マーク + 駅名 */}
                         <div className="min-w-0 flex items-center gap-2">
-                          <TrainFront size={16} className="shrink-0 text-slate-500" />
+                          <TrainFront size={16} className="text-slate-700 shrink-0" />
                           <div className="truncate text-sm font-semibold text-slate-900">{s.station_name}</div>
                         </div>
 
@@ -545,43 +654,58 @@ export default function SearchPage() {
             フォローしている人のみ
           </label>
         </div>
+
+        {/* GENREボタン：タップしたらチップが“枠内に埋まる” */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={`gm-chip px-3 py-1.5 text-[12px] ${
+              genre ? "text-slate-600" : "text-slate-900 font-semibold"
+            }`}
+            onClick={() => {
+              setGenre("");
+              requestAnimationFrame(() => inputRef.current?.focus());
+            }}
+          >
+            すべて
+          </button>
+
+          {GENRES.map((g) => {
+            const active = genre === g;
+            return (
+              <button
+                key={g}
+                type="button"
+                className={`gm-chip px-3 py-1.5 text-[12px] ${
+                  active ? "text-orange-800 font-semibold" : "text-slate-700"
+                }`}
+                onClick={() => {
+                  setGenre(g);
+                  requestAnimationFrame(() => inputRef.current?.focus());
+                }}
+              >
+                {g}
+              </button>
+            );
+          })}
+
+          <div className="text-[11px] text-slate-500 ml-1">※Enterで検索</div>
+        </div>
       </div>
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, followOnly, suggests, suggestOpen, suggestLoading]);
 
-  return (
-    <div className="space-y-4">
-      {header}
-
+      {/* Body */}
       {isEmpty ? (
         <TimelineFeed activeTab="discover" meId={meId} />
       ) : (
         <div className="space-y-4">
-          {/* ✅ 結果タイトル（ドン） */}
-          <div className="gm-card px-4 py-3">
-            <div className="flex items-center gap-2">
-              {committedMode === "station" ? (
-                <TrainFront size={18} className="text-slate-600" />
-              ) : (
-                <Search size={18} className="text-slate-600" />
-              )}
-              <div className="text-base font-semibold text-slate-900">{resultTitle}</div>
-            </div>
-
-            {committedMode !== "station" ? (
-              <div className="mt-1 text-[11px] text-slate-500">
-                駅として検索したい場合は、検索窓の候補から駅を選べます。
-              </div>
-            ) : null}
-          </div>
-
           {/* Users */}
           {usersLoading ? (
             <div className="gm-card px-4 py-3 text-xs text-slate-500">ユーザーを検索中…</div>
           ) : users.length > 0 ? (
             <section className="gm-card px-4 py-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Users</div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Users
+              </div>
               <div className="flex flex-col gap-2">
                 {users.map((u) => {
                   const name = u.display_name ?? u.username ?? "ユーザー";
@@ -621,15 +745,26 @@ export default function SearchPage() {
 
           {/* Posts */}
           {posts.length > 0 ? (
-            <TimelinePostList posts={posts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} />
+            <TimelinePostList
+              posts={posts}
+              meId={meId}
+              mode={committedMode}
+              searchedStationName={searchedStationName}
+            />
           ) : null}
 
           <div ref={sentinelRef} className="h-10" />
 
           {loading && <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>}
-          {error && !error.includes("Unauthorized") && <div className="pb-8 text-center text-xs text-red-600">{error}</div>}
-          {done && posts.length > 0 && <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>}
-          {!loading && posts.length === 0 && !error && <div className="py-10 text-center text-xs text-slate-500">該当する投稿がありません。</div>}
+          {error && !error.includes("Unauthorized") && (
+            <div className="pb-8 text-center text-xs text-red-600">{error}</div>
+          )}
+          {done && posts.length > 0 && (
+            <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>
+          )}
+          {!loading && posts.length === 0 && !error && (
+            <div className="py-10 text-center text-xs text-slate-500">該当する投稿がありません。</div>
+          )}
         </div>
       )}
     </div>
