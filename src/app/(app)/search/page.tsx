@@ -1,3 +1,4 @@
+// src/app/(app)/search/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -37,6 +38,11 @@ function normalizeModeFromUrl(m: string | null): SearchMode {
   return "geo";
 }
 
+/**
+ * URLキーはここで完全統一：
+ * - station_place_id / station_name
+ * ただし過去互換で sid/sname も読んで消す
+ */
 function buildUrl(
   searchParams: URLSearchParams,
   next: {
@@ -53,8 +59,19 @@ function buildUrl(
   const q = (next.q ?? sp.get("q") ?? "").trim();
   const followOnly = next.followOnly ?? (sp.get("follow") === "1");
   const mode = next.mode ?? normalizeModeFromUrl(sp.get("m"));
-  const sid = next.stationPlaceId ?? sp.get("sid");
-  const sname = next.stationName ?? sp.get("sname");
+
+  const sid =
+    next.stationPlaceId ??
+    sp.get("station_place_id") ??
+    sp.get("sid") ??
+    null;
+
+  const sname =
+    next.stationName ??
+    sp.get("station_name") ??
+    sp.get("sname") ??
+    null;
+
   const genre = (next.genre ?? sp.get("genre") ?? "").trim();
 
   if (q) sp.set("q", q);
@@ -66,16 +83,23 @@ function buildUrl(
   if (genre) sp.set("genre", genre);
   else sp.delete("genre");
 
-  // stationはsidがあればq空でも保持
+  // stationは station_place_id があれば q空でも保持
   if (mode === "station" ? !!sid : !!q) sp.set("m", mode);
   else sp.delete("m");
 
   if (mode === "station") {
-    if (sid) sp.set("sid", String(sid));
-    else sp.delete("sid");
-    if (sname) sp.set("sname", String(sname));
-    else sp.delete("sname");
+    if (sid) sp.set("station_place_id", String(sid));
+    else sp.delete("station_place_id");
+
+    if (sname) sp.set("station_name", String(sname));
+    else sp.delete("station_name");
+
+    // 旧キーは掃除
+    sp.delete("sid");
+    sp.delete("sname");
   } else {
+    sp.delete("station_place_id");
+    sp.delete("station_name");
     sp.delete("sid");
     sp.delete("sname");
   }
@@ -115,15 +139,10 @@ const listStagger = {
 function UsersSkeleton() {
   return (
     <div className="gm-card px-4 py-3">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-        Users
-      </div>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Users</div>
       <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2"
-          >
+          <div key={i} className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2">
             <Skeleton circle width={40} height={40} />
             <div className="min-w-0 flex-1">
               <Skeleton width={160} height={12} />
@@ -235,8 +254,11 @@ export default function SearchPage() {
     const qFromUrl = (sp.get("q") ?? "").trim();
     const followFromUrl = sp.get("follow") === "1";
     const modeFromUrl = normalizeModeFromUrl(sp.get("m"));
-    const stationIdFromUrl = sp.get("sid");
-    const stationNameFromUrl = sp.get("sname");
+
+    // ✅ 新キー優先（互換で旧キーも読む）
+    const stationIdFromUrl = sp.get("station_place_id") ?? sp.get("sid");
+    const stationNameFromUrl = sp.get("station_name") ?? sp.get("sname");
+
     const genreFromUrl = (sp.get("genre") ?? "").trim();
 
     setFollowOnly(followFromUrl);
@@ -331,6 +353,7 @@ export default function SearchPage() {
     }
   }
 
+  // ✅ API統合版：/api/search だけ叩く（stationもgeoも）
   async function loadMoreWith(
     args: {
       mode: SearchMode;
@@ -352,7 +375,9 @@ export default function SearchPage() {
     const freeQ = args.q;
     const g = args.genre;
 
+    // geo: q/genreが空なら検索しない
     if (mm !== "station" && !freeQ.trim() && !g.trim()) return;
+    // station: sid必須
     if (mm === "station" && !sid) return;
 
     setLoading(true);
@@ -361,31 +386,25 @@ export default function SearchPage() {
     const limit = 10;
 
     try {
-      let url = "";
+      const params = new URLSearchParams();
       const combined = buildCombinedQuery(freeQ, g);
 
+      params.set("limit", String(limit));
+      if (ff) params.set("follow", "1");
+      if (!reset && cursor) params.set("cursor", cursor);
+
       if (mm === "station") {
-        const params = new URLSearchParams();
         params.set("station_place_id", String(sid));
         params.set("radius_m", "3000");
-        params.set("limit", String(limit));
-        if (ff) params.set("follow", "1");
-
-        if (!reset && cursor) params.set("cursor", cursor);
-
         if (sname) params.set("station_name", sname);
+        // qは空でもOK（駅周辺一覧）
         if (combined) params.set("q", combined);
-
-        url = `/api/search/by-station-ui?${params.toString()}`;
       } else {
-        const params = new URLSearchParams();
+        // geoはcombined必須（空なら呼ばない）
         if (combined) params.set("q", combined);
-        params.set("limit", String(limit));
-        if (ff) params.set("follow", "1");
-        if (!reset && cursor) params.set("cursor", cursor);
-
-        url = `/api/search?${params.toString()}`;
       }
+
+      const url = `/api/search?${params.toString()}`;
 
       const res = await fetch(url);
       const payload = await res.json().catch(() => ({}));
@@ -412,7 +431,7 @@ export default function SearchPage() {
     }
   }
 
-  // ✅ 検索確定
+  // ✅ 検索確定（URLもstateも結果も全部そろえる “唯一の正”）
   const commitSearch = (next: {
     q: string;
     follow: boolean;
@@ -425,14 +444,16 @@ export default function SearchPage() {
     const ng = (next.genre ?? "").trim();
     const mm = next.mode;
 
-    const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
-      q: nq,
-      followOnly: next.follow,
-      mode: mm,
-      stationPlaceId: next.sid ?? null,
-      stationName: next.sname ?? null,
-      genre: ng || null,
-    });
+const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
+  q: nq,
+  followOnly: next.follow,
+  mode: mm,
+  stationPlaceId: next.sid ?? null,
+  stationName: next.sname ?? null,
+  // ✅ 空文字 "" を渡すと buildUrl 側で delete される
+  genre: ng,
+});
+
     router.replace(`/search${nextUrl}`, { scroll: false });
 
     setCommittedQ(nq);
@@ -450,9 +471,11 @@ export default function SearchPage() {
     setDone(false);
     setError(null);
 
+    // 実行条件
     if (mm !== "station" && !nq && !ng) return;
     if (mm === "station" && !next.sid) return;
 
+    // usersは “自由入力” のみで出したい（genreだけでユーザー検索されても微妙なので）
     if (nq) loadUsers(nq);
 
     loadMoreWith(
@@ -533,6 +556,7 @@ export default function SearchPage() {
     setSuggestOpen(false);
     setSuggests([]);
 
+    // ✅ 駅選択も “即URL反映だけ” にしておく（検索はEnter/虫眼鏡 or ジャンル押下で走る）
     const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
       q: "",
       followOnly,
@@ -546,12 +570,29 @@ export default function SearchPage() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  const clearStation = () => {
+  // ✅ チップ削除系は「URLからも消す」＋「必要なら検索も更新」
+  const clearStation = (opts?: { commit?: boolean }) => {
     setMode("geo");
     setStationPlaceId(null);
     setStationName(null);
     setSearchedStationName(null);
 
+    const willCommit = opts?.commit ?? false;
+
+    if (willCommit) {
+      // station解除＝geoに戻して再検索（q/genreが空ならisEmptyになるだけ）
+      commitSearch({
+        q: q.trim() ? q : committedQ,
+        genre: genre || committedGenre,
+        follow: followOnly,
+        mode: "geo",
+        sid: null,
+        sname: null,
+      });
+      return;
+    }
+
+    // commitしない場合でもURLは整える
     const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
       q: q.trim(),
       followOnly,
@@ -565,11 +606,39 @@ export default function SearchPage() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  const clearGenre = () => {
+  const clearGenre = (opts?: { commit?: boolean }) => {
     setGenre("");
+
+    const willCommit = opts?.commit ?? false;
+
+    if (willCommit) {
+      // genre解除＝現在の条件で再検索（genre=""にした状態）
+      commitSearch({
+        q: q.trim() ? q : committedQ,
+        genre: "",
+        follow: followOnly,
+        mode: mode,
+        sid: stationPlaceId,
+        sname: stationName,
+      });
+      return;
+    }
+
+    // commitしない場合でもURLは整える
+    const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
+      q: q.trim(),
+      followOnly,
+      mode,
+      stationPlaceId,
+      stationName,
+      genre: null,
+    });
+    router.replace(`/search${nextUrl}`, { scroll: false });
+
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  // Enterで検索確定
   const enterToSearch = () => {
     if (mode === "station") {
       commitSearch({
@@ -588,6 +657,7 @@ export default function SearchPage() {
   const toggleFollow = (next: boolean) => {
     setFollowOnly(next);
 
+    // 既に結果表示中なら即反映
     if (!isEmpty) {
       commitSearch({
         q: q.trim() ? q : committedQ,
@@ -597,8 +667,42 @@ export default function SearchPage() {
         sid: committedStationId,
         sname: committedStationName,
       });
+    } else {
+      // 空ならURLだけ整える
+      const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
+        q: q.trim(),
+        followOnly: next,
+        mode,
+        stationPlaceId,
+        stationName,
+        genre: genre || null,
+      });
+      router.replace(`/search${nextUrl}`, { scroll: false });
     }
   };
+
+  // ✅ Delete/Backspaceでチップを消す（station/genre両方）
+  function handleChipDeleteKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Backspace" && e.key !== "Delete") return;
+
+    // 入力があるときは普通に文字削除
+    if (q.trim().length > 0) return;
+
+    // どちらかがあるときだけ“チップ削除”にする
+    if (!genre && !(stationPlaceId && stationName)) return;
+
+    e.preventDefault();
+
+    // 優先順位：genre -> station（最後に付けた感覚に近い）
+    if (genre) {
+      clearGenre({ commit: true });
+      return;
+    }
+    if (stationPlaceId && stationName) {
+      clearStation({ commit: true });
+      return;
+    }
+  }
 
   const titleText = useMemo(() => {
     if (isEmpty) return "";
@@ -643,7 +747,7 @@ export default function SearchPage() {
                   <span className="max-w-[160px] truncate">{stationName}</span>
                   <button
                     type="button"
-                    onClick={clearStation}
+                    onClick={() => clearStation({ commit: true })}
                     className="grid h-5 w-5 place-items-center rounded-full hover:bg-black/5"
                     aria-label="駅を外す"
                   >
@@ -658,7 +762,7 @@ export default function SearchPage() {
                   <span className="max-w-[140px] truncate">{genre}</span>
                   <button
                     type="button"
-                    onClick={clearGenre}
+                    onClick={() => clearGenre({ commit: true })}
                     className="grid h-5 w-5 place-items-center rounded-full hover:bg-black/5"
                     aria-label="ジャンルを外す"
                   >
@@ -686,6 +790,7 @@ export default function SearchPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") enterToSearch();
                   if (e.key === "Escape") setSuggestOpen(false);
+                  handleChipDeleteKey(e);
                 }}
               />
             </div>
@@ -751,7 +856,16 @@ export default function SearchPage() {
               genre ? "text-slate-600" : "text-slate-900 font-semibold"
             }`}
             onClick={() => {
+              // ✅ “すべて” も即反映＆即検索（＝genre解除）
               setGenre("");
+              commitSearch({
+                q,
+                genre: "",
+                follow: followOnly,
+                mode,
+                sid: stationPlaceId,
+                sname: stationName,
+              });
               requestAnimationFrame(() => inputRef.current?.focus());
             }}
           >
@@ -768,7 +882,16 @@ export default function SearchPage() {
                   active ? "text-orange-800 font-semibold" : "text-slate-700"
                 }`}
                 onClick={() => {
+                  // ✅ 要望：押した瞬間に URL反映＆検索更新
                   setGenre(g);
+                  commitSearch({
+                    q,
+                    genre: g,
+                    follow: followOnly,
+                    mode,
+                    sid: stationPlaceId,
+                    sname: stationName,
+                  });
                   requestAnimationFrame(() => inputRef.current?.focus());
                 }}
               >
@@ -811,9 +934,7 @@ export default function SearchPage() {
             <UsersSkeleton />
           ) : users.length > 0 ? (
             <motion.section className="gm-card px-4 py-3" {...fadeUp}>
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Users
-              </div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Users</div>
 
               <motion.div className="flex flex-col gap-2" variants={listStagger} initial="initial" animate="animate">
                 {users.map((u) => {
@@ -865,7 +986,6 @@ export default function SearchPage() {
                 searchedStationName={searchedStationName}
                 revealImages={true}
               />
-
             </motion.div>
           ) : null}
 

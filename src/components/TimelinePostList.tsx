@@ -1,3 +1,4 @@
+// src/components/TimelinePostList.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -10,7 +11,6 @@ import PostActions, { LikerLite } from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
-
 
 type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
 type ImageAsset = { pin?: string | null; square?: string | null; full?: string | null; [k: string]: any };
@@ -27,6 +27,7 @@ export type SearchMode = "geo" | "station" | "auto";
 export type PostRow = {
   id: string;
   content: string | null;
+
   user_id: string;
   created_at: any;
 
@@ -47,8 +48,12 @@ export type PostRow = {
   price_yen?: number | null;
   price_range?: string | null;
 
+  // station search UI fields (search results)
   search_station_distance_m?: number | null;
   search_station_minutes?: number | null;
+  search_station_name?: string | null;
+
+  // place intrinsic nearest station fields
   nearest_station_name?: string | null;
   nearest_station_distance_m?: number | null;
 
@@ -178,9 +183,10 @@ function GoogleMark({ className = "" }: { className?: string }) {
   );
 }
 
+// ✅ ceilで統一（APIと同じ見え方）
 function metersToWalkMin(m: number | null | undefined): number | null {
   if (typeof m !== "number" || !Number.isFinite(m) || m < 0) return null;
-  return Math.max(1, Math.round(m / 80)); // 徒歩80m/分
+  return Math.max(1, Math.ceil(m / 80));
 }
 
 export default function TimelinePostList({
@@ -188,14 +194,12 @@ export default function TimelinePostList({
   meId,
   mode = "auto",
   searchedStationName = null,
-  revealImages = false, // ✅ 追加
+  revealImages = false,
 }: {
   posts: PostRow[];
   meId: string | null;
   mode?: SearchMode;
   searchedStationName?: string | null;
-
-  /** ✅ /searchだけLP風にしたい時にtrue */
   revealImages?: boolean;
 }) {
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
@@ -203,14 +207,28 @@ export default function TimelinePostList({
   const normalized = useMemo(() => {
     return posts.map((p: any) => {
       const prof = p?.profile && typeof p.profile === "object" && !Array.isArray(p.profile) ? p.profile : null;
+
+      // ✅ /u/undefined 対策：user_id を必ず string に正規化
+      const userId = String(p?.user_id ?? p?.userId ?? "");
+
       return {
         ...p,
         id: String(p?.id ?? p?.post_id ?? ""),
+        user_id: userId,
         profile: prof,
+
         place_genre: p.place_genre ?? null,
         likeCount: p.likeCount ?? 0,
         likedByMe: p.likedByMe ?? false,
         initialLikers: p.initialLikers ?? [],
+
+        // ✅ 検索駅名がAPIから来てたら拾えるように正規化
+        search_station_name: (p.search_station_name ?? null) as string | null,
+
+        // ✅ nearest_* も念のため正規化
+        nearest_station_name: (p.nearest_station_name ?? null) as string | null,
+        nearest_station_distance_m:
+          typeof p.nearest_station_distance_m === "number" ? p.nearest_station_distance_m : null,
       } as PostRow;
     });
   }, [posts]);
@@ -227,7 +245,9 @@ export default function TimelinePostList({
         const initial = (display || "U").slice(0, 1).toUpperCase();
 
         const mapUrl = p.place_id
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_name ?? "place")}&query_place_id=${encodeURIComponent(p.place_id)}`
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+              p.place_name ?? "place"
+            )}&query_place_id=${encodeURIComponent(p.place_id)}`
           : p.place_address
           ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
           : null;
@@ -263,12 +283,18 @@ export default function TimelinePostList({
 
         const isStationMode = mode === "station";
 
-        const showSearchStation = isStationMode && !!searchedStationName && searchMin !== null;
+        // ✅ 駅名を壊れにくく：検索確定駅名 > postのsearch_station_name > "駅"
+        const selectedStationName =
+          (typeof searchedStationName === "string" && searchedStationName.trim()) ||
+          (typeof p.search_station_name === "string" && p.search_station_name.trim()) ||
+          "駅";
+
+        // ✅ 駅名が欠けても徒歩分は表示（駅名は上でフォールバック）
+        const showSearchStation = isStationMode && searchMin !== null;
         const showNearestStation = !!nearestName && nearestMin !== null;
 
         const showStationChip =
-          (isStationMode && (showSearchStation || showNearestStation)) ||
-          (!isStationMode && showNearestStation);
+          (isStationMode && (showSearchStation || showNearestStation)) || (!isStationMode && showNearestStation);
 
         return (
           <article key={key} className="gm-card gm-press overflow-hidden">
@@ -278,7 +304,7 @@ export default function TimelinePostList({
                 <div className="flex items-center justify-between px-4 pt-4 pb-2">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link
-                      href={`/u/${p.user_id}`}
+                      href={p.user_id ? `/u/${p.user_id}` : "#"}
                       className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700"
                     >
                       {avatar ? (
@@ -297,7 +323,10 @@ export default function TimelinePostList({
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
-                        <Link href={`/u/${p.user_id}`} className="truncate text-sm font-semibold text-slate-900 hover:underline">
+                        <Link
+                          href={p.user_id ? `/u/${p.user_id}` : "#"}
+                          className="truncate text-sm font-semibold text-slate-900 hover:underline"
+                        >
                           {display}
                         </Link>
                         {!isPublic && <Lock size={14} className="shrink-0 text-slate-500" />}
@@ -349,7 +378,7 @@ export default function TimelinePostList({
                         <span className="truncate">
                           {showSearchStation ? (
                             <>
-                              <span className="font-semibold">{searchedStationName}</span>
+                              <span className="font-semibold">{selectedStationName}</span>
                               <span className="ml-1 text-slate-500">から徒歩</span>
                               <span className="ml-1 font-semibold">{searchMin}</span>
                               <span className="text-slate-500">分</span>
@@ -362,7 +391,7 @@ export default function TimelinePostList({
 
                           {showNearestStation ? (
                             <>
-                              <span className="text-slate-500">{isStationMode ? "最寄" : "最寄"}</span>
+                              <span className="text-slate-500">最寄</span>
                               <span className="ml-1 font-semibold">{nearestName}</span>
                               <span className="ml-1 text-slate-500">徒歩</span>
                               <span className="ml-1 font-semibold">{nearestMin}</span>
@@ -424,7 +453,6 @@ export default function TimelinePostList({
                       preloadNeighbors={true}
                       fit="cover"
                       aspect="square"
-                      // ✅ ここが今回の追加：/searchだけLP風にする
                       reveal={revealImages}
                       revealStyle="wipe"
                       revealDurationMs={1100}
