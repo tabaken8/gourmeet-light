@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Lock, ChevronDown, ChevronUp } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
@@ -55,6 +55,7 @@ type PostRow = {
   likedByMe?: boolean;
   initialLikers?: LikerLite[];
 
+  // 注入投稿（最新タブ用）
   injected?: boolean;
   inject_reason?: string | null;
   inject_follow_mode?: "follow" | "followback" | null;
@@ -85,6 +86,9 @@ function formatJST(iso: string) {
   }).format(dt);
 }
 
+/**
+ * friends Timelineでは「正方形URLのみ」
+ */
 function getTimelineSquareUrls(p: PostRow): string[] {
   const cover = p.cover_square_url ? [p.cover_square_url] : [];
 
@@ -95,7 +99,9 @@ function getTimelineSquareUrls(p: PostRow): string[] {
   const thumbsFromVariants = variants.map((v) => v?.thumb ?? null).filter((x): x is string => !!x);
 
   const all = [...cover, ...squaresFromAssets, ...thumbsFromVariants];
-  return Array.from(new Set(all)).filter(Boolean);
+  const uniq = Array.from(new Set(all)).filter(Boolean);
+
+  return uniq;
 }
 
 function getFirstSquareThumb(p: PostRow): string | null {
@@ -185,7 +191,7 @@ function formatPrice(p: PostRow): string | null {
   return null;
 }
 
-// ---- discover tiles ----
+// ---- discover tiles planning ----
 function hashString(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -278,133 +284,282 @@ function planDiscoverTiles(
 }
 
 // =========================
-// ✅ Discover用：in-view後に “演出として” 遅延＋ワイプ表示（表示されない問題を潰す）
+// small hook: in-view observer
 // =========================
-function useInViewOnce<T extends Element>(opts?: { rootMargin?: string }) {
-  const ref = useRef<T | null>(null);
+function useInView(ref: React.RefObject<Element | null>, opts?: IntersectionObserverInit) {
   const [inView, setInView] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        const hit = entries.some((e) => e.isIntersecting);
-        if (hit) {
-          setInView(true);
-          io.disconnect();
-        }
-      },
-      { rootMargin: opts?.rootMargin ?? "350px" }
-    );
+    const io = new IntersectionObserver((entries) => {
+      setInView(!!entries[0]?.isIntersecting);
+    }, opts);
 
     io.observe(el);
     return () => io.disconnect();
-  }, [opts?.rootMargin]);
+  }, [ref, opts?.root, opts?.rootMargin, opts?.threshold]);
 
-  return { ref, inView } as const;
+  return inView;
 }
 
-function DiscoverRevealImage({
-  src,
-  index,
+// =========================
+// Discover flip tile
+// - 2秒ごと差し替え時に「カード裏返り」
+// - 画像は “わざとゆっくり明るく” でロード誤魔化す
+// =========================
+function DiscoverFlipTile({
+  slotIndex,
+  big,
+  post,
+  onInViewChange,
 }: {
-  src: string;
-  index: number;
+  slotIndex: number;
+  big: boolean;
+  post: PostRow | null;
+  onInViewChange: (slotIndex: number, inView: boolean) => void;
 }) {
-  const { ref, inView } = useInViewOnce<HTMLDivElement>({ rootMargin: "450px" });
-
-  const [shouldLoad, setShouldLoad] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  // ✅ revealアニメは先に走らせる（画像ロードとは独立）
-  const [reveal, setReveal] = useState(false);
+  const ref = useRef<HTMLAnchorElement | null>(null);
+  const inView = useInView(ref as any, { rootMargin: "120px" });
 
   useEffect(() => {
-    if (!inView) return;
+    onInViewChange(slotIndex, inView);
+  }, [inView, onInViewChange, slotIndex]);
 
-    const stagger = Math.min(28 * index, 420); // 0〜420ms
-    const base = 110; // “わざと”少し待つ
-    const t1 = window.setTimeout(() => setReveal(true), base + stagger);
-    const t2 = window.setTimeout(() => setShouldLoad(true), base + stagger + 60);
+  const tileSpan = big ? "col-span-2 row-span-2" : "col-span-1 row-span-1";
 
-    // ✅ もしロードが詰まっても永遠に透明にならないように保険
-    const tFailSafe = window.setTimeout(() => {
-      if (!loaded) setFailed(true);
-    }, 3500);
+  // 画像の「LPっぽい」出現：暗→明、ぼかし→クリア、端から軽くワイプ
+  const thumb = post ? getFirstSquareThumb(post) : null;
+  const display = post?.profile?.display_name ?? "ユーザー";
+  const isPublic = post?.profile?.is_public ?? true;
 
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(tFailSafe);
-    };
-  }, [inView, index, loaded]);
+  const placeName = post?.place_name ?? "";
+  const genre = post?.place_genre ?? null;
+
+  const href = post?.id ? `/posts/${post.id}` : "#";
 
   return (
-    <div ref={ref} className="absolute inset-0">
-      {/* ベース（即表示） */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-slate-200/60" />
-      <div className="absolute inset-0 opacity-[0.08] [background-image:radial-gradient(#000_1px,transparent_1px)] [background-size:10px_10px]" />
+    <Link
+      ref={ref}
+      href={href}
+      aria-disabled={!post}
+      className={[
+        "relative block overflow-hidden bg-slate-100",
+        "focus:outline-none focus:ring-2 focus:ring-orange-400",
+        "gm-press ring-1 ring-black/[.05]",
+        tileSpan,
+      ].join(" ")}
+      onClick={(e) => {
+        if (!post) e.preventDefault();
+      }}
+    >
+      <div className="relative w-full aspect-square">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={post?.id ?? `empty-${slotIndex}`}
+            className="absolute inset-0"
+            initial={{ rotateY: 90, opacity: 0.9 }}
+            animate={{ rotateY: 0, opacity: 1 }}
+            exit={{ rotateY: -90, opacity: 0.9 }}
+            transition={{ duration: 0.55, ease: [0.2, 0.9, 0.2, 1] }}
+            style={{ transformStyle: "preserve-3d" }}
+          >
+            {/* front content */}
+            {thumb ? (
+              <motion.div
+                className="absolute inset-0"
+                initial={{ opacity: 0, filter: "blur(12px) brightness(0.75)", transform: "translateX(-10px) scale(1.02)" }}
+                animate={{ opacity: 1, filter: "blur(0px) brightness(1)", transform: "translateX(0px) scale(1)" }}
+                transition={{ duration: 0.9, ease: [0.2, 0.9, 0.2, 1] }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumb}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </motion.div>
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-100">
+                <div className="p-2 text-[11px] text-slate-500 line-clamp-6">
+                  {placeName ? `📍 ${placeName}\n` : ""}
+                  {post?.content ? post.content : "投稿"}
+                </div>
+              </div>
+            )}
 
-      {/* “LPっぽいワイプ” (画像が無くても動く) */}
-      <motion.div
-        className="absolute inset-0"
-        initial={{ clipPath: "inset(0 100% 0 0)" }}
-        animate={{ clipPath: reveal ? "inset(0 0% 0 0)" : "inset(0 100% 0 0)" }}
-        transition={{ duration: 0.78, ease: [0.2, 0.9, 0.2, 1] }}
-        style={{
-          background:
-            "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.00) 55%, rgba(0,0,0,0.05))",
-          backdropFilter: "blur(0.5px)",
-        }}
-      />
+            {/* overlay */}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/15" />
 
-      {/* 画像（ロード開始は shouldLoad から） */}
-      {shouldLoad ? (
-        <motion.div
-          className="absolute inset-0"
-          initial={{ opacity: 0, filter: "brightness(0.75) saturate(1.07)", transform: "scale(1.02)" }}
-          animate={{
-            opacity: loaded ? 1 : 0,
-            filter: loaded ? "brightness(1) saturate(1)" : "brightness(0.75) saturate(1.07)",
-            transform: loaded ? "scale(1)" : "scale(1.02)",
-          }}
-          transition={{ duration: 0.55, ease: [0.2, 0.9, 0.2, 1] }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-            loading="lazy"
-            decoding="async"
-            onLoad={() => setLoaded(true)}
-            onError={() => setFailed(true)}
-          />
-        </motion.div>
-      ) : null}
+            {/* top label (pc) */}
+            <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
+              <span className="max-w-[120px] truncate">{display}</span>
+              {!isPublic && <Lock size={12} className="text-white/90" />}
+            </div>
 
-      {/* ロード失敗 or 長引き救済：最終的に “見た目として成立する” 表示 */}
-      {failed && !loaded ? (
-        <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200" />
-          <div className="absolute inset-0 opacity-[0.12] [background-image:radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px]" />
-        </div>
-      ) : null}
+            {/* bottom chips */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 space-y-1">
+              <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
+                <span className="truncate">{placeName ? placeName : " "}</span>
+              </div>
+              {genre ? (
+                <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
+                  <span className="truncate">{genre}</span>
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        </AnimatePresence>
 
-      {/* 上から薄いベール */}
-      <motion.div
-        className="absolute inset-0 pointer-events-none"
-        initial={{ opacity: 0.22 }}
-        animate={{ opacity: loaded ? 0.1 : 0.22 }}
-        transition={{ duration: 0.6 }}
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.00) 45%, rgba(0,0,0,0.12) 100%)",
-        }}
-      />
+        {/* “カード裏面”っぽい、極薄のノイズ（好みで） */}
+        <div className="pointer-events-none absolute inset-0 opacity-[0.03] mix-blend-overlay bg-[radial-gradient(circle_at_20%_10%,#000,transparent_40%),radial-gradient(circle_at_80%_90%,#000,transparent_40%)]" />
+      </div>
+    </Link>
+  );
+}
+
+// =========================
+// DiscoverGrid (隔離してhook順序を守る)
+// - 2秒ごとに visible タイルの1つを別投稿へ
+// =========================
+type DiscoverSlot = { big: boolean; postId: string };
+
+function DiscoverGrid({
+  posts,
+  meId,
+  seed,
+  loading,
+  done,
+  error,
+  sentinelRef,
+}: {
+  posts: PostRow[];
+  meId: string | null;
+  seed: string;
+  loading: boolean;
+  done: boolean;
+  error: string | null;
+  sentinelRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const discoverBase = useMemo(() => (meId ? posts.filter((p) => p.user_id !== meId) : posts), [posts, meId]);
+
+  const discoverGridPosts = useMemo(() => {
+    const jitterWeight = 8;
+    const scored = discoverBase.map((p, rank) => {
+      const jitter = (hashString(`${seed}:order:${p.id}`) % 1000) / 1000;
+      const key = rank + jitter * jitterWeight;
+      return { p, key };
+    });
+    scored.sort((a, b) => a.key - b.key);
+    return scored.map((x) => x.p);
+  }, [discoverBase, seed]);
+
+  const discoverTiles = useMemo(() => {
+    return planDiscoverTiles(discoverGridPosts, seed, {
+      bigDenom: 4,
+      minIndexForBig: 3,
+      tailGuard: 7,
+      maxBig: 4,
+    });
+  }, [discoverGridPosts, seed]);
+
+  const [discoverSlots, setDiscoverSlots] = useState<DiscoverSlot[]>([]);
+  const visibleSlotsRef = useRef<Set<number>>(new Set());
+
+  const onInViewChange = (slotIndex: number, inView: boolean) => {
+    const s = visibleSlotsRef.current;
+    if (inView) s.add(slotIndex);
+    else s.delete(slotIndex);
+  };
+
+  useEffect(() => {
+    const initial = discoverTiles.map((t) => ({ big: t.big, postId: t.p.id }));
+    setDiscoverSlots(initial);
+  }, [discoverTiles]);
+
+  const cursorRef = useRef(0);
+  const getNextCandidateId = (avoid: Set<string>) => {
+    const arr = discoverGridPosts;
+    if (arr.length === 0) return null;
+
+    const start = cursorRef.current;
+    for (let k = 0; k < arr.length; k++) {
+      const i = (start + k) % arr.length;
+      const id = arr[i]?.id;
+      if (id && !avoid.has(id)) {
+        cursorRef.current = (i + 1) % arr.length;
+        return id;
+      }
+    }
+    return arr[Math.floor(Math.random() * arr.length)]?.id ?? null;
+  };
+
+  useEffect(() => {
+    if (discoverSlots.length === 0) return;
+    if (discoverGridPosts.length === 0) return;
+
+    const intervalMs = 2000;
+
+    const t = window.setInterval(() => {
+      const visible = Array.from(visibleSlotsRef.current);
+      if (visible.length === 0) return;
+
+      const slotIndex = visible[Math.floor(Math.random() * visible.length)];
+      if (slotIndex == null) return;
+
+      setDiscoverSlots((prev) => {
+        if (!prev[slotIndex]) return prev;
+
+        const currentIds = new Set(prev.map((s) => s.postId));
+        const nextId = getNextCandidateId(currentIds);
+        if (!nextId) return prev;
+        if (nextId === prev[slotIndex].postId) return prev;
+
+        const copy = prev.slice();
+        copy[slotIndex] = { ...copy[slotIndex], postId: nextId };
+        return copy;
+      });
+    }, intervalMs);
+
+    return () => window.clearInterval(t);
+  }, [discoverSlots.length, discoverGridPosts]);
+
+  const postById = useMemo(() => {
+    const m = new Map<string, PostRow>();
+    for (const p of discoverGridPosts) m.set(p.id, p);
+    for (const p of posts) m.set(p.id, p);
+    return m;
+  }, [discoverGridPosts, posts]);
+
+  return (
+    <div className="w-full">
+      <div className="grid grid-cols-3 gap-[2px] md:gap-2 [grid-auto-flow:dense]">
+        {discoverSlots.map((slot, slotIndex) => {
+          const p = postById.get(slot.postId) ?? null;
+          return (
+            <DiscoverFlipTile
+              key={`slot-${slotIndex}`}
+              slotIndex={slotIndex}
+              big={slot.big}
+              post={p}
+              onInViewChange={onInViewChange}
+            />
+          );
+        })}
+      </div>
+
+      <div ref={sentinelRef} className="h-10" />
+
+      {loading && <div className="pb-8 pt-4 text-center text-xs text-slate-500">読み込み中...</div>}
+      {error && !error.includes("Unauthorized") && (
+        <div className="pb-8 pt-4 text-center text-xs text-red-600">{error}</div>
+      )}
+      {done && posts.length > 0 && (
+        <div className="pb-8 pt-4 text-center text-[11px] text-slate-400">ログインしてもっと見つける</div>
+      )}
     </div>
   );
 }
@@ -425,6 +580,7 @@ export default function TimelineFeed({
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
   const [seed] = useState(() => makeSeed());
 
+  // Suggest
   const [suggestMeta, setSuggestMeta] = useState<TimelineMeta | null>(null);
   const shownSuggestRef = useRef(false);
 
@@ -440,17 +596,19 @@ export default function TimelineFeed({
     const params = new URLSearchParams();
     params.set("tab", activeTab);
     params.set("limit", activeTab === "discover" ? "24" : "5");
-    params.set("seed", seed);
+    params.set("seed", seed); // ✅ リロードごとにランダム / 同一スクロール内は一貫
     if (!reset && cursor) params.set("cursor", cursor);
 
     try {
       const res = await fetch(`/api/timeline?${params.toString()}`);
       const payload = await res.json().catch(() => ({}));
+
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
       const newPosts: PostRow[] = payload.posts ?? [];
       const nextCursor: string | null = payload.nextCursor ?? null;
 
+      // meta（最初のページだけ採用）
       if (reset) {
         setSuggestMeta(payload?.meta ?? null);
         shownSuggestRef.current = false;
@@ -458,6 +616,8 @@ export default function TimelineFeed({
 
       setPosts((prev) => {
         if (reset) return newPosts;
+
+        // ✅ prevの順序を維持しつつ newPosts を末尾に追加（重複は追加しない）
         const seen = new Set(prev.map((p) => p.id));
         const appended = newPosts.filter((p) => !seen.has(p.id));
         return [...prev, ...appended];
@@ -502,30 +662,7 @@ export default function TimelineFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, done, loading, activeTab]);
 
-  // ---------- discover derived ----------
-  const discoverBase = useMemo(() => (meId ? posts.filter((p) => p.user_id !== meId) : posts), [posts, meId]);
-
-  const discoverGridPosts = useMemo(() => {
-    const jitterWeight = 8;
-    const scored = discoverBase.map((p, rank) => {
-      const jitter = (hashString(`${seed}:order:${p.id}`) % 1000) / 1000;
-      const key = rank + jitter * jitterWeight;
-      return { p, key };
-    });
-    scored.sort((a, b) => a.key - b.key);
-    return scored.map((x) => x.p);
-  }, [discoverBase, seed]);
-
-  const discoverTiles = useMemo(() => {
-    return planDiscoverTiles(discoverGridPosts, seed, {
-      bigDenom: 4,
-      minIndexForBig: 3,
-      tailGuard: 7,
-      maxBig: 4,
-    });
-  }, [discoverGridPosts, seed]);
-
-  // friends用
+  // ---------- friends derived ----------
   const suggestAt = suggestMeta?.suggestAtIndex ?? 1;
   const suggest = suggestMeta?.suggestion ?? null;
 
@@ -550,6 +687,7 @@ export default function TimelineFeed({
     }
   }, [activeTab, renderItems, suggest]);
 
+  // login gate
   if (error?.includes("Unauthorized") && activeTab === "friends") {
     return (
       <LoginCard
@@ -569,75 +707,24 @@ export default function TimelineFeed({
   }
 
   // =========================
-  // DISCOVER
+  // DISCOVER（発見）
   // =========================
   if (activeTab === "discover") {
     return (
-      <div className="w-full">
-        <div className="grid grid-cols-3 gap-[2px] md:gap-2 [grid-auto-flow:dense]">
-          {discoverTiles.map(({ p, big }, idx) => {
-            const prof = p.profile;
-            const display = prof?.display_name ?? "ユーザー";
-            const isPublic = prof?.is_public ?? true;
-
-            const thumb = getFirstSquareThumb(p);
-            const tileSpan = big ? "col-span-2 row-span-2" : "col-span-1 row-span-1";
-
-            return (
-              <Link
-                key={p.id}
-                href={`/posts/${p.id}`}
-                className={[
-                  "relative block overflow-hidden bg-slate-100",
-                  "focus:outline-none focus:ring-2 focus:ring-orange-400",
-                  "gm-press ring-1 ring-black/[.05]",
-                  tileSpan,
-                ].join(" ")}
-              >
-                <div className="relative w-full aspect-square">
-                  {thumb ? (
-                    <DiscoverRevealImage src={thumb} index={idx} />
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-100">
-                      <div className="p-2 text-[11px] text-slate-500 line-clamp-6">
-                        {p.place_name ? `📍 ${p.place_name}\n` : ""}
-                        {p.content ? p.content : "投稿"}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
-                    <span className="max-w-[120px] truncate">{display}</span>
-                    {!isPublic && <Lock size={12} className="text-white/90" />}
-                  </div>
-
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 space-y-1">
-                    <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
-                      <span className="truncate">{p.place_name ? p.place_name : " "}</span>
-                    </div>
-                    {p.place_genre ? (
-                      <div className="inline-flex max-w-full items-center rounded-full bg-black/35 px-2 py-1 text-[10px] text-white/90 backdrop-blur">
-                        <span className="truncate">{p.place_genre}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-
-        <div ref={sentinelRef} className="h-10" />
-
-        {loading && <div className="pb-8 pt-4 text-center text-xs text-slate-500">読み込み中...</div>}
-        {error && !error.includes("Unauthorized") && <div className="pb-8 pt-4 text-center text-xs text-red-600">{error}</div>}
-        {done && posts.length > 0 && <div className="pb-8 pt-4 text-center text-[11px] text-slate-400">ログインしてもっと見つける</div>}
-      </div>
+      <DiscoverGrid
+        posts={posts}
+        meId={meId}
+        seed={seed}
+        loading={loading}
+        done={done}
+        error={error}
+        sentinelRef={sentinelRef}
+      />
     );
   }
 
   // =========================
-  // FRIENDS
+  // FRIENDS（最新）
   // =========================
   return (
     <div className="flex flex-col items-stretch gap-6">
@@ -687,12 +774,14 @@ export default function TimelineFeed({
             : null;
 
         const priceLabel = formatPrice(p);
+
         const showInjectedFollow = !!(p.inject_target_user_id && p.inject_target_user_id !== meId);
 
         return (
           <article key={p.id} className="gm-card gm-press overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
               <div className="md:border-r md:border-black/[.05]">
+                {/* Header */}
                 <div className="flex items-center justify-between px-4 pt-4 pb-2">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link
@@ -701,7 +790,13 @@ export default function TimelineFeed({
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={avatar} alt="" className="h-9 w-9 rounded-full object-cover" loading="lazy" decoding="async" />
+                        <img
+                          src={avatar}
+                          alt=""
+                          className="h-9 w-9 rounded-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         initial
                       )}
@@ -709,12 +804,16 @@ export default function TimelineFeed({
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
-                        <Link href={`/u/${p.user_id}`} className="truncate text-xs font-medium text-slate-900 hover:underline">
+                        <Link
+                          href={`/u/${p.user_id}`}
+                          className="truncate text-xs font-medium text-slate-900 hover:underline"
+                        >
                           {display}
                         </Link>
                         {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
                       </div>
 
+                      {/* 注入理由があればここで明記 */}
                       <div className="text-[11px] text-slate-500">
                         {p.injected && p.inject_reason ? p.inject_reason : "最新"}
                       </div>
@@ -722,6 +821,7 @@ export default function TimelineFeed({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* ✅ 未フォロー注入投稿のフォローボタン（あなたの現行 FollowButton props に合わせた） */}
                     {showInjectedFollow ? (
                       <FollowButton
                         targetUserId={p.inject_target_user_id!}
@@ -734,6 +834,7 @@ export default function TimelineFeed({
                   </div>
                 </div>
 
+                {/* Strip */}
                 <div className="px-4 pb-3">
                   <div className="flex flex-wrap items-center gap-2">
                     {p.place_name ? (
@@ -780,7 +881,10 @@ export default function TimelineFeed({
 
                     <span className="flex-1" />
 
-                    <Link href={`/posts/${p.id}`} className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-orange-700 hover:underline">
+                    <Link
+                      href={`/posts/${p.id}`}
+                      className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-orange-700 hover:underline"
+                    >
                       詳細
                     </Link>
 
@@ -797,12 +901,17 @@ export default function TimelineFeed({
                       >
                         <GoogleMark className="h-4 w-4" />
                         <span className="leading-none">写真</span>
-                        {isPhotosOpen ? <ChevronUp size={14} className="text-slate-700" /> : <ChevronDown size={14} className="text-slate-700" />}
+                        {isPhotosOpen ? (
+                          <ChevronUp size={14} className="text-slate-700" />
+                        ) : (
+                          <ChevronDown size={14} className="text-slate-700" />
+                        )}
                       </button>
                     )}
                   </div>
                 </div>
 
+                {/* Media */}
                 {timelineImageUrls.length > 0 && (
                   <div className="block w-full aspect-square overflow-hidden bg-slate-100">
                     <PostImageCarousel
@@ -817,10 +926,12 @@ export default function TimelineFeed({
                   </div>
                 )}
 
+                {/* Body */}
                 <div className="space-y-2 px-4 py-4">
                   {p.content && <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{p.content}</p>}
                 </div>
 
+                {/* Actions */}
                 <div className="flex items-center justify-between px-4 pb-3 pt-0">
                   <PostActions
                     postId={p.id}
@@ -837,11 +948,13 @@ export default function TimelineFeed({
                   <PostCollectionButton postId={p.id} />
                 </div>
 
+                {/* Comments */}
                 <div className="px-4 pb-5">
                   <PostComments postId={p.id} postUserId={p.user_id} meId={meId} previewCount={2} />
                 </div>
               </div>
 
+              {/* Right panel (PC) */}
               <aside className="hidden md:block p-4">
                 {p.place_id ? (
                   <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={8} maxThumbs={8} />
@@ -851,6 +964,7 @@ export default function TimelineFeed({
               </aside>
             </div>
 
+            {/* Mobile expand photos */}
             {p.place_id && isPhotosOpen ? (
               <div className="md:hidden pb-5 px-4">
                 <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={3} maxThumbs={3} />
