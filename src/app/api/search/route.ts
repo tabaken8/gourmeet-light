@@ -68,6 +68,86 @@ type Nudge =
   | null;
 
 // -----------------------------
+// ✅ posts に user/profile を必ず付ける（API側で整形してUIを安定化）
+// -----------------------------
+type ProfileLite = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_public?: boolean | null;
+};
+
+function normalizePostRow(p: any, prof: ProfileLite | null) {
+  // RPCが profile を返してくる場合にも対応
+  const rpcProf = (p?.profile ?? p?.profiles ?? p?.user ?? null) as any;
+
+  const mergedProf: ProfileLite | null =
+    prof ??
+    (rpcProf && (rpcProf.id || p?.user_id)
+      ? {
+          id: String(rpcProf.id ?? p.user_id),
+          username: rpcProf.username ?? null,
+          display_name: rpcProf.display_name ?? null,
+          avatar_url: rpcProf.avatar_url ?? null,
+          is_public: rpcProf.is_public ?? null,
+        }
+      : null);
+
+  // TimelinePostList/Rowが「トップレベル参照」でも落ちないように両方付ける
+  return {
+    ...p,
+    user: mergedProf,
+    username: p?.username ?? mergedProf?.username ?? null,
+    display_name: p?.display_name ?? mergedProf?.display_name ?? null,
+    avatar_url: p?.avatar_url ?? mergedProf?.avatar_url ?? null,
+  };
+}
+
+async function attachProfilesToPosts(params: { supabase: any; posts: any[] }) {
+  const { supabase } = params;
+  const posts = Array.isArray(params.posts) ? params.posts : [];
+  if (posts.length === 0) return posts;
+
+  const userIds = Array.from(
+    new Set(
+      posts
+        .map((p: any) => p?.user_id)
+        .filter(Boolean)
+        .map((x: any) => String(x))
+    )
+  );
+
+  if (userIds.length === 0) return posts.map((p) => normalizePostRow(p, null));
+
+  // profiles の RLS が厳しい場合でも落ちないように try/catch
+  let profRows: ProfileLite[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, username, display_name, avatar_url, is_public")
+      .in("id", userIds);
+
+    if (!error && Array.isArray(data)) {
+      profRows = data as any;
+    }
+  } catch {
+    profRows = [];
+  }
+
+  const map = new Map<string, ProfileLite>();
+  for (const r of profRows) {
+    if (r?.id) map.set(String(r.id), r);
+  }
+
+  return posts.map((p: any) => {
+    const uid = p?.user_id ? String(p.user_id) : "";
+    const prof = uid ? map.get(uid) ?? null : null;
+    return normalizePostRow(p, prof);
+  });
+}
+
+// -----------------------------
 // ✅ 駅 -> placeIds (強制フィルタ用)
 // -----------------------------
 async function getPlaceIdsForStation(params: {
@@ -88,16 +168,12 @@ async function getPlaceIdsForStation(params: {
   if (error) return { placeIds: [] as string[], ok: false as const };
 
   const rows = Array.isArray(data) ? data : [];
-  const placeIds = Array.from(
-    new Set(rows.map((r: any) => r?.place_id).filter(Boolean).map(String))
-  );
+  const placeIds = Array.from(new Set(rows.map((r: any) => r?.place_id).filter(Boolean).map(String)));
   return { placeIds, ok: true as const };
 }
 
 // -----------------------------
 // ✅ 候補駅ごとに「代表投稿」を取る（必ず駅フィルタを強制）
-// - search_posts_v3 を複数件取り、API側で place_id を絞り込む
-// - postId が既に使われてたらスキップ（重複排除）
 // -----------------------------
 async function fetchSampleForStationStrict(params: {
   supabase: any;
@@ -116,28 +192,23 @@ async function fetchSampleForStationStrict(params: {
 
   const placeSet = new Set(placeIds);
 
-  // 2) RPCは多めに取る（ここ重要）
+  // 2) RPCは多めに取る
   const rpcArgs: any = {
     q,
     me,
-    follow_only: true, // nudge はフォロー中のみ
-    lim: 80,           // ✅ 1件ではなく多めに
+    follow_only: true,
+    lim: 80,
     cur: null,
+    station_place_id,
+    radius_m,
   };
-
-  // station_place_id / radius_m を渡せるなら渡す（RPC側で使えるなら精度UP）
-  rpcArgs.station_place_id = station_place_id;
-  rpcArgs.radius_m = radius_m;
 
   const { data, error } = await supabase.rpc("search_posts_v3", rpcArgs);
   if (error) return null;
 
   let rows = Array.isArray(data) ? data : [];
-
-  // 3) ✅ API側で station の placeIds に強制フィルタ
   rows = rows.filter((p: any) => p?.place_id && placeSet.has(String(p.place_id)));
 
-  // 4) ✅ 同じ投稿が複数候補に出ないようにする
   const picked = rows.find((p: any) => {
     const id = p?.id ? String(p.id) : "";
     return id && !seenPostIds.has(id);
@@ -148,7 +219,7 @@ async function fetchSampleForStationStrict(params: {
   const id = String(picked.id);
   seenPostIds.add(id);
 
-  const prof = picked?.profile ?? null;
+  const prof = picked?.profile ?? picked?.profiles ?? picked?.user ?? null;
 
   return {
     friend: {
@@ -291,9 +362,12 @@ export async function GET(req: Request) {
       posts = rows;
     }
 
+    // ✅ ここで profiles を必ず付与して返す（station/geo 両方）
+    posts = await attachProfilesToPosts({ supabase, posts });
+
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   } else {
-    // station + q空
+    // station + q空（投稿一覧）
     const { data: postRows, error: perr } = await supabase
       .from("posts")
       .select(
@@ -306,14 +380,27 @@ export async function GET(req: Request) {
 
     if (perr) return NextResponse.json({ ok: false, error: perr.message }, { status: 400 });
 
-    posts = Array.isArray(postRows) ? postRows : [];
+    let rows = Array.isArray(postRows) ? postRows : [];
+
+    if (distMap) {
+      rows = rows.map((p: any) => {
+        const pid = p?.place_id ? String(p.place_id) : "";
+        const dm = distMap!.get(pid) ?? null;
+        return {
+          ...p,
+          search_station_name: station_name || null,
+          search_station_distance_m: dm,
+          search_station_minutes: metersToWalkMinCeil(dm),
+        };
+      });
+    }
+
+    posts = await attachProfilesToPosts({ supabase, posts: rows });
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   }
 
   // -----------------------------
   // ✅ nudge (fixed): station + qあり + 結果0件 + meあり
-  // - stationごとに placeIds を作って “必ず” 駅内の投稿から選ぶ
-  // - 同じ投稿を複数候補に使わない
   // -----------------------------
   let nudge: Nudge = null;
 
@@ -475,5 +562,6 @@ export async function GET(req: Request) {
     });
   }
 
+  // geo
   return NextResponse.json({ posts, nextCursor });
 }

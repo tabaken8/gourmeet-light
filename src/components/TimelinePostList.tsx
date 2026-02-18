@@ -206,15 +206,34 @@ export default function TimelinePostList({
 
   const normalized = useMemo(() => {
     return posts.map((p: any) => {
-      const prof = p?.profile && typeof p.profile === "object" && !Array.isArray(p.profile) ? p.profile : null;
+      // ✅ 互換：profile / user / profiles のどれでも拾う
+      const rawProf =
+        (p?.profile && typeof p.profile === "object" && !Array.isArray(p.profile) ? p.profile : null) ||
+        (p?.user && typeof p.user === "object" && !Array.isArray(p.user) ? p.user : null) ||
+        (p?.profiles && typeof p.profiles === "object" && !Array.isArray(p.profiles) ? p.profiles : null);
 
-      // ✅ /u/undefined 対策：user_id を必ず string に正規化
-      const userId = String(p?.user_id ?? p?.userId ?? "");
+      // ✅ ProfileLite へ正規化（欠けても最低限表示できるように）
+      const userId = String(p?.user_id ?? p?.userId ?? rawProf?.id ?? "");
+
+      const prof: ProfileLite | null =
+        userId && (rawProf || p?.display_name || p?.avatar_url || p?.is_public !== undefined)
+          ? {
+              id: userId,
+              display_name: (rawProf?.display_name ?? p?.display_name ?? null) as string | null,
+              avatar_url: (rawProf?.avatar_url ?? p?.avatar_url ?? null) as string | null,
+              is_public:
+                typeof (rawProf?.is_public ?? p?.is_public) === "boolean"
+                  ? Boolean(rawProf?.is_public ?? p?.is_public)
+                  : true,
+            }
+          : null;
 
       return {
         ...p,
         id: String(p?.id ?? p?.post_id ?? ""),
         user_id: userId,
+
+        // ✅ ここが肝：常に profile を埋める（UI側は profile しか見ない）
         profile: prof,
 
         place_genre: p.place_genre ?? null,
@@ -222,16 +241,14 @@ export default function TimelinePostList({
         likedByMe: p.likedByMe ?? false,
         initialLikers: p.initialLikers ?? [],
 
-        // ✅ 検索駅名がAPIから来てたら拾えるように正規化
         search_station_name: (p.search_station_name ?? null) as string | null,
-
-        // ✅ nearest_* も念のため正規化
         nearest_station_name: (p.nearest_station_name ?? null) as string | null,
         nearest_station_distance_m:
           typeof p.nearest_station_distance_m === "number" ? p.nearest_station_distance_m : null,
       } as PostRow;
     });
   }, [posts]);
+
 
   return (
     <div className="flex flex-col items-stretch gap-6">
