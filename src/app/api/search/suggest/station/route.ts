@@ -1,3 +1,4 @@
+// app/(app)/api/search/suggest/station/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
