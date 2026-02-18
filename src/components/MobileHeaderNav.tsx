@@ -11,11 +11,8 @@ import {
   Bell,
   UserPlus,
   Plus,
-  MapPin,
   CircleDollarSign,
-  MessagesSquare,
-  Sparkles,
-  Settings, // ✅ 追加
+  Settings,
 } from "lucide-react";
 import { useNavBadges } from "@/hooks/useNavBadges";
 
@@ -24,7 +21,7 @@ function Badge({ count }: { count?: number }) {
   return (
     <span
       className={`
-        absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center
+        absolute -top-2 -right-2 flex h-4 min-w-[16px] items-center justify-center
         rounded-full bg-red-500 px-1 text-[11px] font-bold text-white
         ${show ? "visible" : "invisible"}
       `}
@@ -39,30 +36,20 @@ function Dot({ on }: { on?: boolean }) {
   return <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />;
 }
 
-function AIChatIcon({ size = 20 }: { size?: number }) {
-  return (
-    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <MessagesSquare size={size} className="text-orange-700" />
-      <Sparkles
-        size={Math.max(12, Math.floor(size * 0.58))}
-        className="absolute -right-1 -top-1 text-orange-600"
-      />
-    </span>
-  );
-}
-
 function IconButton({
   href,
   active,
   children,
   ariaLabel,
   activeClassName,
+  className,
 }: {
   href: string;
   active?: boolean;
   children: ReactNode;
   ariaLabel?: string;
   activeClassName?: string;
+  className?: string;
 }) {
   return (
     <Link
@@ -72,6 +59,7 @@ function IconButton({
         relative inline-flex h-11 w-11 items-center justify-center rounded-full
         transition-colors
         ${active ? activeClassName ?? "bg-black/[.06]" : "hover:bg-black/[.04]"}
+        ${className ?? ""}
       `}
     >
       {children}
@@ -183,12 +171,12 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
   const promoPoints = showFirstPostPromo ? 550 : showDailyPromo ? 50 : 0;
   const showPromo = promoPoints > 0;
 
-  // ✅ fixed headerの高さ（だいたい2段で 12 + (px2 pb2) ≒ 104px）
+  // fixed headerの高さ（だいたい2段で 12 + (px2 pb2) ≒ 104px）
   const headerHeight = 104;
 
   return (
     <div className="md:hidden">
-      {/* ✅ spacer：fixedで本文が潜らないように */}
+      {/* spacer：fixedで本文が潜らないように */}
       <div style={{ height: `calc(${headerHeight}px + env(safe-area-inset-top))` }} />
 
       <header
@@ -216,29 +204,33 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <CircleDollarSign size={20} className="text-amber-600" />
             </IconButton>
 
-            {/* 通知 */}
+            {/* 通知（バッジをアイコン基準に） */}
             <IconButton
               href={gate("/notifications")}
               active={isActive("/notifications")}
               ariaLabel="通知"
               activeClassName="bg-violet-100/70"
             >
-              <Bell size={20} className="text-violet-600" />
-              <Badge count={notifCount} />
+              <span className="relative inline-flex">
+                <Bell size={20} className="text-violet-600" />
+                <Badge count={notifCount} />
+              </span>
             </IconButton>
 
-            {/* フォローリクエスト */}
+            {/* フォローリクエスト（同様に） */}
             <IconButton
               href={gate("/follow-requests")}
               active={isActive("/follow-requests")}
               ariaLabel="フォローリクエスト"
               activeClassName="bg-sky-100/70"
             >
-              <UserPlus size={20} className="text-sky-600" />
-              <Badge count={followReqCount} />
+              <span className="relative inline-flex">
+                <UserPlus size={20} className="text-sky-600" />
+                <Badge count={followReqCount} />
+              </span>
             </IconButton>
 
-            {/* ✅ Settings追加 */}
+            {/* Settings */}
             <IconButton
               href={gate("/settings")}
               active={isActive("/settings")}
@@ -248,11 +240,63 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Settings size={20} className="text-slate-700" />
             </IconButton>
 
-            {/* Profile */}
+            {/* 投稿（いまのProfile位置に移動：Instagram風 白地＋＋） */}
+            <Link
+              href={gate("/posts/new")}
+              className={[
+                "relative inline-flex h-10 w-10 items-center justify-center rounded-full",
+                "bg-white border border-black/10",
+                "hover:bg-black/[.03] active:scale-[0.99] transition",
+                showPromo ? "ring-2 ring-orange-300 shadow-sm" : "",
+              ].join(" ")}
+              aria-label="投稿"
+            >
+              {showPromo && (
+                <span
+                  className="pointer-events-none absolute -inset-2 rounded-full bg-orange-300/15 blur-md"
+                  aria-hidden="true"
+                />
+              )}
+              <Plus size={20} className="text-slate-900" />
+              {showPromo && (
+                <span className="absolute -right-1 -top-1 rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                  +{promoPoints}
+                </span>
+              )}
+            </Link>
+          </div>
+        </div>
+
+        {/* 2段目：メイン列 3ボタン（Home / Search(オレンジ・中央) / Profile(右)） */}
+        <div className="px-2 pb-2">
+          <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
+            {/* Home */}
+            <IconButton
+              href={gate(homeHref)}
+              active={isActive("/timeline")}
+              ariaLabel="ホーム"
+              activeClassName="bg-blue-100/70"
+            >
+              <Home size={20} className="text-blue-600" />
+              <Dot on={timelineDot} />
+            </IconButton>
+
+            {/* Search（中央・オレンジ） */}
+            <IconButton
+              href={gate("/search", true)}
+              active={isActive("/search")}
+              ariaLabel="検索"
+              activeClassName="bg-orange-100/80"
+              className="mx-auto"
+            >
+              <Search size={20} className="text-orange-700" />
+            </IconButton>
+
+            {/* Profile（右端へ移動） */}
             <Link
               href={gate("/profile")}
               className={`
-                relative inline-flex h-10 w-10 items-center justify-center rounded-full
+                relative inline-flex h-11 w-11 items-center justify-center rounded-full
                 transition-colors
                 ${isActive("/profile") ? "bg-slate-100" : "hover:bg-black/[.04]"}
               `}
@@ -272,73 +316,8 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
                 </span>
               )}
             </Link>
-          </div>
-        </div>
 
-        {/* 2段目 */}
-        <div className="px-2 pb-2">
-          <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
-            <IconButton
-              href={gate(homeHref)}
-              active={isActive("/timeline")}
-              ariaLabel="ホーム"
-              activeClassName="bg-blue-100/70"
-            >
-              <Home size={20} className="text-blue-600" />
-              <Dot on={timelineDot} />
-            </IconButton>
-
-            <IconButton
-              href={gate("/search", true)}
-              active={isActive("/search")}
-              ariaLabel="検索"
-              activeClassName="bg-teal-100/70"
-            >
-              <Search size={20} className="text-teal-700" />
-            </IconButton>
-
-            <Link
-              href={gate("/posts/new")}
-              className={[
-                "relative inline-flex h-11 w-11 items-center justify-center rounded-full",
-                "bg-orange-700 text-white active:scale-[0.99] transition",
-                showPromo ? "shadow-lg shadow-orange-200/70 ring-2 ring-orange-300 animate-pulse" : "",
-              ].join(" ")}
-              aria-label="投稿"
-            >
-              {showPromo && (
-                <span
-                  className="pointer-events-none absolute -inset-2 rounded-full bg-orange-300/20 blur-md"
-                  aria-hidden="true"
-                />
-              )}
-              <span className="relative">
-                <Plus size={20} />
-              </span>
-              {showPromo && (
-                <span className="absolute -right-1 -top-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-orange-700 shadow-sm">
-                  +{promoPoints}
-                </span>
-              )}
-            </Link>
-
-            <IconButton
-              href={gate("/map")}
-              active={isActive("/map")}
-              ariaLabel="マップ"
-              activeClassName="bg-emerald-100/70"
-            >
-              <MapPin size={20} className="text-emerald-700" />
-            </IconButton>
-
-            <IconButton
-              href={gate("/ai-chat")}
-              active={isActive("/ai-chat")}
-              ariaLabel="AI相談"
-              activeClassName="bg-orange-100/70"
-            >
-              <AIChatIcon size={20} />
-            </IconButton>
+            {/* Map と AI Chat は非表示（今回は実装しない） */}
           </div>
         </div>
       </header>
