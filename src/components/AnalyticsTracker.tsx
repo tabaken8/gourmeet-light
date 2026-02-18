@@ -5,12 +5,14 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { trackEvent } from "@/lib/analytics/track";
 
-const TICK_MS = 5000;        // 5秒ごとに積分
-const IDLE_MS = 60_000;      // 60秒無操作で“非アクティブ扱い”
-const FLUSH_MIN_MS = 3000;   // 3秒未満は捨てる（ノイズ削減）
+const TICK_MS = 5000;
+const IDLE_MS = 60_000;
+const FLUSH_MIN_MS = 3000;
 
 export default function AnalyticsTracker() {
   const pathname = usePathname();
+
+  const prevPathnameRef = useRef<string | null>(null); // ★追加
 
   const mountedAtRef = useRef<number>(Date.now());
   const lastTickRef = useRef<number>(Date.now());
@@ -24,11 +26,19 @@ export default function AnalyticsTracker() {
     lastActivityRef.current = Date.now();
     activeMsRef.current = 0;
 
+    const from_pathname = prevPathnameRef.current; // ★追加
+
     trackEvent({
       name: "screen_view",
       pathname,
-      props: { ts: new Date().toISOString() },
+      props: {
+        ts: new Date().toISOString(),
+        from_pathname, // ★追加：直前の画面
+      },
     }).catch(() => {});
+
+    // ★追加：送信後に「直前」を更新
+    prevPathnameRef.current = pathname;
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
@@ -73,8 +83,6 @@ export default function AnalyticsTracker() {
   useEffect(() => {
     const flush = () => {
       const active_ms = activeMsRef.current;
-
-      // ノイズ除去
       if (active_ms < FLUSH_MIN_MS) return;
 
       trackEvent({
@@ -84,12 +92,12 @@ export default function AnalyticsTracker() {
           active_ms,
           idle_ms: Math.max(0, Date.now() - lastActivityRef.current),
           mounted_ms: Date.now() - mountedAtRef.current,
+          // （任意）dwell側にも from_pathname を入れたいならここに入れてもOK
         },
       }).catch(() => {});
     };
 
     const onVis = () => {
-      // hidden になるタイミングは大事（放置で水増ししない）
       if (document.visibilityState === "hidden") flush();
     };
 
@@ -99,7 +107,7 @@ export default function AnalyticsTracker() {
     return () => {
       window.removeEventListener("beforeunload", flush);
       document.removeEventListener("visibilitychange", onVis);
-      flush(); // route change/unmount時にも最後に送る
+      flush();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);

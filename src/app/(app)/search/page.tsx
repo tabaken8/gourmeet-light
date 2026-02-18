@@ -14,6 +14,9 @@ import "react-loading-skeleton/dist/skeleton.css";
 import TimelineFeed from "@/components/TimelineFeed";
 import TimelinePostList, { PostRow, SearchMode } from "@/components/TimelinePostList";
 
+// ✅ analytics
+import { trackEvent } from "@/lib/analytics/track";
+
 type UserHit = {
   id: string;
   username: string | null;
@@ -139,10 +142,15 @@ const listStagger = {
 function UsersSkeleton() {
   return (
     <div className="gm-card px-4 py-3">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Users</div>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Users
+      </div>
       <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2">
+          <div
+            key={i}
+            className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2"
+          >
             <Skeleton circle width={40} height={40} />
             <div className="min-w-0 flex-1">
               <Skeleton width={160} height={12} />
@@ -184,6 +192,18 @@ function PostsSkeleton() {
   );
 }
 
+// --------------------
+// analytics helpers
+// --------------------
+function clampStr(s: string, n = 200) {
+  const t = (s ?? "").trim();
+  return t.length > n ? t.slice(0, n) : t;
+}
+function combinedQueryForLog(q: string, genre: string) {
+  const combined = [genre.trim(), q.trim()].filter(Boolean).join(" ").trim();
+  return clampStr(combined, 240);
+}
+
 export default function SearchPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
@@ -215,14 +235,20 @@ export default function SearchPage() {
   const [genre, setGenre] = useState<string>("");
 
   // TimelinePostListに渡す駅名（検索確定後のみ）
-  const [searchedStationName, setSearchedStationName] = useState<string | null>(null);
+  const [searchedStationName, setSearchedStationName] = useState<string | null>(
+    null
+  );
 
   // committed（検索確定済み）
   const [committedQ, setCommittedQ] = useState<string>("");
   const [committedFollow, setCommittedFollow] = useState<boolean>(false);
   const [committedMode, setCommittedMode] = useState<SearchMode>("geo");
-  const [committedStationId, setCommittedStationId] = useState<string | null>(null);
-  const [committedStationName, setCommittedStationName] = useState<string | null>(null);
+  const [committedStationId, setCommittedStationId] = useState<string | null>(
+    null
+  );
+  const [committedStationName, setCommittedStationName] = useState<string | null>(
+    null
+  );
   const [committedGenre, setCommittedGenre] = useState<string>("");
 
   // results
@@ -276,12 +302,31 @@ export default function SearchPage() {
     setCommittedStationName(stationNameFromUrl);
     setCommittedGenre(genreFromUrl);
 
-    setSearchedStationName(modeFromUrl === "station" ? (stationNameFromUrl ?? null) : null);
+    setSearchedStationName(
+      modeFromUrl === "station" ? (stationNameFromUrl ?? null) : null
+    );
+
+    // ✅ URLから状態復元したこと自体もログにしておくと便利（デモ用）
+    trackEvent({
+      name: "search_url_sync",
+      pathname: "/search",
+      props: {
+        q: clampStr(qFromUrl, 240),
+        follow_only: followFromUrl,
+        mode: modeFromUrl,
+        station_place_id: stationIdFromUrl ?? null,
+        station_name: stationNameFromUrl ?? null,
+        genre: genreFromUrl || null,
+      },
+    }).catch(() => {});
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, sp]);
 
   // stationは「駅だけ」でも検索OK
-  const isEmpty = !committedQ.trim() && !(committedMode === "station" && committedStationId);
+  const isEmpty =
+    !committedQ.trim() &&
+    !(committedMode === "station" && committedStationId);
 
   // ✅ empty時の重いUIを遅らせる（検索ページの体感速度UP）
   useEffect(() => {
@@ -293,8 +338,9 @@ export default function SearchPage() {
 
     const anyWin = window as any;
     const id =
-      anyWin.requestIdleCallback?.(() => setShowDiscover(true), { timeout: 900 }) ??
-      window.setTimeout(() => setShowDiscover(true), 220);
+      anyWin.requestIdleCallback?.(() => setShowDiscover(true), {
+        timeout: 900,
+      }) ?? window.setTimeout(() => setShowDiscover(true), 220);
 
     return () => {
       anyWin.cancelIdleCallback?.(id);
@@ -314,12 +360,34 @@ export default function SearchPage() {
       return;
     }
     setUsersLoading(true);
+
+    const t0 = performance.now();
     try {
-      const res = await fetch(`/api/search-users?q=${encodeURIComponent(qq)}&limit=6`);
+      const res = await fetch(
+        `/api/search-users?q=${encodeURIComponent(qq)}&limit=6`
+      );
       const payload = await res.json().catch(() => ({}));
       setUsers(Array.isArray(payload?.users) ? payload.users : []);
+
+      trackEvent({
+        name: "search_users_results",
+        pathname: "/search",
+        props: {
+          q: clampStr(qq, 240),
+          results_count: Array.isArray(payload?.users) ? payload.users.length : 0,
+          latency_ms: Math.round(performance.now() - t0),
+        },
+      }).catch(() => {});
     } catch {
       setUsers([]);
+      trackEvent({
+        name: "search_users_error",
+        pathname: "/search",
+        props: {
+          q: clampStr(qq, 240),
+          latency_ms: Math.round(performance.now() - t0),
+        },
+      }).catch(() => {});
     } finally {
       setUsersLoading(false);
     }
@@ -335,19 +403,46 @@ export default function SearchPage() {
 
     const my = ++suggestReqId.current;
     setSuggestLoading(true);
+
+    const t0 = performance.now();
     try {
-      const res = await fetch(`/api/search/suggest/station?q=${encodeURIComponent(qq)}&limit=8`);
+      const res = await fetch(
+        `/api/search/suggest/station?q=${encodeURIComponent(qq)}&limit=8`
+      );
       const payload = await res.json().catch(() => ({}));
       if (suggestReqId.current !== my) return;
 
-      const rows: StationSuggest[] = Array.isArray(payload?.stations) ? payload.stations : [];
+      const rows: StationSuggest[] = Array.isArray(payload?.stations)
+        ? payload.stations
+        : [];
       setSuggests(rows);
 
       if (!justSelectedStationRef.current) setSuggestOpen(rows.length > 0);
+
+      trackEvent({
+        name: "suggest_impression",
+        pathname: "/search",
+        props: {
+          type: "station",
+          q: clampStr(qq, 240),
+          results_count: rows.length,
+          latency_ms: Math.round(performance.now() - t0),
+        },
+      }).catch(() => {});
     } catch {
       if (suggestReqId.current !== my) return;
       setSuggests([]);
       setSuggestOpen(false);
+
+      trackEvent({
+        name: "suggest_error",
+        pathname: "/search",
+        props: {
+          type: "station",
+          q: clampStr(qq, 240),
+          latency_ms: Math.round(performance.now() - t0),
+        },
+      }).catch(() => {});
     } finally {
       if (suggestReqId.current === my) setSuggestLoading(false);
     }
@@ -385,6 +480,7 @@ export default function SearchPage() {
 
     const limit = 10;
 
+    const t0 = performance.now();
     try {
       const params = new URLSearchParams();
       const combined = buildCombinedQuery(freeQ, g);
@@ -411,7 +507,27 @@ export default function SearchPage() {
       if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
       const newPosts: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
-      const nextCursor: string | null = payload?.nextCursor ?? payload?.next_cursor ?? payload?.cursor ?? null;
+      const nextCursor: string | null =
+        payload?.nextCursor ?? payload?.next_cursor ?? payload?.cursor ?? null;
+
+      // ✅ analytics: search_results
+      trackEvent({
+        name: "search_results",
+        pathname: "/search",
+        props: {
+          reset,
+          mode: mm,
+          follow_only: ff,
+          station_place_id: mm === "station" ? sid : null,
+          station_name: mm === "station" ? (sname ?? null) : null,
+          q: clampStr(freeQ, 240),
+          genre: g || null,
+          combined_q: combinedQueryForLog(freeQ, g),
+          results_count: newPosts.length,
+          has_next: !!nextCursor,
+          latency_ms: Math.round(performance.now() - t0),
+        },
+      }).catch(() => {});
 
       setPosts((prev) => {
         if (reset) return newPosts;
@@ -425,6 +541,24 @@ export default function SearchPage() {
     } catch (e: any) {
       const msg = e?.message ?? "読み込みに失敗しました";
       setError(msg);
+
+      trackEvent({
+        name: "search_error",
+        pathname: "/search",
+        props: {
+          reset,
+          mode: mm,
+          follow_only: ff,
+          station_place_id: mm === "station" ? sid : null,
+          station_name: mm === "station" ? (sname ?? null) : null,
+          q: clampStr(freeQ, 240),
+          genre: g || null,
+          combined_q: combinedQueryForLog(freeQ, g),
+          error: String(msg),
+          latency_ms: Math.round(performance.now() - t0),
+        },
+      }).catch(() => {});
+
       if (String(msg).includes("Unauthorized")) setDone(true);
     } finally {
       setLoading(false);
@@ -439,20 +573,46 @@ export default function SearchPage() {
     sid?: string | null;
     sname?: string | null;
     genre?: string | null;
+
+    // ✅ analytics: 検索確定の起点
+    source?:
+      | "enter"
+      | "icon"
+      | "genre"
+      | "clear_genre"
+      | "clear_station"
+      | "follow_toggle"
+      | "url_sync";
   }) => {
     const nq = (next.q ?? "").trim();
     const ng = (next.genre ?? "").trim();
     const mm = next.mode;
 
-const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
-  q: nq,
-  followOnly: next.follow,
-  mode: mm,
-  stationPlaceId: next.sid ?? null,
-  stationName: next.sname ?? null,
-  // ✅ 空文字 "" を渡すと buildUrl 側で delete される
-  genre: ng,
-});
+    // ✅ analytics: search_commit（最重要）
+    trackEvent({
+      name: "search_commit",
+      pathname: "/search",
+      props: {
+        source: next.source ?? "enter",
+        mode: mm,
+        follow_only: next.follow,
+        station_place_id: mm === "station" ? (next.sid ?? null) : null,
+        station_name: mm === "station" ? (next.sname ?? null) : null,
+        q: clampStr(nq, 240),
+        genre: ng || null,
+        combined_q: combinedQueryForLog(nq, ng),
+      },
+    }).catch(() => {});
+
+    const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
+      q: nq,
+      followOnly: next.follow,
+      mode: mm,
+      stationPlaceId: next.sid ?? null,
+      stationName: next.sname ?? null,
+      // ✅ 空文字 "" を渡すと buildUrl 側で delete される
+      genre: ng,
+    });
 
     router.replace(`/search${nextUrl}`, { scroll: false });
 
@@ -519,7 +679,17 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
     io.observe(el);
     return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor, done, loading, isEmpty, committedQ, committedFollow, committedMode, committedStationId, committedGenre]);
+  }, [
+    cursor,
+    done,
+    loading,
+    isEmpty,
+    committedQ,
+    committedFollow,
+    committedMode,
+    committedStationId,
+    committedGenre,
+  ]);
 
   // suggest（駅プレートがない時だけ）
   useEffect(() => {
@@ -544,8 +714,22 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, stationPlaceId]);
 
-  const selectStation = (s: StationSuggest) => {
+  const selectStation = (s: StationSuggest, rank: number) => {
     justSelectedStationRef.current = true;
+
+    // ✅ analytics: suggest_select（駅）
+    trackEvent({
+      name: "suggest_select",
+      pathname: "/search",
+      props: {
+        type: "station",
+        value: s.station_name,
+        rank, // 0-based
+        q_before: clampStr(q, 240),
+        suggests_count: suggests.length,
+        station_place_id: s.station_place_id,
+      },
+    }).catch(() => {});
 
     setMode("station");
     setStationPlaceId(s.station_place_id);
@@ -588,6 +772,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
         mode: "geo",
         sid: null,
         sname: null,
+        source: "clear_station",
       });
       return;
     }
@@ -620,6 +805,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
         mode: mode,
         sid: stationPlaceId,
         sname: stationName,
+        source: "clear_genre",
       });
       return;
     }
@@ -639,7 +825,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
   };
 
   // Enterで検索確定
-  const enterToSearch = () => {
+  const enterToSearch = (source: "enter" | "icon") => {
     if (mode === "station") {
       commitSearch({
         q,
@@ -648,10 +834,19 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
         mode: "station",
         sid: stationPlaceId,
         sname: stationName,
+        source,
       });
       return;
     }
-    commitSearch({ q, genre, follow: followOnly, mode: "geo", sid: null, sname: null });
+    commitSearch({
+      q,
+      genre,
+      follow: followOnly,
+      mode: "geo",
+      sid: null,
+      sname: null,
+      source,
+    });
   };
 
   const toggleFollow = (next: boolean) => {
@@ -666,6 +861,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
         mode: committedMode,
         sid: committedStationId,
         sname: committedStationName,
+        source: "follow_toggle",
       });
     } else {
       // 空ならURLだけ整える
@@ -722,13 +918,19 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <motion.div className="gm-card px-4 py-3" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.div
+        className="gm-card px-4 py-3"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
         <div className="mb-3">
           {isEmpty ? (
             <div className="text-[12px] text-slate-500">検索して投稿を探す</div>
           ) : (
             <div className="flex items-center gap-2">
-              {committedMode === "station" ? <TrainFront size={18} className="text-slate-700" /> : null}
+              {committedMode === "station" ? (
+                <TrainFront size={18} className="text-slate-700" />
+              ) : null}
               <div className="text-sm font-semibold text-slate-900">{titleText}</div>
             </div>
           )}
@@ -736,7 +938,10 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:w-[520px]">
-            <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search
+              size={18}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
 
             {/* 枠内にチップ+input */}
             <div className="flex items-center gap-2 w-full rounded-full border border-black/10 bg-white px-10 pr-10 py-2.5 focus-within:border-orange-200">
@@ -783,12 +988,16 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
                   if (!stationPlaceId && suggests.length > 0) setSuggestOpen(true);
                 }}
                 onBlur={() => setTimeout(() => setSuggestOpen(false), 120)}
-                placeholder={stationPlaceId ? "食べたいもの / 用途（例：デート）" : "東京 焼肉 / 名古屋駅"}
+                placeholder={
+                  stationPlaceId
+                    ? "食べたいもの / 用途（例：デート）"
+                    : "東京 焼肉 / 名古屋駅"
+                }
                 className="w-full bg-transparent text-base font-medium outline-none"
                 inputMode="search"
                 enterKeyHint="search"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") enterToSearch();
+                  if (e.key === "Enter") enterToSearch("enter");
                   if (e.key === "Escape") setSuggestOpen(false);
                   handleChipDeleteKey(e);
                 }}
@@ -797,7 +1006,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
 
             <button
               type="button"
-              onClick={enterToSearch}
+              onClick={() => enterToSearch("icon")}
               aria-label="Search"
               className="absolute right-3 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
             >
@@ -812,22 +1021,26 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
                   {suggestLoading ? <span className="ml-2 text-slate-400">…</span> : null}
                 </div>
                 <div className="max-h-[320px] overflow-auto">
-                  {suggests.map((s) => (
+                  {suggests.map((s, idx) => (
                     <button
                       key={s.station_place_id}
                       type="button"
                       className="w-full text-left px-3 py-2 hover:bg-slate-50"
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => selectStation(s)}
+                      onClick={() => selectStation(s, idx)}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex items-center gap-2">
                           <TrainFront size={16} className="text-slate-700 shrink-0" />
-                          <div className="truncate text-sm font-semibold text-slate-900">{s.station_name}</div>
+                          <div className="truncate text-sm font-semibold text-slate-900">
+                            {s.station_name}
+                          </div>
                         </div>
 
                         {typeof s.count_places === "number" ? (
-                          <div className="shrink-0 text-[11px] text-slate-500">{s.count_places}件</div>
+                          <div className="shrink-0 text-[11px] text-slate-500">
+                            {s.count_places}件
+                          </div>
                         ) : null}
                       </div>
                     </button>
@@ -865,6 +1078,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
                 mode,
                 sid: stationPlaceId,
                 sname: stationName,
+                source: "clear_genre",
               });
               requestAnimationFrame(() => inputRef.current?.focus());
             }}
@@ -882,7 +1096,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
                   active ? "text-orange-800 font-semibold" : "text-slate-700"
                 }`}
                 onClick={() => {
-                  // ✅ 要望：押した瞬間に URL反映＆検索更新
+                  // ✅ 押した瞬間に URL反映＆検索更新
                   setGenre(g);
                   commitSearch({
                     q,
@@ -891,6 +1105,7 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
                     mode,
                     sid: stationPlaceId,
                     sname: stationName,
+                    source: "genre",
                   });
                   requestAnimationFrame(() => inputRef.current?.focus());
                 }}
@@ -934,9 +1149,16 @@ const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
             <UsersSkeleton />
           ) : users.length > 0 ? (
             <motion.section className="gm-card px-4 py-3" {...fadeUp}>
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Users</div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Users
+              </div>
 
-              <motion.div className="flex flex-col gap-2" variants={listStagger} initial="initial" animate="animate">
+              <motion.div
+                className="flex flex-col gap-2"
+                variants={listStagger}
+                initial="initial"
+                animate="animate"
+              >
                 {users.map((u) => {
                   const name = u.display_name ?? u.username ?? "ユーザー";
                   const handle = u.username ? `@${u.username}` : "";
