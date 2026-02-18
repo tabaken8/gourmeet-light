@@ -776,8 +776,6 @@ export default function SearchPage() {
               </button>
             );
           })}
-
-          <div className="text-[11px] text-slate-500 ml-1">※Enterで検索</div>
         </div>
       </motion.div>
 
