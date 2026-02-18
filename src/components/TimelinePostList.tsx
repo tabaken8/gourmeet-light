@@ -11,6 +11,7 @@ import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
 
+
 type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
 type ImageAsset = { pin?: string | null; square?: string | null; full?: string | null; [k: string]: any };
 
@@ -46,7 +47,6 @@ export type PostRow = {
   price_yen?: number | null;
   price_range?: string | null;
 
-  // ✅ station UI fields (RPCの実フィールド名に合わせる)
   search_station_distance_m?: number | null;
   search_station_minutes?: number | null;
   nearest_station_name?: string | null;
@@ -188,11 +188,15 @@ export default function TimelinePostList({
   meId,
   mode = "auto",
   searchedStationName = null,
+  revealImages = false, // ✅ 追加
 }: {
   posts: PostRow[];
   meId: string | null;
   mode?: SearchMode;
   searchedStationName?: string | null;
+
+  /** ✅ /searchだけLP風にしたい時にtrue */
+  revealImages?: boolean;
 }) {
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
 
@@ -201,7 +205,7 @@ export default function TimelinePostList({
       const prof = p?.profile && typeof p.profile === "object" && !Array.isArray(p.profile) ? p.profile : null;
       return {
         ...p,
-        id: String(p?.id ?? p?.post_id ?? ""), // 保険（station joinなどで変な型来ても落ちない）
+        id: String(p?.id ?? p?.post_id ?? ""),
         profile: prof,
         place_genre: p.place_genre ?? null,
         likeCount: p.likeCount ?? 0,
@@ -257,16 +261,10 @@ export default function TimelinePostList({
         const nearestDistM = p.nearest_station_distance_m ?? null;
         const nearestMin = metersToWalkMin(nearestDistM);
 
-        // ✅ 表示ルール
-        // - station: 検索駅（解釈駅）+ 最寄駅（可能なら両方）
-        // - geo: 最寄駅だけ
         const isStationMode = mode === "station";
 
-        const showSearchStation =
-          isStationMode && !!searchedStationName && searchMin !== null;
-
-        const showNearestStation =
-          !!nearestName && nearestMin !== null;
+        const showSearchStation = isStationMode && !!searchedStationName && searchMin !== null;
+        const showNearestStation = !!nearestName && nearestMin !== null;
 
         const showStationChip =
           (isStationMode && (showSearchStation || showNearestStation)) ||
@@ -345,12 +343,10 @@ export default function TimelinePostList({
                       </span>
                     ) : null}
 
-                    {/* ✅ 駅/最寄情報チップ */}
                     {showStationChip ? (
                       <span className="gm-chip inline-flex items-center gap-2 px-3 py-1.5 text-[12px] text-slate-700">
                         <TrainFront size={16} className="opacity-70" />
                         <span className="truncate">
-                          {/* stationモード：検索駅（解釈駅） */}
                           {showSearchStation ? (
                             <>
                               <span className="font-semibold">{searchedStationName}</span>
@@ -360,12 +356,10 @@ export default function TimelinePostList({
                             </>
                           ) : null}
 
-                          {/* 区切り */}
                           {isStationMode && showSearchStation && showNearestStation ? (
                             <span className="mx-2 text-slate-400">/</span>
                           ) : null}
 
-                          {/* 最寄 */}
                           {showNearestStation ? (
                             <>
                               <span className="text-slate-500">{isStationMode ? "最寄" : "最寄"}</span>
@@ -430,6 +424,13 @@ export default function TimelinePostList({
                       preloadNeighbors={true}
                       fit="cover"
                       aspect="square"
+                      // ✅ ここが今回の追加：/searchだけLP風にする
+                      reveal={revealImages}
+                      revealStyle="wipe"
+                      revealDurationMs={1100}
+                      revealDelayMs={120}
+                      revealOncePerImage={true}
+                      revealOnlyWhenActive={true}
                     />
                   </div>
                 )}

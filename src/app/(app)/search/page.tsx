@@ -6,6 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search, TrainFront, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
+import { motion, AnimatePresence } from "framer-motion";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+
 import TimelineFeed from "@/components/TimelineFeed";
 import TimelinePostList, { PostRow, SearchMode } from "@/components/TimelinePostList";
 
@@ -92,6 +96,75 @@ const GENRES = [
   "バー",
 ] as const;
 
+// --------------------
+// motion presets
+// --------------------
+const fadeUp = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.24 } },
+  exit: { opacity: 0, y: 8, transition: { duration: 0.18 } },
+};
+
+const listStagger = {
+  animate: { transition: { staggerChildren: 0.04 } },
+};
+
+// --------------------
+// skeleton blocks
+// --------------------
+function UsersSkeleton() {
+  return (
+    <div className="gm-card px-4 py-3">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Users
+      </div>
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2"
+          >
+            <Skeleton circle width={40} height={40} />
+            <div className="min-w-0 flex-1">
+              <Skeleton width={160} height={12} />
+              <div className="mt-2">
+                <Skeleton width={240} height={10} />
+              </div>
+            </div>
+            <Skeleton width={34} height={10} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PostsSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="gm-card px-4 py-4">
+          <div className="flex items-center gap-3">
+            <Skeleton circle width={36} height={36} />
+            <div className="flex-1">
+              <Skeleton width={180} height={12} />
+              <div className="mt-2">
+                <Skeleton width={120} height={10} />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4">
+            <Skeleton height={180} />
+          </div>
+          <div className="mt-3">
+            <Skeleton count={2} height={10} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function SearchPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
@@ -119,7 +192,7 @@ export default function SearchPage() {
   const [stationPlaceId, setStationPlaceId] = useState<string | null>(null);
   const [stationName, setStationName] = useState<string | null>(null);
 
-  // genre chip（←今回やりたいのはコレをinput内に出すだけ）
+  // genre chip
   const [genre, setGenre] = useState<string>("");
 
   // TimelinePostListに渡す駅名（検索確定後のみ）
@@ -151,6 +224,9 @@ export default function SearchPage() {
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const justSelectedStationRef = useRef(false);
+
+  // ✅ isEmpty時にdiscoverを遅延描画（“速く見せる”本丸）
+  const [showDiscover, setShowDiscover] = useState(false);
 
   // ---- URL -> state（mount後同期）----
   useEffect(() => {
@@ -184,6 +260,25 @@ export default function SearchPage() {
 
   // stationは「駅だけ」でも検索OK
   const isEmpty = !committedQ.trim() && !(committedMode === "station" && committedStationId);
+
+  // ✅ empty時の重いUIを遅らせる（検索ページの体感速度UP）
+  useEffect(() => {
+    if (!isEmpty) {
+      setShowDiscover(false);
+      return;
+    }
+    setShowDiscover(false);
+
+    const anyWin = window as any;
+    const id =
+      anyWin.requestIdleCallback?.(() => setShowDiscover(true), { timeout: 900 }) ??
+      window.setTimeout(() => setShowDiscover(true), 220);
+
+    return () => {
+      anyWin.cancelIdleCallback?.(id);
+      clearTimeout(id);
+    };
+  }, [isEmpty]);
 
   function buildCombinedQuery(nextQ: string, nextGenre: string) {
     const parts = [nextGenre.trim(), nextQ.trim()].filter(Boolean);
@@ -236,8 +331,6 @@ export default function SearchPage() {
     }
   }
 
-  // ★重要：loadMoreがcommitted stateに依存すると「1回目が前回条件」になりやすい。
-  // → 引数で条件を受け取って、その条件で必ず叩く。
   async function loadMoreWith(
     args: {
       mode: SearchMode;
@@ -278,7 +371,6 @@ export default function SearchPage() {
         params.set("limit", String(limit));
         if (ff) params.set("follow", "1");
 
-        // resetじゃない時だけcursor
         if (!reset && cursor) params.set("cursor", cursor);
 
         if (sname) params.set("station_name", sname);
@@ -320,7 +412,7 @@ export default function SearchPage() {
     }
   }
 
-  // ✅ 検索確定（Enter / 検索ボタン）
+  // ✅ 検索確定
   const commitSearch = (next: {
     q: string;
     follow: boolean;
@@ -333,7 +425,6 @@ export default function SearchPage() {
     const ng = (next.genre ?? "").trim();
     const mm = next.mode;
 
-    // URL更新
     const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
       q: nq,
       followOnly: next.follow,
@@ -344,7 +435,6 @@ export default function SearchPage() {
     });
     router.replace(`/search${nextUrl}`, { scroll: false });
 
-    // committed更新
     setCommittedQ(nq);
     setCommittedGenre(ng);
     setCommittedFollow(next.follow);
@@ -354,20 +444,17 @@ export default function SearchPage() {
 
     setSearchedStationName(mm === "station" ? (next.sname ?? null) : null);
 
-    // reset results
     setUsers([]);
     setPosts([]);
     setCursor(null);
     setDone(false);
     setError(null);
 
-    // geoは（q or genre）どっちか必要 / stationはsid必須（駅だけOK）
     if (mm !== "station" && !nq && !ng) return;
     if (mm === "station" && !next.sid) return;
 
     if (nq) loadUsers(nq);
 
-    // ★ここが肝：committed stateに依存せず、このnext条件で1発目を叩く
     loadMoreWith(
       {
         mode: mm,
@@ -441,13 +528,11 @@ export default function SearchPage() {
     setStationPlaceId(s.station_place_id);
     setStationName(s.station_name);
 
-    // 駅をプレート固定する時だけ入力は空にして“続き入力”促す（ここはあなたの好みで維持）
     setQ("");
 
     setSuggestOpen(false);
     setSuggests([]);
 
-    // URLだけ更新（検索は走らせない）
     const nextUrl = buildUrl(new URLSearchParams(sp.toString()), {
       q: "",
       followOnly,
@@ -527,10 +612,13 @@ export default function SearchPage() {
     return `${committedQ}${g} の検索結果`;
   }, [isEmpty, committedMode, committedStationName, committedGenre, committedQ]);
 
+  // --------------------
+  // render
+  // --------------------
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="gm-card px-4 py-3">
+      <motion.div className="gm-card px-4 py-3" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
         <div className="mb-3">
           {isEmpty ? (
             <div className="text-[12px] text-slate-500">検索して投稿を探す</div>
@@ -564,7 +652,7 @@ export default function SearchPage() {
                 </div>
               ) : null}
 
-              {/* ★GENREチップ（今回の主役） */}
+              {/* GENREチップ */}
               {genre ? (
                 <div className="shrink-0 inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-800">
                   <span className="max-w-[140px] truncate">{genre}</span>
@@ -579,7 +667,7 @@ export default function SearchPage() {
                 </div>
               ) : null}
 
-              {/* 自由入力：ここは一切“勝手に消さない” */}
+              {/* 自由入力 */}
               <input
                 ref={inputRef}
                 value={q}
@@ -655,7 +743,7 @@ export default function SearchPage() {
           </label>
         </div>
 
-        {/* GENREボタン：タップしたらチップが“枠内に埋まる” */}
+        {/* GENREボタン */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -691,79 +779,128 @@ export default function SearchPage() {
 
           <div className="text-[11px] text-slate-500 ml-1">※Enterで検索</div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Body */}
       {isEmpty ? (
-        <TimelineFeed activeTab="discover" meId={meId} />
+        <div className="space-y-3">
+          {/* ✅ “開いた感” を先に出す */}
+          <AnimatePresence mode="wait">
+            {!showDiscover ? (
+              <motion.div key="empty-splash" {...fadeUp} className="gm-card px-4 py-6">
+                <div className="text-sm font-semibold text-slate-900">すぐ検索できます</div>
+                <div className="mt-2 text-xs text-slate-500">
+                  入力すると結果が表示されます。おすすめ投稿はあとから読み込みます…
+                </div>
+                <div className="mt-4">
+                  <Skeleton height={10} width={220} />
+                  <div className="mt-2">
+                    <Skeleton height={10} width={160} />
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div key="discover" {...fadeUp}>
+                <TimelineFeed activeTab="discover" meId={meId} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       ) : (
         <div className="space-y-4">
           {/* Users */}
           {usersLoading ? (
-            <div className="gm-card px-4 py-3 text-xs text-slate-500">ユーザーを検索中…</div>
+            <UsersSkeleton />
           ) : users.length > 0 ? (
-            <section className="gm-card px-4 py-3">
+            <motion.section className="gm-card px-4 py-3" {...fadeUp}>
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Users
               </div>
-              <div className="flex flex-col gap-2">
+
+              <motion.div className="flex flex-col gap-2" variants={listStagger} initial="initial" animate="animate">
                 {users.map((u) => {
                   const name = u.display_name ?? u.username ?? "ユーザー";
                   const handle = u.username ? `@${u.username}` : "";
                   const initial = (name || "U").slice(0, 1).toUpperCase();
 
                   return (
-                    <Link
-                      key={u.id}
-                      href={`/u/${u.id}`}
-                      className="gm-press flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2"
-                    >
-                      <div className="h-10 w-10 overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700 flex items-center justify-center">
-                        {u.avatar_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={u.avatar_url} alt="" className="h-10 w-10 object-cover" />
-                        ) : (
-                          initial
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
-                          {handle ? <div className="truncate text-xs text-slate-500">{handle}</div> : null}
+                    <motion.div key={u.id} variants={fadeUp}>
+                      <Link
+                        href={`/u/${u.id}`}
+                        className="gm-press flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2"
+                      >
+                        <div className="h-10 w-10 overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700 flex items-center justify-center">
+                          {u.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={u.avatar_url} alt="" className="h-10 w-10 object-cover" />
+                          ) : (
+                            initial
+                          )}
                         </div>
-                        {u.bio ? <div className="truncate text-xs text-slate-600">{u.bio}</div> : null}
-                      </div>
 
-                      <div className="text-xs text-orange-600 font-semibold">見る</div>
-                    </Link>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
+                            {handle ? <div className="truncate text-xs text-slate-500">{handle}</div> : null}
+                          </div>
+                          {u.bio ? <div className="truncate text-xs text-slate-600">{u.bio}</div> : null}
+                        </div>
+
+                        <div className="text-xs text-orange-600 font-semibold">見る</div>
+                      </Link>
+                    </motion.div>
                   );
                 })}
-              </div>
-            </section>
+              </motion.div>
+            </motion.section>
           ) : null}
 
           {/* Posts */}
-          {posts.length > 0 ? (
-            <TimelinePostList
-              posts={posts}
-              meId={meId}
-              mode={committedMode}
-              searchedStationName={searchedStationName}
-            />
+          {loading && posts.length === 0 ? (
+            <PostsSkeleton />
+          ) : posts.length > 0 ? (
+            <motion.div {...fadeUp}>
+              <TimelinePostList
+                posts={posts}
+                meId={meId}
+                mode={committedMode}
+                searchedStationName={searchedStationName}
+                revealImages={true}
+              />
+
+            </motion.div>
           ) : null}
 
           <div ref={sentinelRef} className="h-10" />
 
-          {loading && <div className="pb-8 text-center text-xs text-slate-500">読み込み中...</div>}
+          {loading && posts.length > 0 && (
+            <motion.div {...fadeUp} className="pb-8">
+              <div className="text-center text-xs text-slate-500">読み込み中...</div>
+              <div className="mt-3">
+                <Skeleton height={10} />
+                <div className="mt-2">
+                  <Skeleton height={10} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {error && !error.includes("Unauthorized") && (
-            <div className="pb-8 text-center text-xs text-red-600">{error}</div>
+            <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600">
+              {error}
+            </motion.div>
           )}
+
           {done && posts.length > 0 && (
-            <div className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</div>
+            <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400">
+              これ以上ありません
+            </motion.div>
           )}
+
           {!loading && posts.length === 0 && !error && (
-            <div className="py-10 text-center text-xs text-slate-500">該当する投稿がありません。</div>
+            <motion.div {...fadeUp} className="py-10 text-center text-xs text-slate-500">
+              該当する投稿がありません。
+            </motion.div>
           )}
         </div>
       )}

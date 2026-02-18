@@ -14,6 +14,17 @@ type Props = {
   preloadNeighbors?: boolean;
   fit?: "cover" | "contain";
   aspect?: "auto" | "square";
+
+  /**
+   * ✅ LPっぽい “演出としての” reveal
+   * - 画像の読み込みとは独立して、見せ方として端からwipeで出す
+   */
+  reveal?: boolean; // /searchなどで true にする
+  revealDurationMs?: number; // 例: 900〜1600
+  revealDelayMs?: number; // 例: 0〜300
+  revealOncePerImage?: boolean; // trueなら同じ画像に2回目以降は演出しない
+  revealOnlyWhenActive?: boolean; // trueなら「現在表示中のindex」だけ演出
+  revealStyle?: "wipe" | "clip"; // wipe=幕スライド / clip=clip-path
 };
 
 // 近傍プリロード（現状維持）
@@ -38,17 +49,13 @@ function loadImage(url: string): Promise<void> {
 }
 
 /**
- * ✅ ここが重要：同一画像が複数ルートから混入しても壊れないように
+ * ✅ 同一画像が複数ルートから混入しても壊れないように
  * - null/空を除去
- * - 文字列でユニーク化
- *
- * NOTE: signed URL が微妙に違う問題は、ここで query を落とすと強いが
- * 署名URLだと query 落とすと壊れる場合があるので、まずは “完全一致” のみ重複排除。
+ * - 文字列でユニーク化（署名URLのqueryは落とさない）
  */
 function normalizeUrls(urls: string[]): string[] {
   const cleaned = (urls ?? []).filter((u): u is string => typeof u === "string" && u.trim().length > 0);
-  const uniq = Array.from(new Set(cleaned));
-  return uniq;
+  return Array.from(new Set(cleaned));
 }
 
 export default function PostImageCarousel({
@@ -60,11 +67,17 @@ export default function PostImageCarousel({
   preloadNeighbors = true,
   fit = "cover",
   aspect = "auto",
+
+  reveal = false,
+  revealDurationMs = 1200,
+  revealDelayMs = 120,
+  revealOncePerImage = true,
+  revealOnlyWhenActive = true,
+  revealStyle = "wipe",
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // ✅ まずここで “必ず” 正規化（1枚が2枚になる問題を根絶）
   const urls = useMemo(() => normalizeUrls(imageUrls), [imageUrls]);
   const total = urls.length;
 
@@ -73,8 +86,6 @@ export default function PostImageCarousel({
   }, [total]);
 
   const [index, setIndex] = useState(() => clamp(initialIndex));
-
-  // ✅ スワイプ中/アニメ中に「見た目のindex」を先に動かす
   const [viewIndex, setViewIndex] = useState(() => clamp(initialIndex));
 
   // “押した瞬間に反応”させるための pending
@@ -84,6 +95,10 @@ export default function PostImageCarousel({
 
   const reqIdRef = useRef(0);
   const overlayTimerRef = useRef<number | null>(null);
+
+  // ✅ reveal済み管理（画像ごとに一回だけ、など）
+  const revealedRef = useRef<Record<number, boolean>>({});
+  const [revealTick, setRevealTick] = useState(0); // 強制再描画トリガ（reveal開始を確実に反映）
 
   const isPostDetailPage = pathname === `/posts/${postId}`;
   const shouldSyncUrl = syncUrl ?? isPostDetailPage;
@@ -148,16 +163,29 @@ export default function PostImageCarousel({
     };
   }, []);
 
-  // ✅ viewIndex が変わったら x をスッと合わせる（ボタン・ドット押下も含む）
+  // ✅ viewIndex が変わったら x をスッと合わせる
   useEffect(() => {
-    // drag中は framer が直接 x を動かすので、ここは「確定後にスナップ」用途
     const target = -viewIndex * wrapW;
     animate(x, target, { type: "tween", duration: 0.22, ease: [0.2, 0.9, 0.2, 1] });
   }, [viewIndex, wrapW, x]);
 
+  // ✅ 現在表示中画像の reveal 状態を更新（activeになった瞬間に「未revealなら演出」）
+  useEffect(() => {
+    if (!reveal) return;
+    const active = pendingIndex != null ? pendingIndex : index;
+    if (revealOnlyWhenActive) {
+      if (revealOncePerImage && revealedRef.current[active]) return;
+      // “activeになった”ことを契機に、revealを開始させるためtickを動かす
+      setRevealTick((t) => t + 1);
+    } else {
+      // 全画像に演出したいなら、ここでまとめてtick
+      setRevealTick((t) => t + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, index, pendingIndex, revealOnlyWhenActive]);
+
   if (total === 0) return null;
 
-  // total==1 はカルーセルUIを完全に出さない（誤検知を抑える）
   const canPrev = total > 1 && index > 0;
   const canNext = total > 1 && index < total - 1;
 
@@ -178,7 +206,7 @@ export default function PostImageCarousel({
     setLoadError(false);
     setPendingIndex(to);
 
-    // ✅ 見た目はすぐ動かす（スワイプ感）
+    // ✅ 見た目はすぐ動かす
     setViewIndex(to);
 
     if (overlayTimerRef.current) window.clearTimeout(overlayTimerRef.current);
@@ -200,6 +228,9 @@ export default function PostImageCarousel({
         setIndex(to);
         setPendingIndex(null);
         setShowOverlay(false);
+
+        // ✅ ページングでも「activeになった」扱いで演出開始できるようtick
+        if (reveal) setRevealTick((t) => t + 1);
       });
   };
 
@@ -221,7 +252,6 @@ export default function PostImageCarousel({
   const onDragEnd = (_: any, info: { offset: { x: number } }) => {
     if (total <= 1) return;
     if (pendingIndex != null) {
-      // pending中は元に戻す
       setViewIndex(index);
       return;
     }
@@ -234,41 +264,105 @@ export default function PostImageCarousel({
     } else if (dx > th && canPrev) {
       goto(index - 1);
     } else {
-      // スナップバック
       setViewIndex(index);
     }
   };
 
-  // ==== 描画 ====
   const dotsActive = pendingIndex != null ? pendingIndex : index;
 
+  // ✅ reveal用：active index を決める
+  const activeIndex = dotsActive;
+
+  // =========
+  // 描画
+  // =========
   const inner = (
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden">
-      {/* track */}
-<motion.div
-  className="absolute inset-0 flex"
-  style={{ x, touchAction: "pan-y" }} // ✅ style二重を解消（duplicate props 回避）
-  drag={total > 1 ? "x" : false}
-  dragConstraints={{ left: -wrapW * (total - 1), right: 0 }}
-  dragElastic={0.08}
-  onDragEnd={onDragEnd}
->
-  {urls.map((u, i) => (
-    <div key={`${postId}-${i}`} className="relative h-full w-full shrink-0">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={u}
-        alt=""
-        className={["absolute inset-0 h-full w-full", fitCls].join(" ")}
-        loading={i === index ? loadingMode : "lazy"}
-        decoding="async"
-        fetchPriority={i === index && loadingMode === "eager" ? "high" : "auto"}
-        draggable={false}
-      />
-    </div>
-  ))}
-</motion.div>
+      <motion.div
+        className="absolute inset-0 flex"
+        style={{ x, touchAction: "pan-y" }}
+        drag={total > 1 ? "x" : false}
+        dragConstraints={{ left: -wrapW * (total - 1), right: 0 }}
+        dragElastic={0.08}
+        onDragEnd={onDragEnd}
+      >
+        {urls.map((u, i) => {
+          const isActive = i === activeIndex;
 
+          // ✅ この画像はreveal対象？
+          const shouldRevealThis =
+            reveal &&
+            (!revealOnlyWhenActive || isActive) &&
+            (!revealOncePerImage || !revealedRef.current[i]);
+
+          // reveal開始時に「この画像は見せた」扱いにする（onceの場合）
+          // ※ revealTick を depsに含めて、activeになった瞬間に発火
+          // eslint-disable-next-line react-hooks/rules-of-hooks
+          useEffect(() => {
+            if (!shouldRevealThis) return;
+            // activeになった「直後」に一度だけマーク（演出自体はmotionが走る）
+            revealedRef.current[i] = true;
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+          }, [revealTick]);
+
+          return (
+            <div key={`${postId}-${i}`} className="relative h-full w-full shrink-0 bg-slate-100">
+              {/* ======= 画像本体 ======= */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={u}
+                alt=""
+                className={["absolute inset-0 h-full w-full", fitCls].join(" ")}
+                loading={i === index ? loadingMode : "lazy"}
+                decoding="async"
+                fetchPriority={i === index && loadingMode === "eager" ? "high" : "auto"}
+                draggable={false}
+              />
+
+              {/* ======= LPっぽい演出（reveal） ======= */}
+              {shouldRevealThis && revealStyle === "wipe" ? (
+                <>
+                  {/* 白い“幕”が左→右にスーッと流れて画像を見せる */}
+                  <motion.div
+                    className="absolute inset-0 z-[2] pointer-events-none bg-white"
+                    initial={{ x: "0%" }}
+                    animate={{ x: "110%" }}
+                    transition={{
+                      duration: Math.max(0.2, revealDurationMs / 1000),
+                      delay: Math.max(0, revealDelayMs / 1000),
+                      ease: [0.2, 0.9, 0.2, 1],
+                    }}
+                  />
+                  {/* うっすら影（ちょいLPっぽく） */}
+                  <motion.div
+                    className="absolute inset-0 z-[1] pointer-events-none"
+                    initial={{ opacity: 0.0 }}
+                    animate={{ opacity: 0.12 }}
+                    transition={{ duration: 0.35, delay: Math.max(0, revealDelayMs / 1000) }}
+                    style={{
+                      background:
+                        "linear-gradient(90deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 100%)",
+                    }}
+                  />
+                </>
+              ) : null}
+
+              {shouldRevealThis && revealStyle === "clip" ? (
+                <motion.div
+                  className="absolute inset-0 z-[2] pointer-events-none"
+                  initial={{ clipPath: "inset(0 100% 0 0)" }}
+                  animate={{ clipPath: "inset(0 0% 0 0)" }}
+                  transition={{
+                    duration: Math.max(0.2, revealDurationMs / 1000),
+                    delay: Math.max(0, revealDelayMs / 1000),
+                    ease: [0.2, 0.9, 0.2, 1],
+                  }}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+      </motion.div>
 
       {pendingIndex != null && showOverlay && Overlay}
 

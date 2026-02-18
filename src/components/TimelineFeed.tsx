@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Lock, ChevronDown, ChevronUp } from "lucide-react";
+import { motion } from "framer-motion";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
@@ -54,7 +55,6 @@ type PostRow = {
   likedByMe?: boolean;
   initialLikers?: LikerLite[];
 
-  // 注入投稿（最新タブ用）
   injected?: boolean;
   inject_reason?: string | null;
   inject_follow_mode?: "follow" | "followback" | null;
@@ -85,9 +85,6 @@ function formatJST(iso: string) {
   }).format(dt);
 }
 
-/**
- * friends Timelineでは「正方形URLのみ」
- */
 function getTimelineSquareUrls(p: PostRow): string[] {
   const cover = p.cover_square_url ? [p.cover_square_url] : [];
 
@@ -98,9 +95,7 @@ function getTimelineSquareUrls(p: PostRow): string[] {
   const thumbsFromVariants = variants.map((v) => v?.thumb ?? null).filter((x): x is string => !!x);
 
   const all = [...cover, ...squaresFromAssets, ...thumbsFromVariants];
-  const uniq = Array.from(new Set(all)).filter(Boolean);
-
-  return uniq;
+  return Array.from(new Set(all)).filter(Boolean);
 }
 
 function getFirstSquareThumb(p: PostRow): string | null {
@@ -282,6 +277,138 @@ function planDiscoverTiles(
   return out;
 }
 
+// =========================
+// ✅ Discover用：in-view後に “演出として” 遅延＋ワイプ表示（表示されない問題を潰す）
+// =========================
+function useInViewOnce<T extends Element>(opts?: { rootMargin?: string }) {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        const hit = entries.some((e) => e.isIntersecting);
+        if (hit) {
+          setInView(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: opts?.rootMargin ?? "350px" }
+    );
+
+    io.observe(el);
+    return () => io.disconnect();
+  }, [opts?.rootMargin]);
+
+  return { ref, inView } as const;
+}
+
+function DiscoverRevealImage({
+  src,
+  index,
+}: {
+  src: string;
+  index: number;
+}) {
+  const { ref, inView } = useInViewOnce<HTMLDivElement>({ rootMargin: "450px" });
+
+  const [shouldLoad, setShouldLoad] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  // ✅ revealアニメは先に走らせる（画像ロードとは独立）
+  const [reveal, setReveal] = useState(false);
+
+  useEffect(() => {
+    if (!inView) return;
+
+    const stagger = Math.min(28 * index, 420); // 0〜420ms
+    const base = 110; // “わざと”少し待つ
+    const t1 = window.setTimeout(() => setReveal(true), base + stagger);
+    const t2 = window.setTimeout(() => setShouldLoad(true), base + stagger + 60);
+
+    // ✅ もしロードが詰まっても永遠に透明にならないように保険
+    const tFailSafe = window.setTimeout(() => {
+      if (!loaded) setFailed(true);
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(tFailSafe);
+    };
+  }, [inView, index, loaded]);
+
+  return (
+    <div ref={ref} className="absolute inset-0">
+      {/* ベース（即表示） */}
+      <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-slate-200/60" />
+      <div className="absolute inset-0 opacity-[0.08] [background-image:radial-gradient(#000_1px,transparent_1px)] [background-size:10px_10px]" />
+
+      {/* “LPっぽいワイプ” (画像が無くても動く) */}
+      <motion.div
+        className="absolute inset-0"
+        initial={{ clipPath: "inset(0 100% 0 0)" }}
+        animate={{ clipPath: reveal ? "inset(0 0% 0 0)" : "inset(0 100% 0 0)" }}
+        transition={{ duration: 0.78, ease: [0.2, 0.9, 0.2, 1] }}
+        style={{
+          background:
+            "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.00) 55%, rgba(0,0,0,0.05))",
+          backdropFilter: "blur(0.5px)",
+        }}
+      />
+
+      {/* 画像（ロード開始は shouldLoad から） */}
+      {shouldLoad ? (
+        <motion.div
+          className="absolute inset-0"
+          initial={{ opacity: 0, filter: "brightness(0.75) saturate(1.07)", transform: "scale(1.02)" }}
+          animate={{
+            opacity: loaded ? 1 : 0,
+            filter: loaded ? "brightness(1) saturate(1)" : "brightness(0.75) saturate(1.07)",
+            transform: loaded ? "scale(1)" : "scale(1.02)",
+          }}
+          transition={{ duration: 0.55, ease: [0.2, 0.9, 0.2, 1] }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+            onError={() => setFailed(true)}
+          />
+        </motion.div>
+      ) : null}
+
+      {/* ロード失敗 or 長引き救済：最終的に “見た目として成立する” 表示 */}
+      {failed && !loaded ? (
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200" />
+          <div className="absolute inset-0 opacity-[0.12] [background-image:radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px]" />
+        </div>
+      ) : null}
+
+      {/* 上から薄いベール */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        initial={{ opacity: 0.22 }}
+        animate={{ opacity: loaded ? 0.1 : 0.22 }}
+        transition={{ duration: 0.6 }}
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.00) 45%, rgba(0,0,0,0.12) 100%)",
+        }}
+      />
+    </div>
+  );
+}
+
 export default function TimelineFeed({
   activeTab,
   meId,
@@ -298,60 +425,54 @@ export default function TimelineFeed({
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
   const [seed] = useState(() => makeSeed());
 
-  // Suggest
   const [suggestMeta, setSuggestMeta] = useState<TimelineMeta | null>(null);
   const shownSuggestRef = useRef(false);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-async function loadMore(reset = false) {
-  if (loading) return;
-  if (!reset && done) return;
+  async function loadMore(reset = false) {
+    if (loading) return;
+    if (!reset && done) return;
 
-  setLoading(true);
-  setError(null);
+    setLoading(true);
+    setError(null);
 
-  const params = new URLSearchParams();
-  params.set("tab", activeTab);
-  params.set("limit", activeTab === "discover" ? "24" : "5");
-  params.set("seed", seed); // ✅ リロードごとにランダム / 同一スクロール内は一貫
-  if (!reset && cursor) params.set("cursor", cursor);
+    const params = new URLSearchParams();
+    params.set("tab", activeTab);
+    params.set("limit", activeTab === "discover" ? "24" : "5");
+    params.set("seed", seed);
+    if (!reset && cursor) params.set("cursor", cursor);
 
-  try {
-    const res = await fetch(`/api/timeline?${params.toString()}`);
-    const payload = await res.json().catch(() => ({}));
+    try {
+      const res = await fetch(`/api/timeline?${params.toString()}`);
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
 
-    if (!res.ok) throw new Error(payload?.error ?? `Failed (${res.status})`);
+      const newPosts: PostRow[] = payload.posts ?? [];
+      const nextCursor: string | null = payload.nextCursor ?? null;
 
-    const newPosts: PostRow[] = payload.posts ?? [];
-    const nextCursor: string | null = payload.nextCursor ?? null;
+      if (reset) {
+        setSuggestMeta(payload?.meta ?? null);
+        shownSuggestRef.current = false;
+      }
 
-    // meta（最初のページだけ採用）
-    if (reset) {
-      setSuggestMeta(payload?.meta ?? null);
-      shownSuggestRef.current = false;
+      setPosts((prev) => {
+        if (reset) return newPosts;
+        const seen = new Set(prev.map((p) => p.id));
+        const appended = newPosts.filter((p) => !seen.has(p.id));
+        return [...prev, ...appended];
+      });
+
+      setCursor(nextCursor);
+      if (!nextCursor || newPosts.length === 0) setDone(true);
+    } catch (e: any) {
+      const msg = e?.message ?? "読み込みに失敗しました";
+      setError(msg);
+      if (String(msg).includes("Unauthorized")) setDone(true);
+    } finally {
+      setLoading(false);
     }
-
-    setPosts((prev) => {
-      if (reset) return newPosts;
-
-      // ✅ prevの順序を維持しつつ newPosts を末尾に追加（重複は追加しない）
-      const seen = new Set(prev.map((p) => p.id));
-      const appended = newPosts.filter((p) => !seen.has(p.id));
-      return [...prev, ...appended];
-    });
-
-    setCursor(nextCursor);
-    if (!nextCursor || newPosts.length === 0) setDone(true);
-  } catch (e: any) {
-    const msg = e?.message ?? "読み込みに失敗しました";
-    setError(msg);
-    if (String(msg).includes("Unauthorized")) setDone(true);
-  } finally {
-    setLoading(false);
   }
-}
-
 
   useEffect(() => {
     setPosts([]);
@@ -404,7 +525,7 @@ async function loadMore(reset = false) {
     });
   }, [discoverGridPosts, seed]);
 
-  // ✅ ここが超重要：friends用 hooks も discover の return より前に置く
+  // friends用
   const suggestAt = suggestMeta?.suggestAtIndex ?? 1;
   const suggest = suggestMeta?.suggestion ?? null;
 
@@ -429,7 +550,6 @@ async function loadMore(reset = false) {
     }
   }, [activeTab, renderItems, suggest]);
 
-  // login gate
   if (error?.includes("Unauthorized") && activeTab === "friends") {
     return (
       <LoginCard
@@ -449,13 +569,13 @@ async function loadMore(reset = false) {
   }
 
   // =========================
-  // DISCOVER（発見）
+  // DISCOVER
   // =========================
   if (activeTab === "discover") {
     return (
       <div className="w-full">
         <div className="grid grid-cols-3 gap-[2px] md:gap-2 [grid-auto-flow:dense]">
-          {discoverTiles.map(({ p, big }) => {
+          {discoverTiles.map(({ p, big }, idx) => {
             const prof = p.profile;
             const display = prof?.display_name ?? "ユーザー";
             const isPublic = prof?.is_public ?? true;
@@ -476,8 +596,7 @@ async function loadMore(reset = false) {
               >
                 <div className="relative w-full aspect-square">
                   {thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={thumb} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" decoding="async" />
+                    <DiscoverRevealImage src={thumb} index={idx} />
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-100">
                       <div className="p-2 text-[11px] text-slate-500 line-clamp-6">
@@ -486,8 +605,6 @@ async function loadMore(reset = false) {
                       </div>
                     </div>
                   )}
-
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
 
                   <div className="hidden md:flex absolute left-2 top-2 items-center gap-1 text-[11px] font-medium text-white drop-shadow">
                     <span className="max-w-[120px] truncate">{display}</span>
@@ -520,7 +637,7 @@ async function loadMore(reset = false) {
   }
 
   // =========================
-  // FRIENDS（最新）
+  // FRIENDS
   // =========================
   return (
     <div className="flex flex-col items-stretch gap-6">
@@ -570,14 +687,12 @@ async function loadMore(reset = false) {
             : null;
 
         const priceLabel = formatPrice(p);
-
         const showInjectedFollow = !!(p.inject_target_user_id && p.inject_target_user_id !== meId);
 
         return (
           <article key={p.id} className="gm-card gm-press overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
               <div className="md:border-r md:border-black/[.05]">
-                {/* Header */}
                 <div className="flex items-center justify-between px-4 pt-4 pb-2">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link
@@ -600,7 +715,6 @@ async function loadMore(reset = false) {
                         {!isPublic && <Lock size={12} className="shrink-0 text-slate-500" />}
                       </div>
 
-                      {/* 注入理由があればここで明記 */}
                       <div className="text-[11px] text-slate-500">
                         {p.injected && p.inject_reason ? p.inject_reason : "最新"}
                       </div>
@@ -608,7 +722,6 @@ async function loadMore(reset = false) {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* ✅ 未フォロー注入投稿のフォローボタン（あなたの現行 FollowButton props に合わせた） */}
                     {showInjectedFollow ? (
                       <FollowButton
                         targetUserId={p.inject_target_user_id!}
@@ -621,7 +734,6 @@ async function loadMore(reset = false) {
                   </div>
                 </div>
 
-                {/* Strip */}
                 <div className="px-4 pb-3">
                   <div className="flex flex-wrap items-center gap-2">
                     {p.place_name ? (
@@ -691,7 +803,6 @@ async function loadMore(reset = false) {
                   </div>
                 </div>
 
-                {/* Media */}
                 {timelineImageUrls.length > 0 && (
                   <div className="block w-full aspect-square overflow-hidden bg-slate-100">
                     <PostImageCarousel
@@ -706,12 +817,10 @@ async function loadMore(reset = false) {
                   </div>
                 )}
 
-                {/* Body */}
                 <div className="space-y-2 px-4 py-4">
                   {p.content && <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{p.content}</p>}
                 </div>
 
-                {/* Actions */}
                 <div className="flex items-center justify-between px-4 pb-3 pt-0">
                   <PostActions
                     postId={p.id}
@@ -728,13 +837,11 @@ async function loadMore(reset = false) {
                   <PostCollectionButton postId={p.id} />
                 </div>
 
-                {/* Comments */}
                 <div className="px-4 pb-5">
                   <PostComments postId={p.id} postUserId={p.user_id} meId={meId} previewCount={2} />
                 </div>
               </div>
 
-              {/* Right panel (PC) */}
               <aside className="hidden md:block p-4">
                 {p.place_id ? (
                   <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={8} maxThumbs={8} />
@@ -744,7 +851,6 @@ async function loadMore(reset = false) {
               </aside>
             </div>
 
-            {/* Mobile expand photos */}
             {p.place_id && isPhotosOpen ? (
               <div className="md:hidden pb-5 px-4">
                 <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={3} maxThumbs={3} />
