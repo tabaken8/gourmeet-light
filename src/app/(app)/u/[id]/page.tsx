@@ -10,17 +10,47 @@ import AlbumBrowser, { type AlbumPost } from "@/components/AlbumBrowser";
 
 export const dynamic = "force-dynamic";
 
+const JST_TZ = "Asia/Tokyo";
+
 // ---- utils ----
-function formatJstYmdFromIso(iso: string): string {
-  const dtf = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
+function dtfJstYmd() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: JST_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
-  return dtf.format(new Date(iso));
 }
 
+function formatJstYmdFromIso(iso: string): string {
+  return dtfJstYmd().format(new Date(iso)); // YYYY-MM-DD
+}
+
+/**
+ * JSTカレンダー基準で「今日Key」と「startKey(days前)」を作り、
+ * created_at用に「startKeyのJST 0:00」をUTC ISOに変換して返す。
+ */
+function subtractDaysKeyJST(days: number): { startKey: string; startIsoUtc: string; todayKey: string } {
+  const dtf = dtfJstYmd();
+
+  const todayKey = dtf.format(new Date());
+  const [y, m, d] = todayKey.split("-").map(Number);
+
+  // JSTの今日12:00をUTCにして days 日引く（境界ブレ回避）
+  const jstNoonUtcMs = Date.UTC(y, m - 1, d, 12, 0, 0) - 9 * 60 * 60 * 1000;
+  const targetUtcMs = jstNoonUtcMs - days * 24 * 60 * 60 * 1000;
+
+  const startKey = dtf.format(new Date(targetUtcMs + 9 * 60 * 60 * 1000));
+  const [yy, mm, dd] = startKey.split("-").map(Number);
+
+  // startKeyのJST 0:00 -> UTC ISO
+  const startUtcMs = Date.UTC(yy, mm - 1, dd, 0, 0, 0) - 9 * 60 * 60 * 1000;
+  const startIsoUtc = new Date(startUtcMs).toISOString();
+
+  return { startKey, startIsoUtc, todayKey };
+}
+
+/** 代表日付：visited_on があればそれ、無ければ created_at の JST日付 */
 function getRepresentativeDayKey(r: any): string {
   if (r?.visited_on) return String(r.visited_on);
   if (r?.created_at) return formatJstYmdFromIso(String(r.created_at));
@@ -31,6 +61,20 @@ function normalizePlacesShape(row: any) {
   const pl = row?.places;
   const places = Array.isArray(pl) ? (pl[0] ?? null) : (pl ?? null);
   return { ...row, places };
+}
+
+function scoreAsNumber(x: any): number | null {
+  if (typeof x === "number" && Number.isFinite(x)) return x;
+  if (typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x))) return Number(x);
+  return null;
+}
+
+function getThumbUrlFromPostRow(r: any): string | null {
+  const v = r?.image_variants;
+  if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string") return v[0].thumb;
+  const urls = r?.image_urls;
+  if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string") return urls[0];
+  return null;
 }
 
 export default async function UserPublicPage({ params }: { params: { id: string } }) {
@@ -116,9 +160,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   // - 非公開は accepted follower のみ
   const canViewPosts = isPublic || initiallyFollowing;
 
-  // -----------------------------
   // 🔔 bell initial state (server-side)
-  // -----------------------------
   let initialBellEnabled = false;
   if (initiallyFollowing) {
     const { data: sub } = await supabase
@@ -130,9 +172,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
     initialBellEnabled = sub?.enabled ?? true;
   }
 
-  // -----------------------------
   // earliestKey (visited_on or created_at)
-  // -----------------------------
   let earliestKey: string | null = null;
   if (canViewPosts) {
     const [earliestVisitedQ, earliestCreatedQ] = await Promise.all([
@@ -159,98 +199,75 @@ export default async function UserPublicPage({ params }: { params: { id: string 
     else earliestKey = v ?? c ?? null;
   }
 
-  // -----------------------------
-  // heatmap data (initial = 1 year only)
-  // -----------------------------
+  // heatmap data (1 year)
   let heatmapDays: HeatmapDay[] = [];
-
   if (canViewPosts) {
-    const dtf = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
+    const { startKey: startJstKey, startIsoUtc, todayKey: todayJstKey } = subtractDaysKeyJST(364);
 
-    const today = new Date();
-    const todayJst = dtf.format(today);
-    const startJst = dtf.format(new Date(today.getTime() - 364 * 24 * 60 * 60 * 1000));
+    // visited_on / created_at を分けて並列取得（ズレに強い）
+    const [withVisitedRes, noVisitedRes] = await Promise.all([
+      supabase
+        .from("posts")
+        .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
+        .eq("user_id", userId)
+        .not("visited_on", "is", null)
+        .gte("visited_on", startJstKey)
+        .lte("visited_on", todayJstKey)
+        .limit(2000),
 
-    const startIso = new Date(Date.now() - 364 * 24 * 60 * 60 * 1000).toISOString();
-    const endIso = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString();
+      supabase
+        .from("posts")
+        .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
+        .eq("user_id", userId)
+        .is("visited_on", null)
+        .gte("created_at", startIsoUtc)
+        .limit(2000),
+    ]);
 
-    const { data: withVisited } = await supabase
-      .from("posts")
-      .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
-      .eq("user_id", userId)
-      .not("visited_on", "is", null)
-      .gte("visited_on", startJst)
-      .lte("visited_on", todayJst)
-      .limit(2000);
+    const rowsById = new Map<string, any>();
+    for (const r of withVisitedRes.data ?? []) rowsById.set(String(r.id), r);
+    for (const r of noVisitedRes.data ?? []) rowsById.set(String(r.id), r);
 
-    const { data: noVisited } = await supabase
-      .from("posts")
-      .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
-      .eq("user_id", userId)
-      .is("visited_on", null)
-      .gte("created_at", startIso)
-      .lte("created_at", endIso)
-      .limit(2000);
-
-    const rows = new Map<string, any>();
-    for (const r of withVisited ?? []) rows.set(String(r.id), r);
-    for (const r of noVisited ?? []) rows.set(String(r.id), r);
-
-    type DayPost = { id: string; thumbUrl: string | null; score: number | null };
+    type DayPost = { id: string; thumbUrl: string | null; score: number | null; created_at: string };
     type DayAcc = { date: string; count: number; maxScore: number | null; posts: DayPost[] };
     const dayMap = new Map<string, DayAcc>();
 
-    const getThumbUrlFromPostRow = (r: any): string | null => {
-      const v = r?.image_variants;
-      if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string") return v[0].thumb;
-      const urls = r?.image_urls;
-      if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string") return urls[0];
-      return null;
-    };
-
-    for (const r of rows.values()) {
+    for (const r of rowsById.values()) {
       const dateKey = getRepresentativeDayKey(r);
-      if (dateKey < startJst || dateKey > todayJst) continue;
+      if (dateKey < startJstKey || dateKey > todayJstKey) continue;
 
-      const sRaw = (r as any)?.recommend_score;
-      const score =
-        typeof sRaw === "number"
-          ? Number.isFinite(sRaw)
-            ? sRaw
-            : null
-          : typeof sRaw === "string"
-            ? Number.isFinite(Number(sRaw))
-              ? Number(sRaw)
-              : null
-            : null;
-
+      const score = scoreAsNumber(r?.recommend_score);
       const thumbUrl = getThumbUrlFromPostRow(r);
-      const cur: DayAcc = dayMap.get(dateKey) ?? { date: dateKey, count: 0, maxScore: null, posts: [] };
 
+      const cur: DayAcc = dayMap.get(dateKey) ?? { date: dateKey, count: 0, maxScore: null, posts: [] };
       cur.count += 1;
       if (score !== null) cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
-      cur.posts.push({ id: String(r.id), thumbUrl, score });
+
+      cur.posts.push({
+        id: String(r.id),
+        thumbUrl,
+        score,
+        created_at: String(r.created_at ?? ""),
+      });
 
       dayMap.set(dateKey, cur);
     }
 
     heatmapDays = Array.from(dayMap.values())
       .map((d) => {
-        const sorted = d.posts.slice().sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+        const sorted = d.posts.slice().sort((a, b) => {
+          const as = a.score ?? -Infinity;
+          const bs = b.score ?? -Infinity;
+          if (as !== bs) return bs - as;
+          return a.created_at < b.created_at ? 1 : -1;
+        });
         const top3 = sorted.slice(0, 3).map((p) => ({ id: p.id, thumbUrl: p.thumbUrl }));
         return { date: d.date, count: d.count, maxScore: d.maxScore, posts: top3 };
       })
       .sort((a, b) => (a.date < b.date ? 1 : -1));
   }
 
-  // -----------------------------
   // AlbumBrowser posts
-  // -----------------------------
   let albumPosts: AlbumPost[] = [];
   if (canViewPosts) {
     const { data } = await supabase
@@ -286,12 +303,9 @@ export default async function UserPublicPage({ params }: { params: { id: string 
     albumPosts = (data ?? []).map(normalizePlacesShape) as any;
   }
 
-  // -----------------------------
-  // Pins (owner = profile user) ✅ Twitterの固定ツイ相当
-  // -----------------------------
+  // Pins
   let pinnedPostIds: string[] = [];
   if (canViewPosts) {
-    // ✅ ここが重要：viewer(me)ではなく owner(userId) の pins を取る
     const { data } = await supabase
       .from("post_pins")
       .select("post_id")
@@ -302,15 +316,21 @@ export default async function UserPublicPage({ params }: { params: { id: string 
     pinnedPostIds = (data ?? []).map((r: any) => String(r.post_id));
   }
 
+  // ===== 共通カード見た目（丸く統一） =====
+  const cardClass =
+    "w-full overflow-hidden rounded-2xl border border-black/[.06] bg-white/95 shadow-sm";
+  const cardPad = "px-4 py-5 md:px-6 md:py-6";
+
   return (
     <main className="min-h-screen bg-orange-50 text-slate-800">
       <div className="w-full overflow-x-hidden pb-24 pt-6">
         <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
-          <section className="w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
-            <div className="px-4 py-5 md:px-6 md:py-6">
+          {/* ========================= PROFILE CARD ========================= */}
+          <section className={cardClass}>
+            <div className={cardPad}>
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 {/* left */}
-                <div className="flex items-start gap-4 min-w-0">
+                <div className="flex min-w-0 items-start gap-4">
                   <div className="shrink-0">
                     {avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -335,7 +355,7 @@ export default async function UserPublicPage({ params }: { params: { id: string 
                       {username ? <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p> : null}
 
                       {isFollowing ? (
-                        <p className="bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 md:text-xs">
+                        <p className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 md:text-xs">
                           フォローされています
                         </p>
                       ) : null}
@@ -404,22 +424,26 @@ export default async function UserPublicPage({ params }: { params: { id: string 
             </div>
           </section>
 
+          {/* ========================= HEATMAP CARD ========================= */}
           {canViewPosts ? (
-            <VisitHeatmap userId={userId} days={heatmapDays} earliestKey={earliestKey} />
+            <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
+              <VisitHeatmap userId={userId} days={heatmapDays} earliestKey={earliestKey} />
+            </section>
           ) : (
-            <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
+            <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
               <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
-              <div className="mt-3 border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
+              <div className="mt-3 rounded-xl border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             </section>
           )}
 
-          <section className="w-full bg-white rounded-none border border-black/[.06] p-4 md:p-5">
+          {/* ========================= ALBUM CARD ========================= */}
+          <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
             <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
 
             {!canViewPosts ? (
-              <div className="border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
+              <div className="rounded-xl border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             ) : (

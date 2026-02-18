@@ -407,16 +407,19 @@ export default async function AccountPage() {
           </section>
 
           {/* ========================= HEATMAP ========================= */}
-          <Suspense
-            fallback={
-              <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm">
-                <div className="h-5 w-32 rounded bg-slate-100" />
-                <div className="mt-3 h-32 rounded border border-black/[.06] bg-white" />
-              </section>
-            }
-          >
-            <VisitHeatmap userId={user.id} days={heatmapDays} earliestKey={earliestKey} />
-          </Suspense>
+<Suspense
+  fallback={
+    <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm">
+      <div className="h-5 w-32 rounded bg-slate-100" />
+      <div className="mt-3 h-32 rounded border border-black/[.06] bg-white" />
+    </section>
+  }
+>
+  <section className="w-full overflow-hidden rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm md:p-5">
+    <VisitHeatmap userId={user.id} days={heatmapDays} earliestKey={earliestKey} />
+  </section>
+</Suspense>
+
 
           {/* ========================= POSTS (ALBUM) ========================= */}
           <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm md:p-5">
