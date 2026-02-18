@@ -12,28 +12,12 @@ import {
   UserPlus,
   LogOut,
   UserRound,
-  MapPin,
   CircleDollarSign,
   Settings,
-  MessagesSquare,
-  Sparkles,
 } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import { useNavBadges } from "@/hooks/useNavBadges";
-
-function AIChatIcon({ size = 22, className = "" }: { size?: number; className?: string }) {
-  // “相談してる”= 吹き出し / “AIっぽい”= キラッ
-  return (
-    <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <MessagesSquare size={size} className={className} />
-      <Sparkles
-        size={Math.max(12, Math.floor(size * 0.58))}
-        className="absolute -right-1 -top-1 text-orange-600"
-      />
-    </span>
-  );
-}
 
 function NavItem({
   href,
@@ -88,9 +72,7 @@ function NavItem({
           {count}
         </span>
 
-        {dot && (
-          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-        )}
+        {dot && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />}
       </div>
 
       <span
@@ -138,14 +120,8 @@ function getGourmeetDayKey(now = new Date()): string {
 }
 
 export default function Sidebar({ name }: { name?: string }) {
-  const {
-    isAuthed,
-    avatarUrl,
-    displayNameSafe,
-    notifCount,
-    followReqCount,
-    timelineDot,
-  } = useNavBadges(name);
+  const { isAuthed, avatarUrl, displayNameSafe, notifCount, followReqCount, timelineDot } =
+    useNavBadges(name);
 
   const supabase = createClientComponentClient();
   const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
@@ -288,27 +264,15 @@ export default function Sidebar({ name }: { name?: string }) {
           iconClassName="text-blue-600"
         />
 
+        {/* ✅ 検索をオレンジに */}
         <NavItem
           href={gate("/search", true)}
           label="検索"
           icon={Search}
-          iconClassName="text-slate-700"
+          iconClassName="text-orange-700"
         />
 
-        <NavItem
-          href={gate("/map")}
-          label="マップ"
-          icon={MapPin}
-          iconClassName="text-emerald-700"
-        />
-
-        {/* ✅ AI Chat 追加 */}
-        <NavItem
-          href={gate("/ai-chat")}
-          label="AI相談"
-          icon={(props: any) => <AIChatIcon {...props} />}
-          iconClassName="text-slate-700"
-        />
+        {/* ✅ map / ai-chat は隠す（今回は表示しない） */}
 
         <NavItem
           href={gate("/collection")}
@@ -357,8 +321,8 @@ export default function Sidebar({ name }: { name?: string }) {
           avatarAlt={displayNameMemo}
         />
 
-        {/* ✅ Post CTA（プロモ時に光らせる + メッセージ） */}
-        <div className="mt-4">
+        {/* Post CTA */}
+        <div className="mt-4 relative">
           <Link
             href={gate("/posts/new")}
             className={[
@@ -395,23 +359,24 @@ export default function Sidebar({ name }: { name?: string }) {
             )}
           </Link>
 
-          {/* hoverでサイドバーが開いた時だけ見える、ちょろっと案内 */}
+          {/* ✅ ここが最優先修正：
+              hoverで出す案内を "absolute overlay" にしてレイアウトを押さない */}
           {showPromo && (
             <div
               className="
-                mt-2
-                overflow-hidden
-                max-h-0 opacity-0
+                pointer-events-none
+                absolute left-0 right-0 top-full mt-2
+                opacity-0 translate-y-1
                 transition-all duration-200
-                group-hover:max-h-20 group-hover:opacity-100
+                group-hover:opacity-100 group-hover:translate-y-0
               "
             >
-              <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-3 py-2">
-                <div className="text-[11px] font-semibold text-slate-900 truncate">
-                  🎁 {promoText}
-                </div>
+              <div className="rounded-xl border border-orange-100 bg-orange-50/70 px-3 py-2 shadow-sm">
+                <div className="text-[11px] font-semibold text-slate-900 truncate">🎁 {promoText}</div>
                 <div className="text-[10px] text-slate-600 truncate">{promoSub}</div>
-                <div className="mt-1">
+
+                {/* クリックできるようにしたいなら pointer-events を戻す */}
+                <div className="mt-1 pointer-events-auto">
                   <Link
                     href={gate("/points")}
                     className="inline-flex rounded-full border border-orange-100 bg-white px-2 py-1 text-[10px] font-semibold text-orange-700 hover:bg-orange-100"

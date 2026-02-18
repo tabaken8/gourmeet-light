@@ -240,30 +240,19 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               <Settings size={20} className="text-slate-700" />
             </IconButton>
 
-            {/* 投稿（いまのProfile位置に移動：Instagram風 白地＋＋） */}
-            <Link
-              href={gate("/posts/new")}
-              className={[
-                "relative inline-flex h-10 w-10 items-center justify-center rounded-full",
-                "bg-white border border-black/10",
-                "hover:bg-black/[.03] active:scale-[0.99] transition",
-                showPromo ? "ring-2 ring-orange-300 shadow-sm" : "",
-              ].join(" ")}
-              aria-label="投稿"
-            >
-              {showPromo && (
-                <span
-                  className="pointer-events-none absolute -inset-2 rounded-full bg-orange-300/15 blur-md"
-                  aria-hidden="true"
-                />
-              )}
-              <Plus size={20} className="text-slate-900" />
-              {showPromo && (
-                <span className="absolute -right-1 -top-1 rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
-                  +{promoPoints}
-                </span>
-              )}
-            </Link>
+{/* 投稿（白地のシンプル＋） */}
+<Link
+  href={gate("/posts/new")}
+  className={[
+    "relative inline-flex h-10 w-10 items-center justify-center rounded-full",
+    "bg-white border border-black/10",
+    "hover:bg-black/[.03] active:scale-[0.99] transition",
+  ].join(" ")}
+  aria-label="投稿"
+>
+  <Plus size={20} className="text-slate-900" />
+</Link>
+
           </div>
         </div>
 
