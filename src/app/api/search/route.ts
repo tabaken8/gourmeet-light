@@ -50,7 +50,7 @@ type NudgeSuggestion = {
     cover_full_url?: string | null;
     cover_pin_url?: string | null;
     image_variants?: any[] | null;
-    image_urls?: string[] | null;
+    image_urls?: any[] | null;
   } | null;
 };
 
@@ -79,7 +79,7 @@ type ProfileLite = {
 };
 
 function normalizePostRow(p: any, prof: ProfileLite | null) {
-  // RPCが profile を返してくる場合にも対応
+  // RPCが profile / user を返してくる場合にも対応
   const rpcProf = (p?.profile ?? p?.profiles ?? p?.user ?? null) as any;
 
   const mergedProf: ProfileLite | null =
@@ -120,7 +120,6 @@ async function attachProfilesToPosts(params: { supabase: any; posts: any[] }) {
 
   if (userIds.length === 0) return posts.map((p) => normalizePostRow(p, null));
 
-  // profiles の RLS が厳しい場合でも落ちないように try/catch
   let profRows: ProfileLite[] = [];
   try {
     const { data, error } = await supabase
@@ -128,22 +127,79 @@ async function attachProfilesToPosts(params: { supabase: any; posts: any[] }) {
       .select("id, username, display_name, avatar_url, is_public")
       .in("id", userIds);
 
-    if (!error && Array.isArray(data)) {
-      profRows = data as any;
-    }
+    if (!error && Array.isArray(data)) profRows = data as any;
   } catch {
     profRows = [];
   }
 
   const map = new Map<string, ProfileLite>();
-  for (const r of profRows) {
-    if (r?.id) map.set(String(r.id), r);
-  }
+  for (const r of profRows) if (r?.id) map.set(String(r.id), r);
 
   return posts.map((p: any) => {
     const uid = p?.user_id ? String(p.user_id) : "";
     const prof = uid ? map.get(uid) ?? null : null;
     return normalizePostRow(p, prof);
+  });
+}
+
+// -----------------------------
+// ✅ posts に nearest_station_* を必ず付ける（places から補完）
+// -----------------------------
+async function attachNearestStationsToPosts(params: { supabase: any; posts: any[] }) {
+  const { supabase } = params;
+  const posts = Array.isArray(params.posts) ? params.posts : [];
+  if (posts.length === 0) return posts;
+
+  const placeIds = Array.from(
+    new Set(posts.map((p: any) => p?.place_id).filter(Boolean).map((x: any) => String(x)))
+  );
+
+  if (placeIds.length === 0) {
+    return posts.map((p: any) => ({
+      ...p,
+      nearest_station_name: p?.nearest_station_name ?? null,
+      nearest_station_distance_m: p?.nearest_station_distance_m ?? null,
+      nearest_station_minutes: metersToWalkMinCeil(p?.nearest_station_distance_m ?? null),
+    }));
+  }
+
+  let rows: any[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("places")
+      .select("place_id, nearest_station_name, nearest_station_distance_m")
+      .in("place_id", placeIds);
+
+    if (!error && Array.isArray(data)) rows = data;
+  } catch {
+    rows = [];
+  }
+
+  const map = new Map<string, { name: string | null; dist: number | null }>();
+  for (const r of rows) {
+    const pid = r?.place_id ? String(r.place_id) : null;
+    if (!pid) continue;
+    map.set(pid, {
+      name: (r?.nearest_station_name ?? null) as any,
+      dist: typeof r?.nearest_station_distance_m === "number" ? r.nearest_station_distance_m : null,
+    });
+  }
+
+  return posts.map((p: any) => {
+    const pid = p?.place_id ? String(p.place_id) : "";
+    const hit = pid ? map.get(pid) : null;
+
+    const nearestDist =
+      typeof p?.nearest_station_distance_m === "number"
+        ? p.nearest_station_distance_m
+        : hit?.dist ?? null;
+
+    return {
+      ...p,
+      nearest_station_name: p?.nearest_station_name ?? hit?.name ?? null,
+      nearest_station_distance_m: nearestDist,
+      nearest_station_minutes: metersToWalkMinCeil(nearestDist),
+    };
   });
 }
 
@@ -186,13 +242,11 @@ async function fetchSampleForStationStrict(params: {
 }) {
   const { supabase, q, me, station_place_id, radius_m, seenPostIds } = params;
 
-  // 1) 強制フィルタ用 placeIds
   const { placeIds } = await getPlaceIdsForStation({ supabase, station_place_id, radius_m, limit: 9000 });
   if (placeIds.length === 0) return null;
 
   const placeSet = new Set(placeIds);
 
-  // 2) RPCは多めに取る
   const rpcArgs: any = {
     q,
     me,
@@ -261,7 +315,7 @@ export async function GET(req: Request) {
   const isStation = !!station_place_id;
 
   if (!isStation && !q) {
-    return NextResponse.json({ posts: [], nextCursor: null });
+    return NextResponse.json({ ok: true, mode: "geo", posts: [], nextCursor: null });
   }
 
   // -----------------------------
@@ -362,21 +416,26 @@ export async function GET(req: Request) {
       posts = rows;
     }
 
-    // ✅ ここで profiles を必ず付与して返す（station/geo 両方）
+    // ✅ API側整形（プロフィール + nearest補完）
     posts = await attachProfilesToPosts({ supabase, posts });
+    posts = await attachNearestStationsToPosts({ supabase, posts });
 
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   } else {
     // station + q空（投稿一覧）
-    const { data: postRows, error: perr } = await supabase
+    let query = supabase
       .from("posts")
       .select(
         "id, user_id, created_at, visited_on, content, image_urls, image_variants, image_assets, cover_square_url, cover_full_url, cover_pin_url, place_id, place_name, place_address, recommend_score, price_yen, price_range"
       )
       .in("place_id", placeIds)
-      .lt("created_at", cursorIso ?? "infinity")
       .order("created_at", { ascending: false })
       .limit(limit);
+
+    // ⚠️ cursorIso が null のときに lt("infinity") しない（挙動が不安定になる）
+    if (cursorIso) query = query.lt("created_at", cursorIso);
+
+    const { data: postRows, error: perr } = await query;
 
     if (perr) return NextResponse.json({ ok: false, error: perr.message }, { status: 400 });
 
@@ -396,6 +455,8 @@ export async function GET(req: Request) {
     }
 
     posts = await attachProfilesToPosts({ supabase, posts: rows });
+    posts = await attachNearestStationsToPosts({ supabase, posts });
+
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   }
 
@@ -563,5 +624,5 @@ export async function GET(req: Request) {
   }
 
   // geo
-  return NextResponse.json({ posts, nextCursor });
+  return NextResponse.json({ ok: true, mode: "geo", posts, nextCursor });
 }

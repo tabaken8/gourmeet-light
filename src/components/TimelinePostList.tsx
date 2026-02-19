@@ -232,8 +232,6 @@ export default function TimelinePostList({
         ...p,
         id: String(p?.id ?? p?.post_id ?? ""),
         user_id: userId,
-
-        // ✅ ここが肝：常に profile を埋める（UI側は profile しか見ない）
         profile: prof,
 
         place_genre: p.place_genre ?? null,
