@@ -8,39 +8,44 @@ import SuggestFollowCard from "@/components/SuggestFollowCard";
 
 type PostLite = any;
 
-type Meta =
+// meta 互換（APIが返してくる形に寄せる）
+type SuggestMeta =
   | {
-      suggestOnce: boolean;
-      suggestAtIndex: number; // 0-based
-      suggestion: {
+      suggestOnce?: boolean;
+      suggestAtIndex?: number; // 0-based
+      suggestion?: {
         title: string;
         subtitle?: string | null;
-        users: Array<{
+        users: {
           id: string;
           display_name: string | null;
           avatar_url: string | null;
-          is_following: boolean;
-          reason?: string | null;
-        }>;
+          mode?: "follow" | "followback";
+          subtitle?: string | null;
+        }[];
       };
     }
-  | null;
+  | null
+  | undefined;
 
 export default function FriendsTimelineClient({
   meId,
   initialPosts,
   initialNextCursor,
-  initialMeta,
+  initialMeta = null,
 }: {
   meId: string | null;
   initialPosts: PostLite[];
   initialNextCursor: string | null;
-  initialMeta: Meta;
+  initialMeta?: SuggestMeta;
 }) {
-  const [posts, setPosts] = useState<PostLite[]>(initialPosts);
-  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
+  // ✅ Hooks は必ず上（return より前）に固定
+  const [posts, setPosts] = useState<PostLite[]>(initialPosts ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor ?? null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [meta, setMeta] = useState<Meta>(initialMeta);
+
+  // meta を持つ（初回だけ出したい想定）
+  const [meta, setMeta] = useState<SuggestMeta>(initialMeta ?? null);
 
   const hasMore = !!nextCursor;
 
@@ -52,7 +57,12 @@ export default function FriendsTimelineClient({
       if (nextCursor) params.set("cursor", nextCursor);
       params.set("limit", "20");
 
-      const res = await fetch(`/api/timeline/friends?${params.toString()}`, { cache: "no-store" });
+      // ✅ 相対URLはブラウザ(fetch)ならOK。Serverでfetchする場合は絶対URLが必要。
+      const res = await fetch(`/api/timeline/friends?${params.toString()}`, {
+        method: "GET",
+        credentials: "include",
+        headers: { "accept": "application/json" },
+      });
       if (!res.ok) return;
 
       const json = await res.json();
@@ -62,87 +72,67 @@ export default function FriendsTimelineClient({
       setPosts((prev) => [...prev, ...newPosts]);
       setNextCursor(newCursor);
 
-      // meta は基本初回だけでOKだが、APIが返すなら拾っても良い
-      if (json.meta && !meta) setMeta(json.meta as Meta);
+      // ✅ meta は「最初の1回だけ」出す想定なら、loadMoreでは基本更新しない。
+      // もしAPIがmeta返してきて、まだmetaが無いなら拾う。
+      if (!meta && json.meta) setMeta(json.meta as SuggestMeta);
     } finally {
       setLoadingMore(false);
     }
   }, [hasMore, loadingMore, nextCursor, meta]);
 
-  // 未ログインなら「最新」は見せない/軽い誘導
-  if (!meId) {
+  // ✅ ここも hooks（useMemo）なので return より前で必ず実行
+  const shouldRender = useMemo(() => {
+    // 未ログインなら friends タブは非表示（あなたの仕様に合わせる）
+    if (!meId) return false;
+    // posts 0 で meta も無いなら何も出せない（真っ白回避したいなら別UI出す）
+    if ((posts?.length ?? 0) === 0 && !meta) return false;
+    return true;
+  }, [meId, posts, meta]);
+
+  // ✅ meta を SuggestFollowCard の型に合わせて整形（あなたの SuggestFollowCard.tsx に合わせる）
+  const suggestBlock = useMemo(() => {
+    const sug = meta?.suggestion;
+    if (!sug?.users?.length) return null;
+
     return (
-      <div className="gm-card p-4 text-sm text-slate-600">
-        最新タブはログイン後に表示されます。<a className="underline" href="/login">ログイン</a>
-      </div>
+      <SuggestFollowCard
+        title={sug.title}
+        subtitle={sug.subtitle ?? null}
+        users={sug.users.map((u) => ({
+          id: u.id,
+          display_name: u.display_name,
+          avatar_url: u.avatar_url,
+          is_following: false, // APIで持てるなら差し替え
+          reason: u.subtitle ?? null,
+        }))}
+      />
     );
-  }
+  }, [meta]);
 
-  // --- ここが “真っ白防止” の要 ---
-  if (posts.length === 0) {
-    return (
-      <div className="space-y-4">
-        {meta?.suggestion?.users?.length ? (
-          <SuggestFollowCard
-            title={meta.suggestion.title}
-            subtitle={meta.suggestion.subtitle ?? null}
-            users={meta.suggestion.users}
-          />
-        ) : (
-          <div className="gm-card p-4">
-            <div className="text-sm font-semibold text-slate-900">まだタイムラインが空です</div>
-            <div className="mt-1 text-xs text-slate-500">
-              フォローすると「最新」に投稿が流れます。まずは「発見」から探すのがおすすめ。
-            </div>
-            <div className="mt-3">
-<a
-  href="/timeline?tab=discover"
-  className="inline-flex items-center justify-center rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
->
-  発見へ
-</a>
+  const suggestAtIndex = useMemo(() => {
+    const x = meta?.suggestAtIndex;
+    return typeof x === "number" && Number.isFinite(x) ? Math.max(0, Math.floor(x)) : 1;
+  }, [meta]);
 
-            </div>
-          </div>
-        )}
-
-        {loadingMore ? <PostsSkeleton /> : null}
-      </div>
-    );
-  }
-
-  // meta注入（指定indexに差し込む）
-  const withMeta = useMemo(() => {
-    if (!meta?.suggestion?.users?.length) return posts;
-    const idx = Math.max(0, Math.min(posts.length, meta.suggestAtIndex ?? 1));
-    const out = posts.slice();
-    out.splice(idx, 0, { __kind: "__suggest_follow__", __meta: meta });
-    return out;
-  }, [posts, meta]);
+  // ✅ Hooks を全部呼び終わってから return
+  if (!shouldRender) return null;
 
   return (
     <div>
       <div className="flex flex-col items-stretch gap-6">
-        {withMeta.map((p: any, i: number) => {
-          if (p?.__kind === "__suggest_follow__") {
-            const m = p.__meta as Meta;
-            if (!m?.suggestion?.users?.length) return null;
-            return (
-              <SuggestFollowCard
-                key={`meta-${i}`}
-                title={m.suggestion.title}
-                subtitle={m.suggestion.subtitle ?? null}
-                users={m.suggestion.users}
-              />
-            );
-          }
-          // 普通の投稿
-          return null;
-        })}
-      </div>
+        {(posts ?? []).map((p, idx) => (
+          <React.Fragment key={p?.id ?? `row-${idx}`}>
+            {/* ✅ 指定indexでサジェスト差し込み */}
+            {idx === suggestAtIndex ? suggestBlock : null}
 
-      {/* 投稿リスト（meta混入分は TimelinePostList に渡さない） */}
-      <TimelinePostList posts={posts} meId={meId} />
+            {/* ✅ 既存の表示 */}
+            <TimelinePostList posts={[p]} meId={meId} />
+          </React.Fragment>
+        ))}
+
+        {/* posts が少なすぎて idx==suggestAtIndex に届かない時のフォールバック */}
+        {(posts?.length ?? 0) <= suggestAtIndex ? suggestBlock : null}
+      </div>
 
       {hasMore ? (
         <div className="mt-4 flex justify-center">
