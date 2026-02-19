@@ -1,7 +1,8 @@
 // src/app/(app)/timeline/page.tsx
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import TimelineFeed from "@/components/TimelineFeed";
+import FriendsTimelineServer from "@/components/timeline/FriendsTimelineServer";
+// import DiscoverTimelineClient from "@/components/timeline/DiscoverTimelineClient"; // 後で
 
 export const dynamic = "force-dynamic";
 
@@ -20,19 +21,6 @@ export default async function TimelinePage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  // ✅ 自分の follow 一覧（k=1）を取得
-  let myFolloweeIds: string[] = [];
-  if (user?.id) {
-    const { data, error } = await supabase
-      .from("follows")
-      .select("followee_id")
-      .eq("follower_id", user.id);
-
-    if (!error && data) {
-      myFolloweeIds = data.map((r) => r.followee_id).filter(Boolean);
-    }
-  }
-
   return (
     <main className="min-h-screen bg-white text-slate-800">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8">
@@ -40,8 +28,7 @@ export default async function TimelinePage({
           <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
             Timeline
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
-          </p>
+          <p className="mt-1 text-sm text-slate-600"></p>
         </header>
 
         <section className="rounded-2xl bg-white">
@@ -79,12 +66,13 @@ export default async function TimelinePage({
             </p>
           </div>
 
-          <TimelineFeed
-            key={activeTab}
-            activeTab={activeTab}
-            meId={user?.id ?? null}
-            // ✅ 必要ならクライアントに渡せる（「フォロー中」判定などに使う）
-          />
+          {activeTab === "friends" ? (
+            <FriendsTimelineServer meId={user?.id ?? null} />
+          ) : (
+            // 一旦discoverは別コンポーネントで client fetch に切り分け
+            // <DiscoverTimelineClient meId={user?.id ?? null} />
+            null
+          )}
         </section>
       </div>
     </main>
