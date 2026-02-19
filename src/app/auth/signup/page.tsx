@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
+// =====================
+// username rules (same as profile edit)
+// =====================
+const USERNAME_RE = /^[a-z0-9._]{3,30}$/;
+
+function cleanHandle(v: string) {
+  return (v || "").replace(/^@+/, "").trim().toLowerCase();
+}
 
 function strengthLabel(pw: string) {
   const len = pw.length;
@@ -27,13 +36,19 @@ export default function SignUpPage() {
 
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+
+  // ✅ username required
+  const [username, setUsername] = useState("");
+  const [usernameMsg, setUsernameMsg] = useState<string | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [show, setShow] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ✅ 招待コード
+  // ✅ invite
   const [invite, setInvite] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
@@ -54,7 +69,7 @@ export default function SignUpPage() {
 
     if (picked && !normalizeInvite(invite)) {
       setInvite(picked);
-      setInviteOpen(false); // 自動適用時は畳む
+      setInviteOpen(false);
     }
 
     if (fromUrl && typeof window !== "undefined") {
@@ -63,16 +78,28 @@ export default function SignUpPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // ✅ invite が手入力/貼り付けで変わったら localStorage を更新（保険）
+  // ✅ invite changes -> localStorage
   useEffect(() => {
     const trimmed = normalizeInvite(invite);
     if (typeof window === "undefined") return;
     if (trimmed) localStorage.setItem("pending_invite", trimmed);
   }, [invite]);
 
+  // ✅ username changes -> localStorage (OAuth保険)
+  useEffect(() => {
+    const u = cleanHandle(username);
+    if (typeof window === "undefined") return;
+    if (u) localStorage.setItem("pending_username", u);
+  }, [username]);
+
   const match = pw.length > 0 && pw === pw2;
   const strength = useMemo(() => strengthLabel(pw), [pw]);
-  const canSubmit = !!email && pw.length >= 6 && match && !loading;
+
+  const usernameClean = cleanHandle(username);
+  const usernameOk = USERNAME_RE.test(usernameClean);
+
+  // canSubmit must include usernameOk
+  const canSubmit = !!email && pw.length >= 6 && match && usernameOk && !loading && !checkingUsername;
 
   const handleEmailChange = (value: string) => {
     setEmail(value);
@@ -100,38 +127,85 @@ export default function SignUpPage() {
       }
 
       setInvite(normalized);
-      setInviteOpen(true); // 貼り付けたら見える状態に
+      setInviteOpen(true);
       setInviteMsg("貼り付けました。");
       window.setTimeout(() => setInviteMsg(null), 1200);
-    } catch (e) {
+    } catch {
       setInviteMsg("貼り付けに失敗しました。手入力してください。");
     } finally {
       setPasting(false);
     }
   };
 
+  // =====================
+  // username availability check (optional but useful)
+  // - assumes profiles table has username column
+  // - if not, this will just silently skip
+  // =====================
+  const checkUsername = async (u: string) => {
+    const uu = cleanHandle(u);
+    if (!uu) return;
+    if (!USERNAME_RE.test(uu)) return;
+
+    setCheckingUsername(true);
+    setUsernameMsg(null);
+
+    try {
+      // NOTE: if "profiles" doesn't exist or is RLS-blocked,
+      // this may error. We'll ignore and rely on DB constraints later.
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("username", uu)
+        .limit(1);
+
+      if (error) {
+        // RLS等で見れないならここは無視（DB制約が本命）
+        setUsernameMsg(null);
+        return;
+      }
+      if (data && data.length > 0) {
+        setUsernameMsg("このユーザーIDはすでに使われています。");
+      } else {
+        setUsernameMsg(null);
+      }
+    } finally {
+      setCheckingUsername(false);
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) return;
-
-    setLoading(true);
     setMsg(null);
 
     const trimmedDisplayName = displayName.trim();
     const trimmedInvite = normalizeInvite(invite);
+    const trimmedUsername = cleanHandle(username);
+
+    // hard guard
+    if (!USERNAME_RE.test(trimmedUsername)) {
+      setMsg("ユーザーID（@〜）を正しい形式で入力してください。");
+      return;
+    }
+
+    // optional check: if usernameMsg says already used, block
+    if (usernameMsg) {
+      setMsg(usernameMsg);
+      return;
+    }
+
+    setLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
       email,
       password: pw,
-      options:
-        trimmedDisplayName || trimmedInvite
-          ? {
-              data: {
-                ...(trimmedDisplayName ? { display_name: trimmedDisplayName } : {}),
-                ...(trimmedInvite ? { invite_code: trimmedInvite } : {}),
-              },
-            }
-          : undefined,
+      options: {
+        data: {
+          username: trimmedUsername,
+          ...(trimmedDisplayName ? { display_name: trimmedDisplayName } : {}),
+          ...(trimmedInvite ? { invite_code: trimmedInvite } : {}),
+        },
+      },
     });
 
     setLoading(false);
@@ -140,26 +214,45 @@ export default function SignUpPage() {
 
     // メール確認ありの場合：localStorage に残しておく
     if (data.user && !data.session) {
-      if (trimmedInvite && typeof window !== "undefined") {
-        localStorage.setItem("pending_invite", trimmedInvite);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("pending_username", trimmedUsername);
+        if (trimmedInvite) localStorage.setItem("pending_invite", trimmedInvite);
       }
       setMsg("確認メールを送信しました。受信ボックスをご確認ください。");
+      return;
     }
+
+    // メール確認なしで即ログインされる場合の遷移（必要なら）
+    // router.push("/(app)/...");
   };
 
   const handleGoogleContinue = async () => {
+    setMsg(null);
+
     const origin = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
     const trimmedInvite = normalizeInvite(invite);
+    const trimmedUsername = cleanHandle(username);
 
-    // ✅ OAuthに飛ぶ前に端末に覚えさせておく（保険）
-    if (trimmedInvite) {
-      localStorage.setItem("pending_invite", trimmedInvite);
+    // ✅ Googleでも username を必須にする
+    if (!USERNAME_RE.test(trimmedUsername)) {
+      setMsg("Googleで続ける前に、ユーザーID（@〜）を設定してください。");
+      return;
+    }
+    if (usernameMsg) {
+      setMsg(usernameMsg);
+      return;
     }
 
-    // ✅ callback に invite を持っていく（callback側で拾える）
-    const redirectTo = trimmedInvite
-      ? `${origin}/auth/callback?invite=${encodeURIComponent(trimmedInvite)}`
-      : `${origin}/auth/callback`;
+    // ✅ OAuthに飛ぶ前に端末に覚えさせておく（保険）
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pending_username", trimmedUsername);
+      if (trimmedInvite) localStorage.setItem("pending_invite", trimmedInvite);
+    }
+
+    // ✅ callback に username / invite を持っていく（callback側で拾える）
+    const redirectTo =
+      `${origin}/auth/callback?username=${encodeURIComponent(trimmedUsername)}` +
+      (trimmedInvite ? `&invite=${encodeURIComponent(trimmedInvite)}` : "");
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -174,7 +267,6 @@ export default function SignUpPage() {
 
   const inviteApplied = !!normalizeInvite(invite);
 
-  // ✅ ボタン付近にも出す補足文（入力欄を見落としても伝わる）
   const emailConfirmNote = "「登録する」を押すと、このメールアドレス宛に確認メールが届きます。";
 
   return (
@@ -248,7 +340,6 @@ export default function SignUpPage() {
                 招待コードをお持ちの方はこちら
               </button>
 
-              {/* ✅ 自力で来た人向け：すぐ貼れる導線 */}
               <button
                 type="button"
                 onClick={pasteInviteFromClipboard}
@@ -308,6 +399,58 @@ export default function SignUpPage() {
               placeholder="例: gourmeet@gmail.com"
             />
             <p className="mt-1 text-xs text-black/60">{emailConfirmNote}</p>
+          </label>
+
+          {/* ✅ ユーザーID（必須） */}
+          <label className="block">
+            <span className="mb-1 block text-sm">ユーザーID（必須）</span>
+
+            <div
+              className={[
+                "flex items-center rounded-lg border bg-white px-3 py-2 outline-none",
+                "focus-within:border-orange-600",
+                usernameClean.length === 0
+                  ? "border-black/10"
+                  : usernameOk && !usernameMsg
+                  ? "border-green-400"
+                  : "border-red-400",
+              ].join(" ")}
+            >
+              <span className="select-none text-sm font-semibold text-slate-300">@</span>
+              <input
+                className="w-full bg-transparent pl-1 outline-none text-sm"
+                value={username}
+                onChange={(e) => {
+                  setUsername(cleanHandle(e.target.value));
+                  setUsernameMsg(null);
+                }}
+                onBlur={() => checkUsername(username)}
+                placeholder="gourmeet_user"
+                autoComplete="off"
+                inputMode="text"
+                required
+              />
+            </div>
+
+            {usernameClean.length > 0 && !usernameOk ? (
+              <p className="mt-1 text-xs text-red-600">
+                3〜30文字、英小文字/数字/「.」「_」のみで入力してください。
+              </p>
+            ) : null}
+
+            {usernameOk && checkingUsername ? (
+              <p className="mt-1 text-xs text-black/60">利用可能か確認中...</p>
+            ) : null}
+
+            {usernameOk && usernameMsg ? (
+              <p className="mt-1 text-xs text-red-600">{usernameMsg}</p>
+            ) : null}
+
+            {usernameOk && !checkingUsername && !usernameMsg ? (
+              <p className="mt-1 text-xs text-black/60">
+                URLや検索で使われるIDです（後から変更も可能）。
+              </p>
+            ) : null}
           </label>
 
           {/* 表示名 */}
@@ -379,7 +522,6 @@ export default function SignUpPage() {
             {pw2 && !match && <p className="mt-1 text-xs text-red-600">一致しません。</p>}
           </label>
 
-          {/* ✅ ちょい改善：ボタン近くにも同じ補足を出す（見落とし防止） */}
           <p className="text-xs text-black/60">{emailConfirmNote}</p>
 
           {msg && <p className="text-sm text-orange-800">{msg}</p>}

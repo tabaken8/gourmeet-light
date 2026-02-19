@@ -1,46 +1,78 @@
 // src/components/timeline/FriendsTimelineServer.tsx
-import { headers } from "next/headers";
 import FriendsTimelineClient from "./FriendsTimelineClient";
+import { headers, cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-function clamp(n: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, n));
-}
+type Meta =
+  | {
+      suggestOnce: boolean;
+      suggestAtIndex: number;
+      suggestion: {
+        title: string;
+        subtitle?: string | null;
+        users: Array<{
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          is_following: boolean;
+          reason?: string | null;
+        }>;
+      };
+    }
+  | null;
 
-async function getBaseUrl() {
-  const h = await headers(); // ✅ ここが修正点
+function getBaseUrlFromHeaders(h: Headers) {
+  // Vercel/Proxy想定。localhostでも動く
   const proto = h.get("x-forwarded-proto") ?? "http";
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   return `${proto}://${host}`;
 }
 
-export default async function FriendsTimelineServer({
-  meId,
-}: {
-  meId: string | null;
-}) {
-  // 未ログインでも friends を見せる方針なので、meId=nullでもOK
-  const baseUrl = await getBaseUrl();
+export default async function FriendsTimelineServer({ meId }: { meId: string | null }) {
+  if (!meId) {
+    return <FriendsTimelineClient meId={null} initialPosts={[]} initialNextCursor={null} initialMeta={null} />;
+  }
 
-  const params = new URLSearchParams();
-  params.set("limit", "20");
+  // ✅ Next15 の headers()/cookies() は Promise になることがあるので await
+  const h = await headers();
+  const baseUrl = getBaseUrlFromHeaders(h as unknown as Headers);
 
-  // ✅ Cookie認証が効くように server から同originに fetch
-  const res = await fetch(`${baseUrl}/api/timeline/friends?${params.toString()}`, {
+  // ✅ cookie を明示で API に渡す（ここが超重要）
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore
+    .getAll()
+    .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
+    .join("; ");
+
+  const params = new URLSearchParams({ limit: "20" });
+  const url = `${baseUrl}/api/timeline/friends?${params.toString()}`;
+
+  const res = await fetch(url, {
     cache: "no-store",
-    // Nextのserver fetchでcookieは同一オリジンなら自動で付くケースが多いが、
-    // 環境により差が出るので念のため headers を転送してもいい。
+    headers: {
+      cookie: cookieHeader, // ✅ これで auth.getUser() が生きる
+    },
   });
 
-  const json = res.ok ? await res.json() : { posts: [], nextCursor: null, meta: null };
+  if (!res.ok) {
+    return <FriendsTimelineClient meId={meId} initialPosts={[]} initialNextCursor={null} initialMeta={null} />;
+  }
 
-  return (
-    <FriendsTimelineClient
-      meId={meId}
-      initialPosts={(json.posts ?? []) as any[]}
-      initialNextCursor={(json.nextCursor ?? null) as string | null}
-      initialMeta={(json.meta ?? null) as any}
-    />
-  );
+  const json = (await res.json()) as {
+    posts?: any[];
+    nextCursor?: string | null;
+    meta?: Meta;
+  };
+
+// FriendsTimelineServer.tsx の return をこれにする（差分）
+return (
+  <FriendsTimelineClient
+    meId={meId}
+    initialPosts={(json.posts ?? []) as any[]}
+    initialNextCursor={(json.nextCursor ?? null) as string | null}
+    initialMeta={(json.meta ?? null) as any}
+  />
+);
+
 }
