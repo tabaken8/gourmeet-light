@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
 export async function createClient() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies(); // ✅ await 必須（Next 15）
   return createServerComponentClient(
     { cookies: () => cookieStore } as any,
     {
@@ -14,9 +14,9 @@ export async function createClient() {
   );
 }
 
-// ✅ 追加：型付き版（必要な場所だけで使う）
-export function createTypedClient() {
-  const cookieStore = cookies();
+// ✅ 型付き版も async にする（同期だと cookies() が呼べない）
+export async function createTypedClient() {
+  const cookieStore = await cookies(); // ✅ await 必須
   return createServerComponentClient<Database>(
     { cookies: () => cookieStore } as any,
     {

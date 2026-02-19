@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
-import ClientAuthNav from "../components/ClientAuthNav";
+import ClientAuthNav from "../components/AuthNav";
 
 export const metadata: Metadata = {
   title: "Gourmeet",

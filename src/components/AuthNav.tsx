@@ -1,13 +1,12 @@
-// src/components/ClientAuthNav.tsx
+// src/components/AuthNav.tsx (名前は任意で変えてOK)
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ClientAuthNav() {
-  const supabase = await createClient();; // ← ここ！
+  const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
+  const user = error ? null : data.user;
 
   return (
     <div className="flex items-center gap-3">
