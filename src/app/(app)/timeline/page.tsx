@@ -25,9 +25,7 @@ export default async function TimelinePage({
     <main className="min-h-screen bg-white text-slate-800">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8">
         <header className="mb-4">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
-            Timeline
-          </h1>
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Timeline</h1>
           <p className="mt-1 text-sm text-slate-600"></p>
         </header>
 
@@ -60,9 +58,7 @@ export default async function TimelinePage({
             </div>
 
             <p className="mt-2 text-[11px] text-slate-500">
-              {activeTab === "friends"
-                ? "おすすめ投稿"
-                : "気になる人を見つけられます。"}
+              {activeTab === "friends" ? "おすすめ投稿" : "気になる人を見つけられます。"}
             </p>
           </div>
 

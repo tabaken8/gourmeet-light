@@ -19,142 +19,33 @@ function toIsoOrNull(x: string | null) {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// --------------------
-// types (client互換の最小セット)
-// --------------------
-type ProfileLite = {
-  id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  is_public: boolean | null;
-};
+type SuggestKind = "follow_back" | "friend_follows" | "global";
 
-type PostRow = {
-  id: string;
-  content: string | null;
-  user_id: string;
-  created_at: string;
+// ✅ 直近window件に同一userが出ないように並べ替え（時系列は崩れてOK）
+function enforceNoRepeatWithin(posts: any[], window = 3) {
+  const out: any[] = [];
+  const pool = posts.slice();
 
-  image_urls: string[] | null;
-  image_variants: any[] | null;
-  image_assets?: any[] | null;
+  while (pool.length) {
+    const recent = new Set(out.slice(-window).map((p) => p?.user_id).filter(Boolean));
+    let idx = pool.findIndex((p) => !recent.has(p?.user_id));
 
-  cover_square_url?: string | null;
-  cover_full_url?: string | null;
-  cover_pin_url?: string | null;
+    if (idx === -1) idx = 0; // どうしても無理なら諦めて先頭を出す（「なければしょうがない」）
 
-  place_name: string | null;
-  place_address: string | null;
-  place_id: string | null;
-  place_genre?: string | null;
-
-  recommend_score?: number | null;
-  price_yen?: number | null;
-  price_range?: string | null;
-
-  profile: ProfileLite | null;
-
-  likeCount?: number;
-  likedByMe?: boolean;
-  initialLikers?: any[];
-
-  // 注入
-  injected?: boolean;
-  inject_reason?: string | null;
-  inject_follow_mode?: "follow" | "followback" | null;
-  inject_target_user_id?: string | null;
-};
-
-type SuggestUser = {
-  id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  mode?: "follow" | "followback";
-  subtitle?: string | null;
-};
-
-type TimelineMeta = {
-  suggestOnce?: boolean;
-  suggestAtIndex?: number;
-  suggestion?: {
-    title: string;
-    subtitle?: string | null;
-    users: SuggestUser[];
-  } | null;
-};
-
-// --------------------
-// diversity (window=4 => recent users size=3)
-// --------------------
-function diversifyWindow(
-  candidates: PostRow[],
-  limit: number,
-  opts?: { window?: number; maxExtraFetchCycles?: number }
-) {
-  const window = opts?.window ?? 4;
-  const recentMax = Math.max(0, window - 1);
-
-  const out: PostRow[] = [];
-  const recent: string[] = [];
-  const usedPost = new Set<string>();
-
-  const take = (p: PostRow) => {
-    out.push(p);
-    usedPost.add(p.id);
-    recent.push(p.user_id);
-    while (recent.length > recentMax) recent.shift();
-  };
-
-  // candidates から「最近3人と被らない最初の1件」を取る
-  while (out.length < limit && candidates.length > 0) {
-    let idx = -1;
-    for (let i = 0; i < candidates.length; i++) {
-      const p = candidates[i];
-      if (!p?.id || usedPost.has(p.id)) continue;
-      if (!p.user_id) continue;
-      if (recent.includes(p.user_id)) continue;
-      idx = i;
-      break;
-    }
-
-    if (idx >= 0) {
-      const [p] = candidates.splice(idx, 1);
-      take(p);
-      continue;
-    }
-
-    // 見つからない: 代替は「ここでは取らない」(呼び出し側が候補を増やす)
-    break;
-  }
-
-  return { out, recent, usedPost, rest: candidates };
-}
-
-// --------------------
-// minimal helpers
-// --------------------
-function uniqById(posts: PostRow[]) {
-  const out: PostRow[] = [];
-  const seen = new Set<string>();
-  for (const p of posts) {
-    if (!p?.id) continue;
-    if (seen.has(p.id)) continue;
-    seen.add(p.id);
-    out.push(p);
+    out.push(pool.splice(idx, 1)[0]);
   }
   return out;
 }
 
-function pickDistinctUserIdsFromPosts(posts: PostRow[], k: number) {
-  const out: string[] = [];
+function uniqById(posts: any[]) {
   const seen = new Set<string>();
+  const out: any[] = [];
   for (const p of posts) {
-    const uid = p.user_id;
-    if (!uid) continue;
-    if (seen.has(uid)) continue;
-    seen.add(uid);
-    out.push(uid);
-    if (out.length >= k) break;
+    const id = String(p?.id ?? "");
+    if (!id) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(p);
   }
   return out;
 }
@@ -165,61 +56,202 @@ export async function GET(req: Request) {
 
   const limit = clamp(toInt(searchParams.get("limit"), 20), 1, 50);
   const cursor = toIsoOrNull(searchParams.get("cursor"));
-  const seed = searchParams.get("seed") ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   const { data: auth } = await supabase.auth.getUser();
   const meId = auth.user?.id ?? null;
 
-  // --------------------
-  // followCount を取得（ログインしている時だけ）
-  // --------------------
-  let followeeIds: string[] = [];
-  if (meId) {
-    const { data: follows } = await supabase
-      .from("follows")
-      .select("followee_id")
-      .eq("follower_id", meId)
-      .eq("status", "accepted");
-    followeeIds = (follows ?? []).map((r: any) => r.followee_id).filter(Boolean);
+  // -------------------------
+  // 未ログイン：friendsも代替で見せる（あなたの方針 3）
+  // -------------------------
+  // → public投稿から出す。followボタンは meId=null なので出ない。
+  if (!meId) {
+    let q = supabase
+      .from("posts")
+      .select("id,user_id,created_at,visited_on,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range, profiles!inner(id,display_name,avatar_url,is_public)")
+      .eq("profiles.is_public", true)
+      .order("created_at", { ascending: false })
+      .limit(Math.max(80, limit * 6));
+
+    if (cursor) q = q.lt("created_at", cursor);
+
+    const { data, error } = await q;
+    if (error) return NextResponse.json({ posts: [], nextCursor: null, meta: null }, { status: 200 });
+
+    const raw = (data ?? []).map((r: any) => ({
+      ...r,
+      profile: r.profiles ?? null,
+      viewer_following_author: false,
+    }));
+
+    const arranged = enforceNoRepeatWithin(raw, 3).slice(0, limit);
+    const nextCursor = arranged.length ? arranged[arranged.length - 1].created_at : null;
+
+    return NextResponse.json({ posts: arranged, nextCursor, meta: null });
   }
-  const followCount = followeeIds.length;
 
-  // --------------------
-  // candidates を作る
-  // - cold start: public posts
-  // - followあり: base(rpc) + inject(public good posts)
-  // --------------------
-  const BUFFER = Math.max(120, limit * 12); // 候補バッファ
-  const EXTRA_CYCLES = 2;
+  // -------------------------
+  // ログイン：自分の followees
+  // -------------------------
+  const { data: follows, error: fErr } = await supabase
+    .from("follows")
+    .select("followee_id,status")
+    .eq("follower_id", meId)
+    .eq("status", "accepted");
 
-  // 共通: public post のSELECT（discover と揃える）
-  const selectPublic = `
-    id, content, user_id, created_at,
-    image_urls, image_variants, image_assets,
-    cover_square_url, cover_full_url, cover_pin_url,
-    place_name, place_address, place_id,
-    recommend_score, price_yen, price_range,
-    profiles!inner ( id, display_name, avatar_url, is_public )
-  `;
+  if (fErr) return NextResponse.json({ posts: [], nextCursor: null, meta: null }, { status: 200 });
 
-  // RPC行→PostRow
-  const toPostRowFromRpc = (r: any): PostRow => ({
+  const followeeIds = (follows ?? []).map((r: any) => r.followee_id).filter(Boolean);
+  const followingSet = new Set<string>(followeeIds);
+  const visibleUserIds = Array.from(new Set([meId, ...followeeIds]));
+
+  // -------------------------
+  // ✅ meta（おすすめユーザー）を作る：旧ロジックの軽量版
+  // -------------------------
+  // A: フォローバック候補（相手->自分 accepted、自分->相手なし）
+  const { data: incoming } = await supabase
+    .from("follows")
+    .select("follower_id")
+    .eq("followee_id", meId)
+    .eq("status", "accepted")
+    .limit(500);
+
+  const incomingIds = Array.from(new Set((incoming ?? []).map((r: any) => r.follower_id).filter(Boolean)))
+    .filter((uid) => uid !== meId && !followingSet.has(uid));
+
+  // B: 友達がフォロー（friend->target）
+  let friendFollowTargets: { target: string; recommendedBy: string[] }[] = [];
+  if (followeeIds.length) {
+    const { data: ff } = await supabase
+      .from("follows")
+      .select("follower_id, followee_id")
+      .in("follower_id", followeeIds.slice(0, 80))
+      .eq("status", "accepted")
+      .limit(1500);
+
+    const m = new Map<string, Set<string>>();
+    for (const r of ff ?? []) {
+      const fid = (r as any).follower_id as string | null;
+      const tid = (r as any).followee_id as string | null;
+      if (!fid || !tid) continue;
+      if (tid === meId) continue;
+      if (followingSet.has(tid)) continue;
+      if (visibleUserIds.includes(tid)) continue;
+      if (!m.has(tid)) m.set(tid, new Set());
+      m.get(tid)!.add(fid);
+    }
+    friendFollowTargets = Array.from(m.entries()).map(([target, set]) => ({
+      target,
+      recommendedBy: Array.from(set).slice(0, 2),
+    }));
+  }
+
+  const kindByUser: Record<string, SuggestKind> = {};
+  for (const uid of incomingIds) kindByUser[uid] = "follow_back";
+  for (const x of friendFollowTargets) if (!kindByUser[x.target]) kindByUser[x.target] = "friend_follows";
+
+  // metaに出すユーザーを最大8人
+  const suggestUserIds: string[] = [];
+  for (const uid of incomingIds.slice(0, 6)) suggestUserIds.push(uid);
+  for (const x of friendFollowTargets.slice(0, 20)) {
+    if (suggestUserIds.length >= 8) break;
+    if (!suggestUserIds.includes(x.target)) suggestUserIds.push(x.target);
+  }
+
+  // 足りなければ public投稿の作者から補完
+  if (suggestUserIds.length < 6) {
+    const { data: extraAuthors } = await supabase
+      .from("posts")
+      .select("user_id, profiles!inner(id,display_name,avatar_url,is_public)")
+      .eq("profiles.is_public", true)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    for (const r of extraAuthors ?? []) {
+      const uid = (r as any).user_id as string | null;
+      if (!uid) continue;
+      if (uid === meId) continue;
+      if (followingSet.has(uid)) continue;
+      if (suggestUserIds.includes(uid)) continue;
+      suggestUserIds.push(uid);
+      if (suggestUserIds.length >= 8) break;
+    }
+  }
+
+  let meta: any = null;
+  if ((followeeIds.length <= 1) && suggestUserIds.length) {
+    const { data: sProfs } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", suggestUserIds.slice(0, 8));
+
+    const sMap: Record<string, any> = {};
+    for (const p of sProfs ?? []) sMap[(p as any).id] = p;
+
+    const users = suggestUserIds
+      .slice(0, 8)
+      .map((id) => sMap[id])
+      .filter(Boolean)
+      .map((p: any) => {
+        const kind = kindByUser[p.id] ?? "global";
+        return {
+          id: p.id,
+          display_name: p.display_name,
+          avatar_url: p.avatar_url,
+          mode: kind === "follow_back" ? "followback" : "follow",
+          subtitle:
+            kind === "follow_back"
+              ? "あなたをフォロー中"
+              : kind === "friend_follows"
+              ? "友達がフォロー"
+              : "おすすめ",
+        };
+      });
+
+    meta = {
+      suggestOnce: true,
+      suggestAtIndex: 1,
+      suggestion: {
+        title: followeeIds.length === 0 ? "気になる人をフォローしてみましょう" : "この人たちも良さそう",
+        subtitle: followeeIds.length === 0 ? "おすすめのユーザーを表示しています" : "つながりから提案",
+        users,
+      },
+    };
+  }
+
+  // -------------------------
+  // ✅ friends投稿本体
+  // - followeeが0なら public投稿で代替（あなたの要望）
+  // - followeeがあるなら rpc + 必要なら inject候補も混ぜる
+  // -------------------------
+
+  // (1) ベース（自分 + followees）: RPC
+  let baseRows: any[] = [];
+  if (followeeIds.length) {
+    const { data, error } = await supabase.rpc("timeline_friends_v1", {
+      p_limit: Math.max(40, limit * 4),
+      p_cursor: cursor,
+    });
+    if (!error) baseRows = (data ?? []) as any[];
+  }
+
+  // RPCの行→Post形式へ（あなたの既存routeと互換）
+  const basePosts = baseRows.map((r: any) => ({
     id: r.id,
     user_id: r.user_id,
     created_at: r.created_at,
+    visited_on: r.visited_on ?? null,
     content: r.content ?? null,
 
     place_id: r.place_id ?? null,
     place_name: r.place_name ?? null,
     place_address: r.place_address ?? null,
 
-    image_urls: (r.image_urls ?? null) as any,
-    image_variants: (r.image_variants ?? null) as any,
-    image_assets: null,
-
-    cover_square_url: null,
-    cover_full_url: null,
-    cover_pin_url: null,
+    image_urls: r.image_urls ?? null,
+    image_variants: r.image_variants ?? null,
+    image_assets: r.image_assets ?? null,
+    cover_square_url: r.cover_square_url ?? null,
+    cover_full_url: r.cover_full_url ?? null,
+    cover_pin_url: r.cover_pin_url ?? null,
 
     recommend_score: r.recommend_score ?? null,
     price_yen: r.price_yen ?? null,
@@ -232,291 +264,43 @@ export async function GET(req: Request) {
       is_public: r.author_is_public ?? true,
     },
 
-    likeCount: r.like_count ?? 0,
-    likedByMe: r.liked_by_me ?? false,
-    initialLikers: r.initial_likers ?? [],
-  });
-
-  // DB行→PostRow（public query）
-  const toPostRowFromPublic = (r: any): PostRow => ({
-    id: r.id,
-    user_id: r.user_id,
-    created_at: r.created_at,
-    content: r.content ?? null,
-
-    image_urls: r.image_urls ?? null,
-    image_variants: r.image_variants ?? null,
-    image_assets: r.image_assets ?? null,
-
-    cover_square_url: r.cover_square_url ?? null,
-    cover_full_url: r.cover_full_url ?? null,
-    cover_pin_url: r.cover_pin_url ?? null,
-
-    place_id: r.place_id ?? null,
-    place_name: r.place_name ?? null,
-    place_address: r.place_address ?? null,
-
-    recommend_score: r.recommend_score ?? null,
-    price_yen: r.price_yen ?? null,
-    price_range: r.price_range ?? null,
-
-    profile: r.profiles
-      ? {
-          id: r.profiles.id,
-          display_name: r.profiles.display_name,
-          avatar_url: r.profiles.avatar_url,
-          is_public: r.profiles.is_public,
-        }
-      : null,
-
-    // 高速化優先：likeまわりは0初期でOK（UI側で後から取るならそれで）
-    likeCount: r.likeCount ?? 0,
-    likedByMe: false,
-    initialLikers: [],
-  });
-
-  // fetch public posts (cursor対応)
-  const fetchPublicPosts = async (args: {
-    limit: number;
-    cursor: string | null;
-    excludeUserIds?: string[];
-    minRecommend?: number | null;
-  }) => {
-    let q = supabase
-      .from("posts")
-      .select(selectPublic)
-      .eq("profiles.is_public", true)
-      .order("created_at", { ascending: false })
-      .limit(args.limit);
-
-    if (args.cursor) q = q.lt("created_at", args.cursor);
-    if (args.excludeUserIds?.length) {
-      // not in (...) は少し癖があるので、まず自分だけはneqで落とし、残りは文字列inで落とす
-      const ids = args.excludeUserIds.filter(Boolean);
-      if (ids.length === 1) q = q.neq("user_id", ids[0]);
-      if (ids.length >= 2) q = q.not("user_id", "in", `(${ids.map((x) => `"${x}"`).join(",")})`);
-    }
-    if (typeof args.minRecommend === "number") q = q.gte("recommend_score", args.minRecommend);
-
-    const { data, error } = await q;
-    if (error) return { rows: [] as any[], error: error.message };
-    return { rows: (data ?? []) as any[], error: null as string | null };
-  };
-
-  // --------------------
-  // build candidates + diversify
-  // --------------------
-  let meta: TimelineMeta | null = null;
-
-  // cold start mode（未ログイン OR フォロー0）
-  const coldStart = !meId || followCount === 0;
-
-  // まず候補
-  let candidates: PostRow[] = [];
-  let nextCursor: string | null = null;
-
-  // 候補の初期cursor（追加フェッチ用）
-  let extraCursor: string | null = cursor;
-
-  // 追加候補のフェッチ（不足したら使う）
-  const appendMoreCandidates = async (cycle: number) => {
-    // 代わり優先: (1) public posts all (2) recommend>=9 (3) 更に古い
-    const exclude = meId ? [meId] : [];
-    const base1 = await fetchPublicPosts({
-      limit: BUFFER,
-      cursor: extraCursor,
-      excludeUserIds: exclude,
-      minRecommend: null,
-    });
-    const rows1 = base1.rows.map(toPostRowFromPublic);
-
-    // 追加の質担保候補（recommend>=9）
-    const base2 = await fetchPublicPosts({
-      limit: Math.min(120, BUFFER),
-      cursor: extraCursor,
-      excludeUserIds: exclude,
-      minRecommend: 9,
-    });
-    const rows2 = base2.rows.map((p) => {
-      const r = toPostRowFromPublic(p as any);
-      return r;
-    });
-
-    const merged = uniqById([...rows1, ...rows2]);
-    candidates.push(...merged);
-
-    // 次の追加フェッチのために cursor を進める
-    const last = merged.length ? merged[merged.length - 1].created_at : null;
-    if (last) extraCursor = last;
-
-    // nextCursor は「返した最後のcreated_at」を後で決めるので、ここでは触らない
-    return;
-  };
-
-  if (coldStart) {
-    // 未ログイン or フォロー0: public posts
-    await appendMoreCandidates(0);
-
-    // 4枚制約で選ぶ（足りなければ追加フェッチ）
-    let picked: PostRow[] = [];
-    for (let cycle = 0; cycle <= EXTRA_CYCLES; cycle++) {
-      const { out } = diversifyWindow(candidates, limit, { window: 4 });
-      picked = out;
-
-      if (picked.length >= limit) break;
-      await appendMoreCandidates(cycle + 1);
-    }
-
-    // meta（SuggestFollowCard）: 常に出す（投稿が0でも出せる）
-    // user候補は picked から distinct に抜く
-    const suggestUserIds = pickDistinctUserIdsFromPosts(picked.length ? picked : candidates, 8);
-    if (suggestUserIds.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_url")
-        .in("id", suggestUserIds.slice(0, 8));
-      const users: SuggestUser[] = (profs ?? []).map((p: any) => ({
-        id: p.id,
-        display_name: p.display_name,
-        avatar_url: p.avatar_url,
-        mode: "follow",
-        subtitle: "おすすめ",
-      }));
-      meta = {
-        suggestOnce: true,
-        suggestAtIndex: 1,
-        suggestion: {
-          title: "気になる人をフォローしてみましょう",
-          subtitle: "まずはおすすめのユーザーから",
-          users,
-        },
-      };
-    }
-
-    // 足りないなら「代わり枠」：suggest card で埋める（投稿はこれ以上無理なら無理）
-    const posts = picked;
-
-    nextCursor = posts.length ? posts[posts.length - 1].created_at : (extraCursor ?? cursor ?? null);
-    return NextResponse.json({ posts, nextCursor, meta }, { status: 200 });
-  }
-
-  // --------------------
-  // followあり: base(rpc) + inject(public good posts)
-  // --------------------
-  // base: rpc（自分+フォロー）
-  const { data: baseData } = await supabase.rpc("timeline_friends_v1", {
-    p_limit: Math.min(80, limit * 6),
-    p_cursor: cursor,
-  });
-
-  const baseRows = ((baseData ?? []) as any[]).map(toPostRowFromRpc);
-
-  // inject candidates: public good posts (recommend>=9) excluding visible ids
-  const visibleIds = Array.from(new Set([meId!, ...followeeIds]));
-  const injectFetch = await fetchPublicPosts({
-    limit: Math.max(120, limit * 10),
-    cursor,
-    excludeUserIds: visibleIds,
-    minRecommend: 9,
-  });
-  const injectRows = injectFetch.rows.map(toPostRowFromPublic);
-
-  // inject のラベル付け（軽量）
-  const injectDecorated: PostRow[] = injectRows.map((p) => ({
-    ...p,
-    injected: true,
-    inject_reason: "おすすめの投稿",
-    inject_follow_mode: "follow",
-    inject_target_user_id: p.user_id,
+    viewer_following_author: followingSet.has(r.user_id),
   }));
 
-  // meta（フォロー0/1で強めに出す。ここは followCount>=1 だけど <=1 の時に出す）
-  if (followCount <= 1) {
-    const suggestUserIds = pickDistinctUserIdsFromPosts(injectDecorated, 8);
-    if (suggestUserIds.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_url")
-        .in("id", suggestUserIds.slice(0, 8));
-      const users: SuggestUser[] = (profs ?? []).map((p: any) => ({
-        id: p.id,
-        display_name: p.display_name,
-        avatar_url: p.avatar_url,
-        mode: "follow",
-        subtitle: "おすすめ",
+  // (2) followeeが0なら public投稿で代替
+  let fallbackPosts: any[] = [];
+  if (followeeIds.length === 0) {
+    let q = supabase
+      .from("posts")
+      .select("id,user_id,created_at,visited_on,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range, profiles!inner(id,display_name,avatar_url,is_public)")
+      .eq("profiles.is_public", true)
+      .neq("user_id", meId)
+      .order("created_at", { ascending: false })
+      .limit(Math.max(120, limit * 8));
+
+    if (cursor) q = q.lt("created_at", cursor);
+
+    const { data, error } = await q;
+    if (!error) {
+      fallbackPosts = (data ?? []).map((r: any) => ({
+        ...r,
+        profile: r.profiles ?? null,
+        viewer_following_author: false,
       }));
-      meta = {
-        suggestOnce: true,
-        suggestAtIndex: 1,
-        suggestion: {
-          title: "この人たちも良さそう",
-          subtitle: "つながりが広がりそうなユーザー",
-          users,
-        },
-      };
     }
   }
 
-  // 混ぜる（時系列厳密不要なので、base優先 + injectを適度に散らす）
-  // まず candidates に入れる順序：新しい順ベースにしたいので base + inject を混ぜる
-  // inject比率は 25% くらいで十分（でも diversity が最優先なので後段で効く）
-  const mixed: PostRow[] = [];
-  const injectEvery = 3 + ((seed.length + (cursor?.length ?? 0)) % 3); // 3..5
-  let bi = 0, ii = 0;
+  // (3) inject候補（public & recommend>=9）を少量混ぜたいならここで
+  // いったん「フォロー0の代替」では “投稿は全部publicでOK” なので injectは省略しても成立。
+  // （必要なら次で旧scoreCandidate方式を完全移植する）
 
-  while (mixed.length < Math.max(BUFFER, limit * 10) && (bi < baseRows.length || ii < injectDecorated.length)) {
-    // base 1つ
-    if (bi < baseRows.length) mixed.push(baseRows[bi++]);
-    // inject を 3〜5に1回
-    if (mixed.length % injectEvery === 0 && ii < injectDecorated.length) mixed.push(injectDecorated[ii++]);
-    // 余ってるならinjectも少し
-    if (ii < injectDecorated.length && mixed.length % 7 === 0) mixed.push(injectDecorated[ii++]);
-  }
+  const merged = followeeIds.length ? basePosts : fallbackPosts;
 
-  candidates = uniqById(mixed);
+  // ✅ 1) 重複排除 2) n+3制約 3) limitに切る
+  const uniq = uniqById(merged);
+  const arranged = enforceNoRepeatWithin(uniq, 3).slice(0, limit);
 
-  // 4枚制約で pick（不足したら inject を追加で足す / 古い public を足す）
-  let picked: PostRow[] = [];
-  extraCursor = cursor;
+  const nextCursorOut = arranged.length ? arranged[arranged.length - 1].created_at : null;
 
-  for (let cycle = 0; cycle <= EXTRA_CYCLES; cycle++) {
-    const { out } = diversifyWindow(candidates, limit, { window: 4 });
-    picked = out;
-    if (picked.length >= limit) break;
-
-    // 追加候補：古い public を掘る（recommend>=9も混ぜる）
-    // ※visibleIds除外のまま
-    const more1 = await fetchPublicPosts({
-      limit: BUFFER,
-      cursor: extraCursor,
-      excludeUserIds: visibleIds,
-      minRecommend: null,
-    });
-    const more2 = await fetchPublicPosts({
-      limit: Math.min(120, BUFFER),
-      cursor: extraCursor,
-      excludeUserIds: visibleIds,
-      minRecommend: 9,
-    });
-
-    const more = uniqById([
-      ...more1.rows.map(toPostRowFromPublic),
-      ...more2.rows.map((r: any) => ({
-        ...toPostRowFromPublic(r),
-        injected: true,
-        inject_reason: "おすすめの投稿",
-        inject_follow_mode: "follow",
-        inject_target_user_id: (r as any).user_id,
-      })),
-    ]);
-
-    candidates.push(...more);
-
-    const last = more.length ? more[more.length - 1].created_at : null;
-    if (last) extraCursor = last;
-  }
-
-  nextCursor = picked.length ? picked[picked.length - 1].created_at : (extraCursor ?? cursor ?? null);
-
-  return NextResponse.json({ posts: picked, nextCursor, meta }, { status: 200 });
+  return NextResponse.json({ posts: arranged, nextCursor: nextCursorOut, meta });
 }
