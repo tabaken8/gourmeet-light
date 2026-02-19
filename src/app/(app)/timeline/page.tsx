@@ -2,7 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import FriendsTimelineServer from "@/components/timeline/FriendsTimelineServer";
-// import DiscoverTimelineClient from "@/components/timeline/DiscoverTimelineClient"; // 後で
+import DiscoverTimelineClient from "@/components/timeline/DiscoverTimelineClient";
 
 export const dynamic = "force-dynamic";
 
@@ -69,9 +69,7 @@ export default async function TimelinePage({
           {activeTab === "friends" ? (
             <FriendsTimelineServer meId={user?.id ?? null} />
           ) : (
-            // 一旦discoverは別コンポーネントで client fetch に切り分け
-            // <DiscoverTimelineClient meId={user?.id ?? null} />
-            null
+            <DiscoverTimelineClient meId={user?.id ?? null} />
           )}
         </section>
       </div>

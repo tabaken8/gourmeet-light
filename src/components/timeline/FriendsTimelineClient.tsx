@@ -1,12 +1,11 @@
 // src/components/timeline/FriendsTimelineClient.tsx
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import TimelinePostList from "@/components/TimelinePostList";
-import PostsSkeleton from "@/components/PostsSkeleton"; 
-// ※あなたの既存コンポーネント名に合わせて調整してOK
+import PostsSkeleton from "@/components/PostsSkeleton";
 
-type PostLite = any; // ← 既存の PostRow 型があるならそれをimportして置き換え
+type PostLite = any;
 
 export default function FriendsTimelineClient({
   meId,
@@ -31,29 +30,31 @@ export default function FriendsTimelineClient({
       if (nextCursor) params.set("cursor", nextCursor);
       params.set("limit", "20");
 
-      // ここは「friends用API route」を作るか、Clientから直接rpc叩くかで分岐する
-      // まずは簡単に API route を作るのが王道（認証cookieも使える）
-      const res = await fetch(`/api/timeline/friends?${params.toString()}`);
+      const res = await fetch(`/api/timeline/friends?${params.toString()}`, { cache: "no-store" });
       if (!res.ok) return;
 
       const json = await res.json();
       const newPosts = (json.posts ?? []) as PostLite[];
       const newCursor = (json.nextCursor ?? null) as string | null;
 
-      setPosts((prev) => [...prev, ...newPosts]);
+      setPosts((prev) => {
+        const seen = new Set(prev.map((p: any) => p?.id).filter(Boolean));
+        const appended = newPosts.filter((p: any) => p?.id && !seen.has(p.id));
+        return [...prev, ...appended];
+      });
       setNextCursor(newCursor);
     } finally {
       setLoadingMore(false);
     }
   }, [hasMore, loadingMore, nextCursor]);
 
-  // 未ログインなら空
-  if (!meId) return null;
-
-  // 初期表示が0件でサーバーからも0なら、ここで skeleton 出す意味は基本ない
-  // ただ「0件です」を出したいならここで。
-  if (posts.length === 0) {
-    return null;
+  if (posts.length === 0 && !loadingMore) {
+    return (
+      <div className="py-10 text-center text-sm text-slate-500">
+        まだ投稿がありません。<br />
+        発見タブで気になる人やお店を探してみてください。
+      </div>
+    );
   }
 
   return (
@@ -74,7 +75,6 @@ export default function FriendsTimelineClient({
 
       {loadingMore ? (
         <div className="mt-4">
-          {/* 追撃ロードのときだけskeleton（任意） */}
           <PostsSkeleton />
         </div>
       ) : null}
