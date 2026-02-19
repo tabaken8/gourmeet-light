@@ -73,7 +73,7 @@ export default function LoginCard({
   showDiscoverLink = true,
 
   // 既存：公開導線
-  exploreHref = "/timeline?tab=discover",
+  searchHref = "/search",
   exploreMode = "rotating", // "fixed" | "rotating"
   exploreFixedText = "体験してみる",
 
@@ -88,7 +88,7 @@ export default function LoginCard({
   nextPath?: string;
   showDiscoverLink?: boolean;
 
-  exploreHref?: string;
+  searchHref?: string;
   exploreMode?: "fixed" | "rotating";
   exploreFixedText?: string;
 
@@ -237,7 +237,7 @@ export default function LoginCard({
             {/* 公開を見る */}
             {showDiscoverLink ? (
               <Link
-                href={exploreHref}
+                href={searchHref}
                 className="
                   inline-flex items-center gap-1.5
                   rounded-full border border-black/10 bg-black/[.02]

@@ -16,7 +16,7 @@ export default async function RequiredPage({
       title="続けるにはログイン"
       description="この機能はログインすると使えるようになります。"
       showDiscoverLink
-      exploreHref="/timeline?tab=discover"
+      searchHref="/search"
       exploreMode="fixed"
       exploreFixedText="ログインなしでまずは覗く"
       pitchTitle="店選びを、最短で正解に。"
