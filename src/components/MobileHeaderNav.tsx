@@ -256,59 +256,59 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </div>
         </div>
 
-        {/* 2段目：メイン列 3ボタン（Home / Search(オレンジ・中央) / Profile(右)） */}
-        <div className="px-2 pb-2">
-          <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-2 py-1">
-            {/* Home */}
-            <IconButton
-              href={gate(homeHref)}
-              active={isActive("/timeline")}
-              ariaLabel="ホーム"
-              activeClassName="bg-blue-100/70"
-            >
-              <Home size={20} className="text-blue-600" />
-              <Dot on={timelineDot} />
-            </IconButton>
+{/* 2段目：メイン列 3ボタン（Home / Search(オレンジ・中央) / Profile(右)） */}
+<div className="px-4 pb-2">
+  <div className="flex items-center justify-between gap-1 rounded-2xl bg-black/[.03] px-3 py-1">
+    {/* Home */}
+    <IconButton
+      href={gate(homeHref)}
+      active={isActive("/timeline")}
+      ariaLabel="ホーム"
+      activeClassName="bg-blue-100/70"
+    >
+      <Home size={20} className="text-blue-600" />
+      <Dot on={timelineDot} />
+    </IconButton>
 
-            {/* Search（中央・オレンジ） */}
-            <IconButton
-              href={gate("/search", true)}
-              active={isActive("/search")}
-              ariaLabel="検索"
-              activeClassName="bg-orange-100/80"
-              className="mx-auto"
-            >
-              <Search size={20} className="text-orange-700" />
-            </IconButton>
+    {/* Search（中央・オレンジ） */}
+    <IconButton
+      href={gate("/search", true)}
+      active={isActive("/search")}
+      ariaLabel="検索"
+      activeClassName="bg-orange-100/80"
+    >
+      <Search size={20} className="text-orange-700" />
+    </IconButton>
 
-            {/* Profile（右端へ移動） */}
-            <Link
-              href={gate("/profile")}
-              className={`
-                relative inline-flex h-11 w-11 items-center justify-center rounded-full
-                transition-colors
-                ${isActive("/profile") ? "bg-slate-100" : "hover:bg-black/[.04]"}
-              `}
-              aria-label={displayNameSafe || "プロフィール"}
-            >
-              {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={avatarUrl}
-                  alt={displayNameSafe || "profile"}
-                  className="h-8 w-8 rounded-full object-cover bg-slate-200"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="text-xs font-semibold text-slate-700">
-                  {(displayNameSafe || "U").slice(0, 1).toUpperCase()}
-                </span>
-              )}
-            </Link>
+    {/* Profile */}
+    <Link
+      href={gate("/profile")}
+      className={`
+        relative inline-flex h-11 w-11 items-center justify-center rounded-full
+        transition-colors
+        ${isActive("/profile") ? "bg-slate-100" : "hover:bg-black/[.04]"}
+      `}
+      aria-label={displayNameSafe || "プロフィール"}
+    >
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarUrl}
+          alt={displayNameSafe || "profile"}
+          className="h-8 w-8 rounded-full object-cover bg-slate-200"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <span className="text-xs font-semibold text-slate-700">
+          {(displayNameSafe || "U").slice(0, 1).toUpperCase()}
+        </span>
+      )}
+    </Link>
 
-            {/* Map と AI Chat は非表示（今回は実装しない） */}
-          </div>
-        </div>
+    {/* Map と AI Chat は非表示（今回は実装しない） */}
+  </div>
+</div>
+
       </header>
     </div>
   );
