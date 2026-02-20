@@ -65,7 +65,7 @@ function NavItem({
         <span
           className={`
             absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center
-            rounded-full bg-red-500 px-1 text-[11px] font-bold text-white
+            rounded-full bg-red-500 px-1 text-[11px] font-bold text-!white
             ${count && count > 0 ? "visible" : "invisible"}
           `}
         >

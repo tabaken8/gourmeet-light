@@ -132,8 +132,8 @@ async function buildMetaForGuest(supabase: any): Promise<Meta> {
     suggestOnce: true,
     suggestAtIndex: 1,
     suggestion: {
-      title: "気になる人をフォローしてみましょう",
-      subtitle: "ログインするとフォローできます（まずは覗けます）",
+      title: "気になる人をフォローしてみましょう。",
+      subtitle: "ログインするとフォローできます（まずは覗けます）。",
       users,
     },
   };

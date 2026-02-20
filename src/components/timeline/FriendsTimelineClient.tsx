@@ -7,13 +7,13 @@ import TimelinePostList from "@/components/timeline/TimelinePostList";
 import PostsSkeleton from "@/components/PostsSkeleton";
 import SuggestFollowCard from "@/components/SuggestFollowCard";
 import { AnimatePresence, motion, useInView } from "framer-motion";
-import { Lock } from "lucide-react";
+import { Lock, ChevronDown } from "lucide-react";
 
 type PostLite = any;
 
 type SuggestMeta =
   | {
-      followCount?: number; // ✅ 追加
+      followCount?: number;
       suggestOnce?: boolean;
       suggestAtIndex?: number; // 0-based
       suggestion?: {
@@ -89,6 +89,79 @@ function EmptyState({
   );
 }
 
+// =========================
+// White FAQ (smooth expand)
+// =========================
+function GuestFAQ() {
+  const items = [
+    { q: "Gourmeetとは？", a: "友達のおすすめ投稿だけで店を選べるSNSアプリです。" },
+    { q: "ログインすると何ができる？", a: "友達のフォロー、いいね、コメント、投稿、コレクション保存などが使えます。" },
+    { q: "料金はかかる？", a: "完全に無料です。" },
+    { q: "プライベート投稿は見える？", a: "非公開アカウントの投稿は、フォローが承認された人だけが見られます。" },
+  ];
+
+  const [open, setOpen] = useState<number | null>(0);
+
+  return (
+    <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden">
+      <div className="px-4 pt-4 pb-2">
+        <div className="text-base font-semibold text-slate-900">よくある質問</div>
+      </div>
+
+      <div className="divide-y divide-black/[.06]">
+        {items.map((it, idx) => {
+          const isOpen = open === idx;
+
+          return (
+            <div key={idx}>
+              <button
+                type="button"
+                onClick={() => setOpen((cur) => (cur === idx ? null : idx))}
+                className="w-full text-left px-4 py-4 hover:bg-black/[.02]"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[15px] font-semibold text-slate-900">{it.q}</div>
+                  <motion.span
+                    animate={{ rotate: isOpen ? 180 : 0 }}
+                    transition={{ duration: 0.25, ease: [0.2, 0.9, 0.2, 1] }}
+                    className="shrink-0 text-slate-500"
+                    aria-hidden="true"
+                  >
+                    <ChevronDown size={18} />
+                  </motion.span>
+                </div>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {isOpen ? (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.35, ease: [0.2, 0.9, 0.2, 1] }}
+                    className="px-4 pb-4"
+                  >
+                    <div className="text-[13px] leading-6 text-slate-600">{it.a}</div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="p-4">
+        <Link
+          href="/auth/signup"
+          className="block w-full rounded-xl bg-orange-600 py-3 text-center text-sm font-semibold text-white hover:bg-orange-800"
+        >
+          サインアップはこちら
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 // -------------------------
 // Helpers for DiscoverGrid
 // -------------------------
@@ -122,13 +195,12 @@ function getFirstSquareThumb(p: PostRow): string | null {
 
 type PlannedTile = { big: boolean; p: PostRow };
 function planDiscoverTiles(posts: PostRow[], seed: string, opts?: { maxTiles?: number; maxBig?: number }) {
-  const maxTiles = opts?.maxTiles ?? 12; // 3x4 相当
+  const maxTiles = opts?.maxTiles ?? 12; // 3x4
   const maxBig = opts?.maxBig ?? 3;
 
   const base = posts.slice(0, Math.max(maxTiles, 1));
   const tiles: PlannedTile[] = [];
 
-  // big を seed で散らす（完全再現じゃなくても雰囲気OK）
   const bigIdx = new Set<number>();
   const nBig = Math.min(maxBig, Math.floor(base.length / 5));
   for (let k = 0; k < nBig; k++) {
@@ -142,6 +214,11 @@ function planDiscoverTiles(posts: PostRow[], seed: string, opts?: { maxTiles?: n
   return tiles;
 }
 
+function gateHref(next: string, meId: string | null) {
+  if (meId) return next;
+  return `/auth/required?next=${encodeURIComponent(next)}`;
+}
+
 // =========================
 // Discover flip tile
 // =========================
@@ -150,11 +227,13 @@ function DiscoverFlipTile({
   big,
   post,
   onInViewChange,
+  meId,
 }: {
   slotIndex: number;
   big: boolean;
   post: PostRow | null;
   onInViewChange: (slotIndex: number, inView: boolean) => void;
+  meId: string | null;
 }) {
   const ref = useRef<HTMLAnchorElement | null>(null);
   const inView = useInView(ref as any, { margin: "120px" });
@@ -170,7 +249,8 @@ function DiscoverFlipTile({
   const isPublic = post?.profile?.is_public ?? true;
   const placeName = post?.place_name ?? "";
   const genre = post?.place_genre ?? null;
-  const href = post?.id ? `/posts/${post.id}` : "#";
+
+  const href = post?.id ? gateHref(`/posts/${post.id}`, meId) : "#";
 
   return (
     <Link
@@ -180,7 +260,7 @@ function DiscoverFlipTile({
       className={[
         "relative block overflow-hidden bg-slate-100",
         "focus:outline-none focus:ring-2 focus:ring-orange-400",
-        "gm-press ring-1 ring-black/[.05]",
+        "gm-press",
         tileSpan,
       ].join(" ")}
       onClick={(e) => {
@@ -195,15 +275,19 @@ function DiscoverFlipTile({
             initial={{ rotateY: 90, opacity: 0.9 }}
             animate={{ rotateY: 0, opacity: 1 }}
             exit={{ rotateY: -90, opacity: 0.9 }}
-            transition={{ duration: 0.55, ease: [0.2, 0.9, 0.2, 1] }}
+            transition={{ duration: 0.6, ease: [0.15, 0.85, 0.2, 1] }}
             style={{ transformStyle: "preserve-3d" }}
           >
             {thumb ? (
               <motion.div
                 className="absolute inset-0"
-                initial={{ opacity: 0, filter: "blur(12px) brightness(0.75)", transform: "translateX(-10px) scale(1.02)" }}
+                initial={{
+                  opacity: 0,
+                  filter: "blur(14px) brightness(0.8)",
+                  transform: "translateX(-12px) scale(1.03)",
+                }}
                 animate={{ opacity: 1, filter: "blur(0px) brightness(1)", transform: "translateX(0px) scale(1)" }}
-                transition={{ duration: 0.9, ease: [0.2, 0.9, 0.2, 1] }}
+                transition={{ duration: 1.05, ease: [0.2, 0.9, 0.2, 1] }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -348,23 +432,27 @@ function DiscoverGrid({
 
   return (
     <div className="w-full">
-      <div className="grid grid-cols-3 gap-[2px] md:gap-2 [grid-auto-flow:dense]">
-        {discoverSlots.map((slot, slotIndex) => {
-          const p = postById.get(slot.postId) ?? null;
-          return (
-            <DiscoverFlipTile
-              key={`slot-${slotIndex}`}
-              slotIndex={slotIndex}
-              big={slot.big}
-              post={p}
-              onInViewChange={onInViewChange}
-            />
-          );
-        })}
+      {/* 線は “gap” + 親bg で作る（外周も1px） */}
+      <div className="bg-black/[.06] p-[1px]">
+        <div className="grid grid-cols-3 gap-[1px] md:gap-[2px] [grid-auto-flow:dense]">
+          {discoverSlots.map((slot, slotIndex) => {
+            const p = postById.get(slot.postId) ?? null;
+            return (
+              <DiscoverFlipTile
+                key={`slot-${slotIndex}`}
+                slotIndex={slotIndex}
+                big={slot.big}
+                post={p}
+                onInViewChange={onInViewChange}
+                meId={meId}
+              />
+            );
+          })}
+        </div>
       </div>
 
       <div className="pb-2 pt-4 text-center text-[11px] text-slate-500">
-        <Link className="font-semibold text-orange-700 hover:underline" href="/timeline?tab=discover">
+        <Link className="font-semibold text-orange-700 hover:underline" href={gateHref("/timeline?tab=discover", meId)}>
           発見タブで全部見る
         </Link>
       </div>
@@ -388,7 +476,7 @@ export default function FriendsTimelineClient({
   const [loadingMore, setLoadingMore] = useState(false);
   const [meta, setMeta] = useState<SuggestMeta>(initialMeta ?? null);
 
-  // ✅ 追加：ゼロフォロー用 discover grid の投稿
+  // ✅ guest/zero-follow 共通：discover grid 投稿
   const [discoverPosts, setDiscoverPosts] = useState<PostRow[]>([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
 
@@ -448,12 +536,15 @@ export default function FriendsTimelineClient({
     return typeof x === "number" && Number.isFinite(x) ? Math.max(0, Math.floor(x)) : 1;
   }, [meta]);
 
-  // ✅ followCount==0 で posts==0 のときだけ discover grid を取りに行く
+  // ✅ guest でも zero-follow でも “プレビューgrid” を取る（必要時のみ）
   useEffect(() => {
-    if (!meId) return;
-    if (followCount !== 0) return;
-    if ((posts?.length ?? 0) > 0) return;
-    if (discoverPosts.length > 0 || discoverLoading) return;
+    // 未ログインでもOK
+    const needPreview =
+      (!meId && discoverPosts.length === 0) ||
+      (meId && followCount === 0 && (posts?.length ?? 0) === 0 && discoverPosts.length === 0);
+
+    if (!needPreview) return;
+    if (discoverLoading) return;
 
     (async () => {
       setDiscoverLoading(true);
@@ -473,37 +564,60 @@ export default function FriendsTimelineClient({
   // -------------------------
   // Views
   // -------------------------
+
+  // ✅ 未ログイン：welcome + grid + faq（フォロー0相当）
   if (!meId) {
     return (
-      <EmptyState
-        title="友達のタイムラインを見るにはログインが必要です"
-        desc="ログインすると、フォローした人の投稿がここに並びます。"
-        primaryHref="/auth/login"
-        primaryLabel="ログイン"
-        secondaryHref="/"
-        secondaryLabel="トップへ"
-      />
+      <div className="flex flex-col gap-4">
+        <EmptyState
+          title="ようこそGourmeetへ！まずは雰囲気をのぞいてみましょう"
+          desc="ログインすると、投稿/フォロー/いいね/コレクションなど様々な機能が使えるようになります。"
+          primaryHref="/auth/login"
+          primaryLabel="ログイン"
+          secondaryHref="/auth/signup"
+          secondaryLabel="アカウント作成"
+        />
+
+        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
+          <div className="px-4 pt-4">
+            <div className="text-sm font-semibold text-slate-900">みんなの投稿をのぞいてみる</div>
+          </div>
+
+          <div className="mt-3">
+            {discoverLoading && discoverPosts.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500">読み込み中...</div>
+            ) : discoverPosts.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500">表示できる投稿がありません</div>
+            ) : (
+              <DiscoverGrid posts={discoverPosts} meId={null} seed={`guest-welcome`} />
+            )}
+          </div>
+        </div>
+
+        <GuestFAQ />
+      </div>
     );
   }
 
-  // ✅ フォローゼロ向け：welcome + discover grid
+  // ✅ フォローゼロ：welcome + suggestion + grid
   if (followCount === 0 && (posts?.length ?? 0) === 0) {
     return (
       <div className="flex flex-col gap-4">
         <EmptyState
-          title="ようこそGourmeetへ！まずは発見タブから友達をフォローしてみましょう"
+          title="ようこそGourmeetへ！まずは発見タブから友達をフォローしてみましょう。"
           desc=""
           primaryHref="/search"
           primaryLabel="友達を検索する"
           secondaryHref="/timeline?tab=discover"
-          secondaryLabel="発見を見る"
+          secondaryLabel="発見してみる"
         />
 
-        {/* 0/1フォロー向け suggestion が来ていれば、そのまま併置 */}
         {suggestBlock ? <div>{suggestBlock}</div> : null}
 
-        <div className="rounded-2xl border border-black/[.06] bg-white p-4">
-          <div className="text-sm font-semibold text-slate-900">みんなの投稿をのぞいてみる</div>
+        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
+          <div className="px-4 pt-4">
+            <div className="text-sm font-semibold text-slate-900">みんなの投稿をのぞいてみる</div>
+          </div>
 
           <div className="mt-3">
             {discoverLoading && discoverPosts.length === 0 ? (
