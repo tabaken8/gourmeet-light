@@ -3,8 +3,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Image as ImageIcon, MapPin, X, Check, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Image as ImageIcon, MapPin, X, Check, Loader2, ChevronDown, ChevronUp, Search } from "lucide-react";
 import confetti from "canvas-confetti";
+
+import { POST_TAGS, TAG_CATEGORIES, type TagCategory, findTagById, matchesTagQuery } from "@/lib/postTags";
 
 // =====================
 // types
@@ -17,18 +19,24 @@ type PlaceResult = {
 
 type PreparedImage = {
   id: string;
-
-  pin: File; // map pin 用（超軽量）
-  square: File; // timeline/card 用（統一）
-  full: File; // 詳細用（高画質・元アスペクト保持）
-
-  previewUrl: string; // square の objectURL
+  pin: File;
+  square: File;
+  full: File;
+  previewUrl: string;
   label: string;
-
   origW: number;
   origH: number;
-};
 
+  // UIには出さない（来店日の自動入力にのみ使う）
+  exifDate?: Date | null;
+};
+type TimeOfDay = "day" | "night" | null;
+
+function guessTimeOfDayFromDate(dt: Date): Exclude<TimeOfDay, null> {
+  // ざっくり：6:00〜17:59 = day、それ以外 = night
+  const h = dt.getHours();
+  return h >= 6 && h <= 17 ? "day" : "night";
+}
 // =====================
 // utils: heic
 // =====================
@@ -167,8 +175,8 @@ function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
   return scaleCanvasHighQuality(base, tw, th);
 }
 
-/** EXIF から visitedOn を推定 */
-async function tryAutofillVisitedOnFromFirstPhoto(file: File): Promise<string | null> {
+/** EXIFから撮影日時を取る（UIには出さない。来店日の自動入力にのみ使う） */
+async function parseExifDate(file: File): Promise<Date | null> {
   try {
     const mod: any = await import("exifr");
     const exifr = mod.default ?? mod;
@@ -184,14 +192,17 @@ async function tryAutofillVisitedOnFromFirstPhoto(file: File): Promise<string | 
           : null;
 
     if (!dt || !Number.isFinite(dt.getTime())) return null;
-
-    const yyyy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, "0");
-    const dd = String(dt.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
+    return dt;
   } catch {
     return null;
   }
+}
+
+function toYmd(dt: Date): string {
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 /**
@@ -238,6 +249,9 @@ async function prepareImage(file: File): Promise<PreparedImage> {
 
   const previewUrl = URL.createObjectURL(squareFile);
 
+  // EXIFは元ファイルから読む（変換後に失う場合があるので）
+  const exifDate = await parseExifDate(file);
+
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     square: squareFile,
@@ -247,6 +261,7 @@ async function prepareImage(file: File): Promise<PreparedImage> {
     label: file.name,
     origW,
     origH,
+    exifDate,
   };
 }
 
@@ -298,11 +313,6 @@ function formatYen(n: number) {
   }
 }
 
-function clamp01to10(n: number) {
-  if (!Number.isFinite(n)) return 0;
-  return Math.min(10, Math.max(0, n));
-}
-
 function ProgressPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <div
@@ -352,123 +362,50 @@ function Section({
   );
 }
 
-function ScoreRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number | null;
-  onChange: (v: number | null) => void;
-}) {
-  const v = value ?? 0;
-  const selected = value !== null;
-
-  return (
-    <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[12px] font-semibold text-slate-700">{label}</div>
-        <div className="text-[12px] font-semibold">
-          {selected ? (
-            <>
-              <span className="text-orange-600">{v.toFixed(1)}</span>
-              <span className="text-slate-400"> / 10.0</span>
-            </>
-          ) : (
-            <span className="text-slate-400">未設定</span>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-center gap-3">
-        <input
-          type="range"
-          min={0}
-          max={10}
-          step={0.1}
-          value={v}
-          onChange={(e) => onChange(Math.round(clamp01to10(Number(e.target.value)) * 10) / 10)}
-          className={["w-full", selected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
-          aria-label={`${label}（スライダー）`}
-        />
-
-        <div className="w-[92px]">
-          <input
-            type="number"
-            min={0}
-            max={10}
-            step={0.1}
-            inputMode="decimal"
-            value={selected ? v.toFixed(1) : ""}
-            placeholder="任意"
-            onChange={(e) => {
-              const raw = e.target.value;
-              if (raw === "") return onChange(null);
-              const n = clamp01to10(Number(raw));
-              const rounded = Math.round(n * 10) / 10;
-              onChange(rounded);
-            }}
-            className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
-            aria-label={`${label}（数値入力）`}
-          />
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-center justify-between">
-        <div className="text-[11px] text-slate-400">0.0</div>
-        {selected ? (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            クリア
-          </button>
-        ) : (
-          <div className="text-[11px] text-slate-400">10.0</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // =====================
 // main
 // =====================
 export default function NewPostPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
-
   const [uid, setUid] = useState<string | null>(null);
 
+  // core
   const [content, setContent] = useState("");
   const [imgs, setImgs] = useState<PreparedImage[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [attempted, setAttempted] = useState(false); // ✅ バリデーション表示用（気分悪い常時表示を避ける）
+  const [attempted, setAttempted] = useState(false);
 
-  // 店舗関連（必須）
+  // place
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
   const [isSearchingPlace, setIsSearchingPlace] = useState(false);
 
-  // 価格（必須）
+  // price
   const [priceMode, setPriceMode] = useState<PriceMode>("exact");
   const [priceYenText, setPriceYenText] = useState<string>("");
   const [priceRange, setPriceRange] = useState<(typeof PRICE_RANGES)[number]["value"]>("3000-3999");
 
-  // 本体おすすめ度（必須）※contentの直下に配置する
+  // recommend
   const [recommendSelected, setRecommendSelected] = useState(false);
   const [recommendScore, setRecommendScore] = useState<number>(7.0);
 
-  // 詳細（任意）
-  const [showOptional, setShowOptional] = useState(false);
-  const [tasteScore, setTasteScore] = useState<number | null>(null);
-  const [atmosphereScore, setAtmosphereScore] = useState<number | null>(null);
-  const [serviceScore, setServiceScore] = useState<number | null>(null);
-  const [visitedOn, setVisitedOn] = useState<string>(""); // ✅ 任意タブの最後へ
+  // visited
+  const [visitedOn, setVisitedOn] = useState<string>(""); // yyyy-mm-dd
+// time of day (optional)
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(null);
+  // ユーザーが触ったか（触ったならEXIF推定で上書きしない）
+  const [timeOfDayTouched, setTimeOfDayTouched] = useState(false);
+    // tags
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [tagCategory, setTagCategory] = useState<TagCategory>("all");
+  const [tagQuery, setTagQuery] = useState("");
+
+  // show optional (tags section)
+  const [showDetails, setShowDetails] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -476,7 +413,7 @@ export default function NewPostPage() {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, [supabase]);
 
-  // 場所候補検索（デバウンス）
+  // ---- place search debounce ----
   useEffect(() => {
     if (placeQuery.trim().length < 2) {
       setPlaceResults([]);
@@ -510,7 +447,7 @@ export default function NewPostPage() {
     return () => clearTimeout(timer);
   }, [placeQuery]);
 
-  // objectURL解放
+  // objectURL cleanup
   const imgsRef = useRef<PreparedImage[]>([]);
   useEffect(() => {
     imgsRef.current = imgs;
@@ -521,6 +458,46 @@ export default function NewPostPage() {
     };
   }, []);
 
+  // --- tags helpers ---
+  const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
+
+  const visibleTags = useMemo(() => {
+    const q = tagQuery.trim();
+
+    // 検索中はカテゴリ無視で全体検索
+    if (q) {
+      return POST_TAGS.filter((t) => matchesTagQuery(t, q));
+    }
+
+    // 検索してない時だけカテゴリ絞り込み
+    return POST_TAGS.filter((t) => (tagCategory === "all" ? true : t.category === tagCategory));
+  }, [tagCategory, tagQuery]);
+
+  function toggleTag(id: string) {
+    const tag = findTagById(id);
+    if (!tag) return;
+
+    setSelectedTagIds((prev) => {
+      const exists = prev.includes(id);
+      if (exists) return prev.filter((x) => x !== id);
+
+      // exclusiveGroup があれば同グループのタグを外す
+      const group = tag.exclusiveGroup;
+      if (!group) return [...prev, id];
+
+      const removed = prev.filter((tid) => {
+        const t = findTagById(tid);
+        return t?.exclusiveGroup !== group;
+      });
+      return [...removed, id];
+    });
+  }
+
+  function removeTag(id: string) {
+    setSelectedTagIds((prev) => prev.filter((x) => x !== id));
+  }
+
+  // --- images ---
   const addImages = async (files: File[]) => {
     const MAX = 9;
     if (imgs.length >= MAX) return;
@@ -533,20 +510,21 @@ export default function NewPostPage() {
       const limited = imageFiles.slice(0, Math.max(0, MAX - imgs.length));
       if (limited.length === 0) return;
 
-      // visitedOn 自動推定（1枚目）※任意タブ内だが自動で埋めてOK
-      if (!visitedOn && imgs.length === 0 && limited.length > 0) {
-        let guessed = await tryAutofillVisitedOnFromFirstPhoto(limited[0]);
-        if (!guessed && isHeicLike(limited[0])) {
-          try {
-            const converted = await convertHeicToJpeg(limited[0]);
-            guessed = await tryAutofillVisitedOnFromFirstPhoto(converted);
-          } catch {}
-        }
-        if (guessed) setVisitedOn(guessed);
-      }
-
       const prepared = await mapWithConcurrency(limited, 2, async (f) => prepareImage(f));
       setImgs((prev) => [...prev, ...prepared]);
+
+      // 1枚目追加のタイミングで、visitedOnだけ静かに自動入力（UIには何も出さない）
+      if (imgs.length === 0 && prepared.length > 0) {
+        const dt = prepared[0]?.exifDate ?? null;
+        if (dt && !visitedOn) {
+          setVisitedOn(toYmd(dt));
+        }
+          // ✅ 初期値だけ入れる：未選択で、かつユーザーが触ってない場合のみ
+        if (dt && timeOfDay === null && !timeOfDayTouched) {
+          setTimeOfDay(guessTimeOfDayFromDate(dt));
+        }
+      }
+      
     } catch (e: any) {
       setMsg(e?.message ?? "画像の前処理に失敗しました");
     } finally {
@@ -574,6 +552,7 @@ export default function NewPostPage() {
     if (files.length > 0) await addImages(files);
   };
 
+  // price derived
   const priceYenValue = useMemo(() => {
     const digits = onlyDigits(priceYenText);
     if (!digits) return null;
@@ -587,15 +566,14 @@ export default function NewPostPage() {
     return !!priceYenValue && priceYenValue > 0;
   }, [priceMode, priceYenValue]);
 
-  // ✅ 必須判定
+  // required completeness
   const isPhotoComplete = imgs.length > 0;
   const isPlaceComplete = !!selectedPlace?.place_id;
   const isPriceOk = isPriceComplete;
   const isContentComplete = content.trim().length > 0;
   const isRecommendComplete = recommendSelected;
 
-  const isAllRequiredComplete =
-    isPhotoComplete && isPlaceComplete && isPriceOk && isContentComplete && isRecommendComplete;
+  const isAllRequiredComplete = isPhotoComplete && isPlaceComplete && isPriceOk && isContentComplete && isRecommendComplete;
 
   const progressRow = (
     <div className="flex flex-wrap gap-2">
@@ -631,9 +609,7 @@ export default function NewPostPage() {
     </div>
   );
 
-  /**
-   * ✅ places ensure（投稿時に lat/lng まで埋める）
-   */
+  // ensure places lat/lng
   const ensurePlaceWithLatLng = async (): Promise<string> => {
     if (!selectedPlace?.place_id) throw new Error("お店を選んでください。");
 
@@ -723,10 +699,8 @@ export default function NewPostPage() {
 
       const visited_on = visitedOn ? visitedOn : null;
 
-      // ✅ 任意の内訳スコア（null可）
-      const taste_score = tasteScore === null ? null : Number(tasteScore.toFixed(1));
-      const atmosphere_score = atmosphereScore === null ? null : Number(atmosphereScore.toFixed(1));
-      const service_score = serviceScore === null ? null : Number(serviceScore.toFixed(1));
+      // tags: string[]
+      const tags = selectedTagIds;
 
       const { error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
@@ -748,12 +722,10 @@ export default function NewPostPage() {
         price_yen,
         price_range,
 
-        // ✅ 追加カラム
-        taste_score,
-        atmosphere_score,
-        service_score,
-
         visited_on,
+        time_of_day: timeOfDay, // "day" | "night" | null
+
+        tags,
       });
 
       if (insErr) throw insErr;
@@ -835,7 +807,7 @@ export default function NewPostPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-slate-900">{imgs.length ? "写真を追加する" : "ここに写真を追加"}</div>
-                  <div className="mt-0.5 text-[12px] text-slate-500">{processing ? "変換 / 生成中…" : "タップして選択、またはドラッグ＆ドロップ"}</div>
+                  <div className="mt-0.5 text-[12px] text-slate-500">{processing ? "変換 / 生成中…" : "タップして選択"}</div>
                 </div>
               </div>
             </div>
@@ -864,7 +836,7 @@ export default function NewPostPage() {
                       <button
                         type="button"
                         onClick={() => removeImage(img.id)}
-                        className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white shadow-sm hover:bg-black/70"
+                        className="absolute right-1 bottom-1 rounded-full bg-black/60 p-1 text-white shadow-sm hover:bg-black/70"
                         aria-label="remove image"
                       >
                         <X size={14} />
@@ -876,6 +848,84 @@ export default function NewPostPage() {
             )}
           </Section>
 
+          {/* 来店日 */}
+          <Section title="来店日" subtitle={<span className="text-slate-500">任意</span>}>
+            <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 text-[12px] font-semibold text-slate-700">いつ行った？</div>
+
+                {visitedOn ? (
+                  <button
+                    type="button"
+                    onClick={() => setVisitedOn("")}
+                    className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    クリア
+                  </button>
+                ) : (
+                  <div className="shrink-0 text-[11px] text-slate-400">任意</div>
+                )}
+              </div>
+
+              <div className="mt-2">
+                <input
+                  type="date"
+                  name="visited_on"
+                  value={visitedOn}
+                  onChange={(e) => setVisitedOn(e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                  className="block w-full rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
+                  style={{ WebkitAppearance: "none" }}
+                  aria-label="来店日"
+                />
+              </div>
+            </div>
+          </Section>
+{/* 昼 / 夜（任意） */}
+<Section title="" >
+  <div className="flex items-center justify-between gap-3">
+    <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
+      {[
+        { v: "day" as const, label: "昼" },
+        { v: "night" as const, label: "夜" },
+      ].map((x) => {
+        const active = timeOfDay === x.v;
+        return (
+          <button
+            key={x.v}
+            type="button"
+            onClick={() => {
+              setTimeOfDayTouched(true);
+              setTimeOfDay(x.v);
+            }}
+            className={[
+              "h-9 rounded-full px-5 text-sm font-semibold transition",
+              active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
+            ].join(" ")}
+            aria-pressed={active}
+          >
+            {x.label}
+          </button>
+        );
+      })}
+    </div>
+
+    {timeOfDay !== null ? (
+      <button
+        type="button"
+        onClick={() => {
+          setTimeOfDayTouched(true);
+          setTimeOfDay(null);
+        }}
+        className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 border border-slate-200"
+      >
+        未選択に戻す
+      </button>
+    ) : (
+      <div className="text-[12px] font-semibold text-slate-400">未選択</div>
+    )}
+  </div>
+</Section>
           {/* お店（必須） */}
           <Section
             title="お店"
@@ -969,7 +1019,6 @@ export default function NewPostPage() {
                 )}
               </div>
 
-              {/* ✅ 常時のネガ表示はしない。投稿しようとして初めて優しく出す */}
               {attempted && !selectedPlace && (
                 <div className="text-[12px] font-semibold text-red-600">候補からお店を1つ選んでください。</div>
               )}
@@ -1021,7 +1070,7 @@ export default function NewPostPage() {
             </div>
           </Section>
 
-          {/* 本文（キャプション） */}
+          {/* 本文 */}
           <Section title="本文" required>
             <textarea
               className="h-28 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white md:h-36"
@@ -1041,7 +1090,7 @@ export default function NewPostPage() {
             )}
           </Section>
 
-          {/* ✅ おすすめ度（contentの直下に配置） */}
+          {/* おすすめ度（必須） */}
           <Section
             title="おすすめ度"
             required
@@ -1122,26 +1171,24 @@ export default function NewPostPage() {
             </div>
           </Section>
 
-          {/* ✅ 詳細（任意）タブ：内訳 + 来店日（最後） */}
+          {/* タグ（任意） */}
           <section className="space-y-2">
             <div className="flex items-end justify-between gap-3 px-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-slate-900">詳細</h2>
+                  <h2 className="text-sm font-semibold text-slate-900">タグ</h2>
                   <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                     任意
                   </span>
                 </div>
-                <div className="mt-0.5 text-[12px] text-slate-500">
-                  おすすめ度の内訳（味・雰囲気・サービス）や来店日など
-                </div>
               </div>
+
               <button
                 type="button"
-                onClick={() => setShowOptional((v) => !v)}
+                onClick={() => setShowDetails((v) => !v)}
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
-                {showOptional ? (
+                {showDetails ? (
                   <>
                     <ChevronUp className="h-4 w-4" />
                     閉じる
@@ -1155,48 +1202,101 @@ export default function NewPostPage() {
               </button>
             </div>
 
-            {showOptional && (
-              <div className="border-t border-orange-100 bg-white p-3">
-                <div className="space-y-3">
-                  <ScoreRow label="味" value={tasteScore} onChange={setTasteScore} />
-                  <ScoreRow label="雰囲気の良さ" value={atmosphereScore} onChange={setAtmosphereScore} />
-                  <ScoreRow label="サービス" value={serviceScore} onChange={setServiceScore} />
+            {showDetails && (
+              <div className="border-t border-orange-100 bg-white p-3 space-y-3">
+                {/* 選択済みタグ */}
+                {selectedTagIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTagIds.map((id) => {
+                      const t = findTagById(id);
+                      if (!t) return null;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => removeTag(id)}
+                          className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:bg-orange-100"
+                          aria-label={`remove tag ${t.label}`}
+                          title="タップで外す"
+                        >
+                          <span>{t.label}</span>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-{/* 来店日（任意 / 最後） */}
-<div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
-  <div className="flex items-center justify-between gap-2">
-    <div className="min-w-0 text-[12px] font-semibold text-slate-700">いつ行った？</div>
+                {/* 絞り込み UI（チップと似せない：タブ/下線タイプ） */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[12px] font-semibold text-slate-600 shrink-0">絞り込み:</div>
+                  <div className="flex-1 overflow-x-auto">
+                    <div className="flex gap-2 pb-1">
+                      {TAG_CATEGORIES.map((c) => {
+                        const active = tagCategory === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => setTagCategory(c.id)}
+                            className={[
+                              "shrink-0 px-2 py-1 text-[12px] font-semibold transition",
+                              active
+                                ? "text-orange-700 border-b-2 border-orange-600"
+                                : "text-slate-500 hover:text-slate-700 border-b-2 border-transparent",
+                            ].join(" ")}
+                            aria-label={`filter ${c.label}`}
+                          >
+                            {c.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-    {visitedOn ? (
-      <button
-        type="button"
-        onClick={() => setVisitedOn("")}
-        className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-      >
-        クリア
-      </button>
-    ) : (
-      <div className="shrink-0 text-[11px] text-slate-400">任意</div>
-    )}
-  </div>
-
-  <div className="mt-2">
-    <div className="min-w-0 overflow-hidden">
-      <input
-        type="date"
-        value={visitedOn}
-        onChange={(e) => setVisitedOn(e.target.value)}
-        className="block w-full min-w-0 max-w-full rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
-        style={{ WebkitAppearance: "none" }}
-        aria-label="来店日"
-      />
-    </div>
-
-    <div className="mt-2 text-[11px] text-slate-500"></div>
-  </div>
-</div>
-
+                  {/* 検索 */}
+                  <div className="relative w-[160px] shrink-0">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      value={tagQuery}
+                      onChange={(e) => setTagQuery(e.target.value)}
+                      placeholder="タグ検索"
+                      className="w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 py-2 text-[12px] font-semibold text-slate-800 outline-none focus:border-orange-300"
+                      aria-label="tag search"
+                    />
+                  </div>
                 </div>
+
+                {/* タグ一覧 */}
+                <div className="flex flex-wrap gap-2">
+                  {visibleTags.map((t) => {
+                    const on = selectedTagIdSet.has(t.id);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => toggleTag(t.id)}
+                        className={[
+                          "rounded-full border px-3 py-1.5 text-[12px] font-semibold transition",
+                          on
+                            ? "border-orange-200 bg-orange-50 text-orange-700"
+                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800",
+                        ].join(" ")}
+                        aria-pressed={on}
+                        aria-label={`tag ${t.label}`}
+                        title={t.id}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {visibleTags.length === 0 && (
+                  <div className="text-[12px] text-slate-500">
+                    見つかりませんでした。検索語を変えるか、絞り込みを「すべて」に戻してみてください。
+                  </div>
+                )}
               </div>
             )}
           </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -54,6 +54,9 @@ export default function SignUpPage() {
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
 
+  // --- race guard for username checks ---
+  const lastCheckRef = useRef(0);
+
   // 1) URL ?invite= を拾う  2) localStorage の pending を拾う
   useEffect(() => {
     const fromUrl =
@@ -99,7 +102,8 @@ export default function SignUpPage() {
   const usernameOk = USERNAME_RE.test(usernameClean);
 
   // canSubmit must include usernameOk
-  const canSubmit = !!email && pw.length >= 6 && match && usernameOk && !loading && !checkingUsername;
+  const canSubmit =
+    !!email && pw.length >= 6 && match && usernameOk && !loading && !checkingUsername;
 
   const handleEmailChange = (value: string) => {
     setEmail(value);
@@ -138,29 +142,31 @@ export default function SignUpPage() {
   };
 
   // =====================
-  // username availability check (optional but useful)
-  // - assumes profiles table has username column
-  // - if not, this will just silently skip
+  // username availability check
+  // - uses case-insensitive search to match DB unique index on lower(username)
+  // - race-safe: only latest check updates the UI
   // =====================
   const checkUsername = async (u: string) => {
     const uu = cleanHandle(u);
     if (!uu) return;
     if (!USERNAME_RE.test(uu)) return;
 
+    const myId = ++lastCheckRef.current;
     setCheckingUsername(true);
     setUsernameMsg(null);
 
     try {
-      // NOTE: if "profiles" doesn't exist or is RLS-blocked,
-      // this may error. We'll ignore and rely on DB constraints later.
       const { data, error } = await supabase
         .from("profiles")
         .select("id")
-        .eq("username", uu)
+        .ilike("username", uu)
         .limit(1);
 
+      // ignore stale responses
+      if (myId !== lastCheckRef.current) return;
+
       if (error) {
-        // RLS等で見れないならここは無視（DB制約が本命）
+        // RLS等で読めないならここは無視（DB制約が本命）
         setUsernameMsg(null);
         return;
       }
@@ -170,9 +176,26 @@ export default function SignUpPage() {
         setUsernameMsg(null);
       }
     } finally {
-      setCheckingUsername(false);
+      if (myId === lastCheckRef.current) setCheckingUsername(false);
     }
   };
+
+  // ✅ debounce check while typing (looks "realtime" without spamming)
+  useEffect(() => {
+    // typing -> clear previous availability message
+    setUsernameMsg(null);
+
+    // empty / invalid format: don't check server
+    if (!usernameClean) return;
+    if (!usernameOk) return;
+
+    const t = window.setTimeout(() => {
+      checkUsername(usernameClean);
+    }, 450);
+
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usernameClean, usernameOk]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,7 +290,8 @@ export default function SignUpPage() {
 
   const inviteApplied = !!normalizeInvite(invite);
 
-  const emailConfirmNote = "「登録する」を押すと、このメールアドレス宛に確認メールが届きます。";
+  const emailConfirmNote =
+    "「登録する」を押すと、このメールアドレス宛に確認メールが届きます。友達にフォローされた時など、任意のアプリ内通知も受け取れるようになります。";
 
   return (
     <main className="grid gap-8 md:grid-cols-2">
@@ -396,14 +420,14 @@ export default function SignUpPage() {
               onChange={(e) => handleEmailChange(e.target.value)}
               required
               autoComplete="email"
-              placeholder="例: gourmeet@gmail.com"
+              placeholder="gourmeet@gmail.com"
             />
             <p className="mt-1 text-xs text-black/60">{emailConfirmNote}</p>
           </label>
 
           {/* ✅ ユーザーID（必須） */}
           <label className="block">
-            <span className="mb-1 block text-sm">ユーザーID（必須）</span>
+            <span className="mb-1 block text-sm">ユーザーID（あとから変更できます）</span>
 
             <div
               className={[
@@ -426,9 +450,14 @@ export default function SignUpPage() {
                 }}
                 onBlur={() => checkUsername(username)}
                 placeholder="gourmeet_user"
-                autoComplete="off"
-                inputMode="text"
                 required
+                // --- autofill / iOS caps guards ---
+                name="gourmeet_username"
+                autoComplete="new-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="text"
               />
             </div>
 
