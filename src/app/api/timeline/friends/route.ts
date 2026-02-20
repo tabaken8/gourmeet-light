@@ -27,11 +27,13 @@ type SuggestUser = {
   reason?: string | null;
 };
 
+// ✅ followCount を追加（suggestion無しでも meta を返せる）
 type Meta =
   | {
-      suggestOnce: boolean;
-      suggestAtIndex: number; // 0-based
-      suggestion: {
+      followCount: number;
+      suggestOnce?: boolean;
+      suggestAtIndex?: number; // 0-based
+      suggestion?: {
         title: string;
         subtitle?: string | null;
         users: SuggestUser[];
@@ -73,45 +75,60 @@ async function buildSuggestUsersPublic(supabase: any, excludeIds: Set<string>, t
     .slice(0, take);
 }
 
-async function buildSuggestMetaForLoggedIn(supabase: any, meId: string): Promise<Meta> {
-  // 自分の follow 数を見る（acceptedのみ）
-  const { data: follows, error: fErr } = await supabase
+async function getFollowCountAccepted(supabase: any, meId: string): Promise<number> {
+  // ✅ countだけ取りたいので head:true が軽い
+  const { count, error } = await supabase
     .from("follows")
-    .select("followee_id")
+    .select("*", { count: "exact", head: true })
     .eq("follower_id", meId)
     .eq("status", "accepted");
 
-  if (fErr) return null;
-
-  const followeeIds = (follows ?? []).map((r: any) => r.followee_id).filter(Boolean) as string[];
-  const followCount = followeeIds.length;
-
-  // ✅ 方針：0/1フォローの時だけサジェスト
-  if (followCount > 1) return null;
-
-  const exclude = new Set<string>([meId, ...followeeIds]);
-  const users = await buildSuggestUsersPublic(supabase, exclude, 8);
-  if (users.length === 0) return null;
-
-  return {
-    suggestOnce: true,
-    suggestAtIndex: 1, // ✅ 2枚目に出す
-    suggestion: {
-      title: followCount === 0 ? "気になる人をフォローしてみましょう" : "この人たちも良さそう",
-      // ※ロジックは「つながり」未実装なので、文言は誤解ないようにするのもアリ
-      subtitle: followCount === 0 ? "おすすめのユーザーを表示しています" : "おすすめのユーザーを表示しています",
-      users,
-    },
-  };
+  if (error) return 0;
+  return typeof count === "number" ? count : 0;
 }
 
-async function buildSuggestMetaForGuest(supabase: any): Promise<Meta> {
-  // 未ログインは “0フォロー相当” として表示
-  const exclude = new Set<string>(); // ゲストは除外なし
-  const users = await buildSuggestUsersPublic(supabase, exclude, 8);
-  if (users.length === 0) return null;
+async function buildMetaForLoggedIn(supabase: any, meId: string): Promise<Meta> {
+  const followCount = await getFollowCountAccepted(supabase, meId);
+
+  // ✅ 0/1フォローの時だけ suggestion を作る（方針維持）
+  if (followCount <= 1) {
+    const exclude = new Set<string>([meId]);
+    // 1フォローならその人は除外したいので followeeIdsも取る
+    if (followCount === 1) {
+      const { data: follows } = await supabase
+        .from("follows")
+        .select("followee_id")
+        .eq("follower_id", meId)
+        .eq("status", "accepted");
+      const followeeIds = (follows ?? []).map((r: any) => r.followee_id).filter(Boolean) as string[];
+      for (const x of followeeIds) exclude.add(x);
+    }
+
+    const users = await buildSuggestUsersPublic(supabase, exclude, 8);
+    if (users.length > 0) {
+      return {
+        followCount,
+        suggestOnce: true,
+        suggestAtIndex: 1,
+        suggestion: {
+          title: followCount === 0 ? "気になる人をフォローしてみましょう" : "この人たちも良さそう",
+          subtitle: "おすすめのユーザーを表示しています",
+          users,
+        },
+      };
+    }
+  }
+
+  // ✅ suggestion無しでも followCount を返す
+  return { followCount, suggestOnce: false, suggestAtIndex: 1 };
+}
+
+async function buildMetaForGuest(supabase: any): Promise<Meta> {
+  const users = await buildSuggestUsersPublic(supabase, new Set<string>(), 8);
+  if (users.length === 0) return { followCount: 0, suggestOnce: false, suggestAtIndex: 1 };
 
   return {
+    followCount: 0,
     suggestOnce: true,
     suggestAtIndex: 1,
     suggestion: {
@@ -132,7 +149,7 @@ export async function GET(req: Request) {
   const { data: auth } = await supabase.auth.getUser();
   const meId = auth.user?.id ?? null;
 
-  // ✅ 未ログイン：公開投稿（discover相当）を返す + 0フォロー相当meta
+  // ✅ 未ログイン：公開投稿（discover相当） + meta（followCount=0）
   if (!meId) {
     let q = supabase
       .from("posts")
@@ -146,7 +163,7 @@ export async function GET(req: Request) {
     if (cursor) q = q.lt("created_at", cursor);
 
     const { data, error } = await q;
-    if (error) return NextResponse.json({ posts: [], nextCursor: null, meta: null }, { status: 200 });
+    if (error) return NextResponse.json({ posts: [], nextCursor: null, meta: await buildMetaForGuest(supabase) }, { status: 200 });
 
     const raw = (data ?? []).map((r: any) => {
       const { profiles, ...rest } = r;
@@ -163,7 +180,7 @@ export async function GET(req: Request) {
     const arranged = enforceNoRepeatWithin(raw, 3).slice(0, limit);
     const nextCursorOut = arranged.length ? arranged[arranged.length - 1].created_at : null;
 
-    const meta: Meta = cursor ? null : await buildSuggestMetaForGuest(supabase);
+    const meta: Meta = cursor ? { followCount: 0, suggestOnce: false, suggestAtIndex: 1 } : await buildMetaForGuest(supabase);
 
     return NextResponse.json({ posts: arranged, nextCursor: nextCursorOut, meta }, { status: 200 });
   }
@@ -174,50 +191,48 @@ export async function GET(req: Request) {
     p_cursor: cursor,
   });
 
-  if (error) {
-    return NextResponse.json({ posts: [], nextCursor: null, meta: null }, { status: 200 });
-  }
-
   const rows = (data ?? []) as any[];
   const nextCursor = rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
-  const posts = rows.map((r) => ({
-    id: r.id,
-    user_id: r.user_id,
-    created_at: r.created_at,
-    visited_on: r.visited_on,
-    content: r.content,
+  const posts = error
+    ? []
+    : rows.map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        created_at: r.created_at,
+        visited_on: r.visited_on,
+        content: r.content,
 
-    place_id: r.place_id,
-    place_name: r.place_name,
-    place_address: r.place_address,
+        place_id: r.place_id,
+        place_name: r.place_name,
+        place_address: r.place_address,
 
-    image_urls: r.image_urls ?? null,
-    image_variants: r.image_variants ?? null,
-    image_assets: r.image_assets ?? null,
+        image_urls: r.image_urls ?? null,
+        image_variants: r.image_variants ?? null,
+        image_assets: r.image_assets ?? null,
 
-    cover_square_url: r.cover_square_url ?? null,
-    cover_full_url: r.cover_full_url ?? null,
-    cover_pin_url: r.cover_pin_url ?? null,
+        cover_square_url: r.cover_square_url ?? null,
+        cover_full_url: r.cover_full_url ?? null,
+        cover_pin_url: r.cover_pin_url ?? null,
 
-    recommend_score: r.recommend_score,
-    price_yen: r.price_yen,
-    price_range: r.price_range,
+        recommend_score: r.recommend_score,
+        price_yen: r.price_yen,
+        price_range: r.price_range,
 
-    profile: {
-      id: r.user_id,
-      display_name: r.author_display_name,
-      avatar_url: r.author_avatar_url,
-      is_public: r.author_is_public ?? true,
-    },
+        profile: {
+          id: r.user_id,
+          display_name: r.author_display_name,
+          avatar_url: r.author_avatar_url,
+          is_public: r.author_is_public ?? true,
+        },
 
-    likeCount: r.like_count ?? r.likeCount ?? 0,
-    likedByMe: r.liked_by_me ?? r.likedByMe ?? false,
-    initialLikers: r.initial_likers ?? r.initialLikers ?? [],
-  }));
+        likeCount: r.like_count ?? r.likeCount ?? 0,
+        likedByMe: r.liked_by_me ?? r.likedByMe ?? false,
+        initialLikers: r.initial_likers ?? r.initialLikers ?? [],
+      }));
 
-  // ✅ meta は “初回ページ” だけ
-  const meta: Meta = cursor ? null : await buildSuggestMetaForLoggedIn(supabase, meId);
+  // ✅ meta は “初回ページ” だけ（cursor ありなら followCount だけ返す）
+  const meta: Meta = cursor ? await buildMetaForLoggedIn(supabase, meId) : await buildMetaForLoggedIn(supabase, meId);
 
   return NextResponse.json({ posts, nextCursor, meta }, { status: 200 });
 }

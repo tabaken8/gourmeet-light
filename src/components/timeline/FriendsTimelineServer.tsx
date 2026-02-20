@@ -4,18 +4,19 @@ import { headers, cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-type Meta =
+// 「suggestionが無い」状態も許容しておく（= 空meta）
+export type Meta =
   | {
-      suggestOnce: boolean;
-      suggestAtIndex: number;
-      suggestion: {
+      suggestOnce?: boolean;
+      suggestAtIndex?: number;
+      suggestion?: {
         title: string;
         subtitle?: string | null;
         users: Array<{
           id: string;
           display_name: string | null;
           avatar_url: string | null;
-          is_following: boolean;
+          is_following?: boolean;
           reason?: string | null;
         }>;
       };
@@ -29,20 +30,31 @@ function getBaseUrlFromHeaders(h: Headers) {
   return `${proto}://${host}`;
 }
 
+function emptyMeta(): Meta {
+  return { suggestOnce: false, suggestAtIndex: 1 };
+}
+
 export default async function FriendsTimelineServer({ meId }: { meId: string | null }) {
+  // 未ログインでも「真っ白」回避のため、Client側でログイン誘導UIを出す
   if (!meId) {
-    return <FriendsTimelineClient meId={null} initialPosts={[]} initialNextCursor={null} initialMeta={null} />;
+    return (
+      <FriendsTimelineClient
+        meId={null}
+        initialPosts={[]}
+        initialNextCursor={null}
+        initialMeta={emptyMeta()}
+      />
+    );
   }
 
-  // ✅ Next15 の headers()/cookies() は Promise になることがあるので await
   const h = await headers();
-  const baseUrl = getBaseUrlFromHeaders(h as unknown as Headers);
+  const baseUrl = getBaseUrlFromHeaders(h);
 
-  // ✅ cookie を明示で API に渡す（ここが超重要）
+  // ✅ cookie は encode しない（壊れる可能性がある）
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
     .getAll()
-    .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
+    .map((c) => `${c.name}=${c.value}`)
     .join("; ");
 
   const params = new URLSearchParams({ limit: "20" });
@@ -51,12 +63,21 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
   const res = await fetch(url, {
     cache: "no-store",
     headers: {
-      cookie: cookieHeader, // ✅ これで auth.getUser() が生きる
+      cookie: cookieHeader,
+      accept: "application/json",
     },
   });
 
+  // 失敗時も「空状態UI」を出したいので、nullにせず空metaを渡す
   if (!res.ok) {
-    return <FriendsTimelineClient meId={meId} initialPosts={[]} initialNextCursor={null} initialMeta={null} />;
+    return (
+      <FriendsTimelineClient
+        meId={meId}
+        initialPosts={[]}
+        initialNextCursor={null}
+        initialMeta={emptyMeta()}
+      />
+    );
   }
 
   const json = (await res.json()) as {
@@ -65,14 +86,12 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
     meta?: Meta;
   };
 
-// FriendsTimelineServer.tsx の return をこれにする（差分）
-return (
-  <FriendsTimelineClient
-    meId={meId}
-    initialPosts={(json.posts ?? []) as any[]}
-    initialNextCursor={(json.nextCursor ?? null) as string | null}
-    initialMeta={(json.meta ?? null) as any}
-  />
-);
-
+  return (
+    <FriendsTimelineClient
+      meId={meId}
+      initialPosts={(json.posts ?? []) as any[]}
+      initialNextCursor={(json.nextCursor ?? null) as string | null}
+      initialMeta={(json.meta ?? emptyMeta()) as any}
+    />
+  );
 }
