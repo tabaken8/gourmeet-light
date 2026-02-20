@@ -1,4 +1,4 @@
-// src/components/TimelinePostList.tsx
+// src/components/timeline/SearchPostList.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -189,7 +189,7 @@ function metersToWalkMin(m: number | null | undefined): number | null {
   return Math.max(1, Math.ceil(m / 80));
 }
 
-export default function TimelinePostList({
+export default function SearchPostList({
   posts,
   meId,
   mode = "auto",

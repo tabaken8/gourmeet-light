@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useCallback, useState } from "react";
-import TimelinePostList from "@/components/TimelinePostList";
+import TimelinePostList from "@/components/timeline/TimelinePostList";
 import PostsSkeleton from "@/components/PostsSkeleton";
 
 type PostLite = any;

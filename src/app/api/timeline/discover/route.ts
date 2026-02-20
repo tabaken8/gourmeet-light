@@ -38,30 +38,63 @@ export async function GET(req: Request) {
   const limit = clamp(toInt(searchParams.get("limit"), 20), 1, 50);
   const cursor = toIsoOrNull(searchParams.get("cursor"));
 
-  const { data: auth } = await supabase.auth.getUser();
-  const meId = auth.user?.id ?? null;
+  // enforceNoRepeatWithin 用に「少し多めに」取って並べ替えてから limit に落とす
+  // （RPC 側が 50 上限なので、ここでは最大 50 まで）
+  const fetchN = Math.min(50, Math.max(limit * 6, 20));
 
-  let q = supabase
-    .from("posts")
-    .select("id,user_id,created_at,visited_on,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range, profiles!inner(id,display_name,avatar_url,is_public)")
-    .eq("profiles.is_public", true)
-    .order("created_at", { ascending: false })
-    .limit(Math.max(120, limit * 8));
+  const { data, error } = await supabase.rpc("timeline_discover_v1", {
+    p_limit: fetchN,
+    p_cursor: cursor,
+  });
 
-  if (meId) q = q.neq("user_id", meId);
-  if (cursor) q = q.lt("created_at", cursor);
+  if (error) {
+    return NextResponse.json({ posts: [], nextCursor: null }, { status: 200 });
+  }
 
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ posts: [], nextCursor: null }, { status: 200 });
+  const rows = (data ?? []) as any[];
 
-  const raw = (data ?? []).map((r: any) => ({
-    ...r,
-    profile: r.profiles ?? null,
-    viewer_following_author: false, // discoverでは一旦false（必要なら後で付与）
+  // TimelinePostList が読むキー名に揃える
+  const raw = rows.map((r) => ({
+    id: r.id,
+    user_id: r.user_id,
+    created_at: r.created_at,
+    visited_on: r.visited_on,
+    content: r.content,
+
+    place_id: r.place_id,
+    place_name: r.place_name,
+    place_address: r.place_address,
+
+    image_urls: r.image_urls ?? null,
+    image_variants: r.image_variants ?? null,
+    image_assets: r.image_assets ?? null,
+
+    cover_square_url: r.cover_square_url ?? null,
+    cover_full_url: r.cover_full_url ?? null,
+    cover_pin_url: r.cover_pin_url ?? null,
+
+    recommend_score: r.recommend_score,
+    price_yen: r.price_yen,
+    price_range: r.price_range,
+
+    profile: {
+      id: r.user_id,
+      display_name: r.author_display_name,
+      avatar_url: r.author_avatar_url,
+      is_public: r.author_is_public ?? true,
+    },
+
+    // ✅ PostActions が必要とする
+    likeCount: r.like_count ?? 0,
+    likedByMe: r.liked_by_me ?? false,
+    initialLikers: r.initial_likers ?? [],
+
+    // ✅ 使いたければ後でUI側へ（今は無視でもOK）
+    viewer_following_author: r.viewer_following_author ?? false,
   }));
 
   const arranged = enforceNoRepeatWithin(raw, 3).slice(0, limit);
   const nextCursorOut = arranged.length ? arranged[arranged.length - 1].created_at : null;
 
-  return NextResponse.json({ posts: arranged, nextCursor: nextCursorOut });
+  return NextResponse.json({ posts: arranged, nextCursor: nextCursorOut }, { status: 200 });
 }

@@ -12,7 +12,7 @@ import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
 import TimelineFeed from "@/components/TimelineFeed";
-import TimelinePostList, { PostRow, SearchMode } from "@/components/TimelinePostList";
+import SearchPostList, { PostRow, SearchMode } from "@/components/search/SearchPostList";
 import SearchZeroResultsNudge from "@/components/SearchZeroResultsNudge";
 
 // ✅ Enter/検索クリック時だけ “自動チップ化”
@@ -241,7 +241,7 @@ export default function SearchPage() {
   // ✅ 1行だけ表示するための「展開」状態
   const [showAllGenres, setShowAllGenres] = useState(false);
 
-  // TimelinePostListに渡す駅名（検索確定後のみ）
+  // SearchPostListに渡す駅名（検索確定後のみ）
   const [searchedStationName, setSearchedStationName] = useState<string | null>(null);
 
   // committed（検索確定済み）
@@ -955,9 +955,8 @@ export default function SearchPage() {
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <button
               type="button"
-              className={`gm-chip shrink-0 px-3 py-1.5 text-[12px] ${
-                genre ? "text-slate-600" : "text-slate-900 font-semibold"
-              }`}
+              className={`gm-chip shrink-0 px-3 py-1.5 text-[12px] ${genre ? "text-slate-600" : "text-slate-900 font-semibold"
+                }`}
               onClick={() => {
                 setGenre("");
                 setShowAllGenres(false);
@@ -985,9 +984,8 @@ export default function SearchPage() {
                 <button
                   key={g}
                   type="button"
-                  className={`gm-chip shrink-0 px-3 py-1.5 text-[12px] ${
-                    active ? "text-orange-800 font-semibold" : "text-slate-700"
-                  }`}
+                  className={`gm-chip shrink-0 px-3 py-1.5 text-[12px] ${active ? "text-orange-800 font-semibold" : "text-slate-700"
+                    }`}
                   onClick={() => {
                     setGenre(g);
                     setShowAllGenres(false);
@@ -1030,9 +1028,8 @@ export default function SearchPage() {
                 <button
                   key={g}
                   type="button"
-                  className={`gm-chip px-3 py-1.5 text-[12px] ${
-                    active ? "text-orange-800 font-semibold" : "text-slate-700"
-                  }`}
+                  className={`gm-chip px-3 py-1.5 text-[12px] ${active ? "text-orange-800 font-semibold" : "text-slate-700"
+                    }`}
                   onClick={() => {
                     setGenre(g);
                     setShowAllGenres(false);
@@ -1138,7 +1135,7 @@ export default function SearchPage() {
             <PostsSkeleton />
           ) : posts.length > 0 ? (
             <motion.div {...fadeUp}>
-              <TimelinePostList
+              <SearchPostList
                 posts={posts}
                 meId={meId}
                 mode={committedMode}

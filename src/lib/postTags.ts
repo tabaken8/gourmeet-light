@@ -29,7 +29,6 @@ export type PostTag = {
 
 export const TAG_CATEGORIES: { id: TagCategory; label: string }[] = [
   { id: "all", label: "すべて" },
-  { id: "visit_time", label: "時間" },
   { id: "scene", label: "用途" },
   { id: "mood", label: "雰囲気" },
   { id: "noise", label: "騒がしさ" },

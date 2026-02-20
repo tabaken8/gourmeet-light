@@ -19,6 +19,14 @@ function toIsoOrNull(x: string | null) {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type SuggestUser = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_following: boolean;
+  reason?: string | null;
+};
+
 type Meta =
   | {
       suggestOnce: boolean;
@@ -26,18 +34,46 @@ type Meta =
       suggestion: {
         title: string;
         subtitle?: string | null;
-        users: Array<{
-          id: string;
-          display_name: string | null;
-          avatar_url: string | null;
-          is_following: boolean;
-          reason?: string | null;
-        }>;
+        users: SuggestUser[];
       };
     }
   | null;
 
-async function buildSuggestMeta(supabase: any, meId: string): Promise<Meta> {
+function enforceNoRepeatWithin(posts: any[], window = 3) {
+  const out: any[] = [];
+  const pool = posts.slice();
+  while (pool.length) {
+    const recent = new Set(out.slice(-window).map((p) => p?.user_id).filter(Boolean));
+    let idx = pool.findIndex((p) => !recent.has(p?.user_id));
+    if (idx === -1) idx = 0;
+    out.push(pool.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+async function buildSuggestUsersPublic(supabase: any, excludeIds: Set<string>, take = 8): Promise<SuggestUser[]> {
+  const { data: cand, error } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, is_public")
+    .eq("is_public", true)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (error) return [];
+
+  return (cand ?? [])
+    .map((p: any) => ({
+      id: String(p.id),
+      display_name: (p.display_name ?? null) as string | null,
+      avatar_url: (p.avatar_url ?? null) as string | null,
+      is_following: false,
+      reason: "おすすめ",
+    }))
+    .filter((u: any) => u.id && !excludeIds.has(u.id))
+    .slice(0, take);
+}
+
+async function buildSuggestMetaForLoggedIn(supabase: any, meId: string): Promise<Meta> {
   // 自分の follow 数を見る（acceptedのみ）
   const { data: follows, error: fErr } = await supabase
     .from("follows")
@@ -53,30 +89,8 @@ async function buildSuggestMeta(supabase: any, meId: string): Promise<Meta> {
   // ✅ 方針：0/1フォローの時だけサジェスト
   if (followCount > 1) return null;
 
-  // 候補：publicで、自分と既フォロー以外から新しめに
-  // ※本当は「フォローバック」や「友達がフォロー」なども足せるけど、まず確実に出す
   const exclude = new Set<string>([meId, ...followeeIds]);
-
-  const { data: cand, error: cErr } = await supabase
-    .from("profiles")
-    .select("id, display_name, avatar_url, is_public")
-    .eq("is_public", true)
-    .order("created_at", { ascending: false })
-    .limit(30);
-
-  if (cErr) return null;
-
-  const users = (cand ?? [])
-    .map((p: any) => ({
-      id: String(p.id),
-      display_name: (p.display_name ?? null) as string | null,
-      avatar_url: (p.avatar_url ?? null) as string | null,
-      is_following: false,
-      reason: "おすすめ",
-    }))
-    .filter((u: any) => u.id && !exclude.has(u.id))
-    .slice(0, 8);
-
+  const users = await buildSuggestUsersPublic(supabase, exclude, 8);
   if (users.length === 0) return null;
 
   return {
@@ -84,7 +98,25 @@ async function buildSuggestMeta(supabase: any, meId: string): Promise<Meta> {
     suggestAtIndex: 1, // ✅ 2枚目に出す
     suggestion: {
       title: followCount === 0 ? "気になる人をフォローしてみましょう" : "この人たちも良さそう",
-      subtitle: followCount === 0 ? "おすすめのユーザーを表示しています" : "フォロー中の人のつながりから提案",
+      // ※ロジックは「つながり」未実装なので、文言は誤解ないようにするのもアリ
+      subtitle: followCount === 0 ? "おすすめのユーザーを表示しています" : "おすすめのユーザーを表示しています",
+      users,
+    },
+  };
+}
+
+async function buildSuggestMetaForGuest(supabase: any): Promise<Meta> {
+  // 未ログインは “0フォロー相当” として表示
+  const exclude = new Set<string>(); // ゲストは除外なし
+  const users = await buildSuggestUsersPublic(supabase, exclude, 8);
+  if (users.length === 0) return null;
+
+  return {
+    suggestOnce: true,
+    suggestAtIndex: 1,
+    suggestion: {
+      title: "気になる人をフォローしてみましょう",
+      subtitle: "ログインするとフォローできます（まずは覗けます）",
       users,
     },
   };
@@ -100,18 +132,49 @@ export async function GET(req: Request) {
   const { data: auth } = await supabase.auth.getUser();
   const meId = auth.user?.id ?? null;
 
-  // ✅ friendsタブはログイン無しだと空（方針B）
+  // ✅ 未ログイン：公開投稿（discover相当）を返す + 0フォロー相当meta
   if (!meId) {
-    return NextResponse.json({ posts: [], nextCursor: null, meta: null }, { status: 200 });
+    let q = supabase
+      .from("posts")
+      .select(
+        "id,user_id,created_at,visited_on,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range, profiles!inner(id,display_name,avatar_url,is_public)"
+      )
+      .eq("profiles.is_public", true)
+      .order("created_at", { ascending: false })
+      .limit(Math.max(120, limit * 8));
+
+    if (cursor) q = q.lt("created_at", cursor);
+
+    const { data, error } = await q;
+    if (error) return NextResponse.json({ posts: [], nextCursor: null, meta: null }, { status: 200 });
+
+    const raw = (data ?? []).map((r: any) => {
+      const { profiles, ...rest } = r;
+      return {
+        ...rest,
+        profile: profiles ?? null,
+        likeCount: 0,
+        likedByMe: false,
+        initialLikers: [],
+        viewer_following_author: false,
+      };
+    });
+
+    const arranged = enforceNoRepeatWithin(raw, 3).slice(0, limit);
+    const nextCursorOut = arranged.length ? arranged[arranged.length - 1].created_at : null;
+
+    const meta: Meta = cursor ? null : await buildSuggestMetaForGuest(supabase);
+
+    return NextResponse.json({ posts: arranged, nextCursor: nextCursorOut, meta }, { status: 200 });
   }
 
+  // ✅ ログイン：friends RPC
   const { data, error } = await supabase.rpc("timeline_friends_v1", {
     p_limit: limit,
     p_cursor: cursor,
   });
 
   if (error) {
-    // 失敗しても200で返してUI側を壊さない
     return NextResponse.json({ posts: [], nextCursor: null, meta: null }, { status: 200 });
   }
 
@@ -153,8 +216,8 @@ export async function GET(req: Request) {
     initialLikers: r.initial_likers ?? r.initialLikers ?? [],
   }));
 
-  // ✅ meta は “初回ページ” だけ作る（cursorがあるときは基本出さない）
-  const meta: Meta = cursor ? null : await buildSuggestMeta(supabase, meId);
+  // ✅ meta は “初回ページ” だけ
+  const meta: Meta = cursor ? null : await buildSuggestMetaForLoggedIn(supabase, meId);
 
   return NextResponse.json({ posts, nextCursor, meta }, { status: 200 });
 }
