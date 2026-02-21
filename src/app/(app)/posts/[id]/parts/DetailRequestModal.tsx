@@ -128,13 +128,13 @@ type Cat = Exclude<TagCategory, "all">;
 
 export default function DetailRequestModal({
   postId,
-  postUserId, // ★追加：通知先
+  postUserId,
   placeName,
   placeId,
   authorName,
 }: {
   postId: string;
-  postUserId: string; // ★追加
+  postUserId: string;
   placeName: string | null;
   placeId: string | null;
   authorName: string | null;
@@ -147,10 +147,7 @@ export default function DetailRequestModal({
   const [err, setErr] = useState<string | null>(null);
 
   const [category, setCategory] = useState<Cat>("budget");
-
-  // ★カテゴリ別に選択保持
   const [selectedByCat, setSelectedByCat] = useState<Record<string, string[]>>({});
-
   const [freeText, setFreeText] = useState("");
   const [revealName, setRevealName] = useState(false);
 
@@ -173,10 +170,7 @@ export default function DetailRequestModal({
     return m;
   }, []);
 
-  const selectedIdsInCurrent = useMemo(() => {
-    const a = selectedByCat[category] ?? [];
-    return Array.isArray(a) ? a : [];
-  }, [selectedByCat, category]);
+  const selectedIdsInCurrent = useMemo(() => selectedByCat[category] ?? [], [selectedByCat, category]);
 
   const allSelectedIds = useMemo(() => {
     const all = Object.values(selectedByCat).flat().filter(Boolean);
@@ -221,42 +215,41 @@ export default function DetailRequestModal({
         return;
       }
 
-      // 1) リクエスト本体 insert
       const payload = {
         post_id: postId,
         requester_user_id: uid,
-        category, // 最後に見てたカテゴリ（参考）
+        category,
         template_ids: allSelectedIds,
         free_text: freeText.trim() ? freeText.trim() : null,
         reveal_name: revealName,
       };
 
-      const { error } = await supabase.from("post_detail_requests").insert(payload);
+      // ★ id を受け取る
+      const { data: reqRow, error: reqErr } = await supabase
+        .from("post_detail_requests")
+        .insert(payload)
+        .select("id")
+        .single();
 
-      if (error) {
-        if ((error as any)?.code === "23505") {
+      if (reqErr) {
+        if ((reqErr as any)?.code === "23505") {
           setErr("今日はすでにリクエスト済みです（1日1回まで）。また明日送ってね。");
           return;
         }
-        throw error;
+        throw reqErr;
       }
 
-      // 2) 投稿者へ通知（自分の投稿ならスキップ）
-      if (postUserId && postUserId !== uid) {
-        const notif = {
+      // ★ 通知（自分の投稿には送らない）
+      if (postUserId && postUserId !== uid && reqRow?.id) {
+        const { error: nerr } = await supabase.from("notifications").insert({
           user_id: postUserId,
-          actor_id: revealName ? uid : null, // ★匿名なら null
+          actor_id: revealName ? uid : null,
           post_id: postId,
           type: "detail_request",
+          detail_request_id: reqRow.id, // ★重要
           read: false,
-          // comment_id は null のまま
-        };
-
-        const { error: nerr } = await supabase.from("notifications").insert(notif);
-        if (nerr) {
-          // 通知失敗はリクエスト自体を失敗にしない（ログだけ）
-          console.warn("notification insert failed:", nerr);
-        }
+        });
+        if (nerr) console.warn("notification insert failed:", nerr);
       }
 
       setDone(true);
@@ -379,7 +372,7 @@ export default function DetailRequestModal({
                     </div>
                   </div>
 
-                  {/* 全体プレビュー */}
+                  {/* 選択中（全カテゴリ） */}
                   {allSelectedIds.length > 0 ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -403,7 +396,7 @@ export default function DetailRequestModal({
                     </div>
                   ) : null}
 
-                  {/* テンプレ */}
+                  {/* 質問候補 */}
                   <div className="space-y-2">
                     <div className="text-[12px] font-semibold text-slate-700">質問候補（複数OK）</div>
                     <div className="flex flex-wrap gap-2">
