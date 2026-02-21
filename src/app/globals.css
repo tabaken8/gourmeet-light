@@ -78,20 +78,9 @@ canvas {
 }
 
 /* リンクは基本は継承。色はTailwind側で付ける */
-/* リンクは基本は継承。ただし class を付けたリンクは Tailwind に任せる */
-a:not([class]) {
+a {
   color: inherit;
   text-decoration: none;
-}
-
-/* class を付けたリンクは “装飾だけ” を統一（色は Tailwind に任せる） */
-a[class] {
-  text-decoration: none;
-}
-
-/* visited で勝手に色が変わる環境対策（必要なら） */
-a:not([class]):visited {
-  color: inherit;
 }
 
 /* フォーカスリングはTailwind側に任せつつ、ブラウザ既定の汚さを抑える */

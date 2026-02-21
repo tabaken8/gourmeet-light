@@ -335,30 +335,40 @@ export default function NotificationsPage() {
                     const mapUrl = post?.place_id
                       ? `https://www.google.com/maps/place/?q=place_id:${post.place_id}`
                       : post?.place_address
-                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
+                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          post.place_address
+                        )}`
                       : null;
 
+                    // ★ ここが差分：detail_answer は /requests/[detail_request_id]
                     const href =
-                      n.type === "follow" && actor?.id
+                      n.type === "detail_answer" && dr?.id
+                        ? `/requests/${dr.id}`
+                        : n.type === "follow" && actor?.id
                         ? `/u/${actor.id}`
                         : post?.id
                         ? `/posts/${post.id}`
                         : "/timeline";
 
-                    // actorがnullなら匿名（detail_request時）
+                    // actorがnullなら匿名（detail_request/detail_answer の場合の保険）
                     const actorName =
-                      actor?.display_name ?? actor?.username ?? (n.type === "detail_request" ? "匿名" : "ユーザー");
+                      actor?.display_name ??
+                      actor?.username ??
+                      (n.type === "detail_request" ? "匿名" : "ユーザー");
 
                     const actorAvatar = actor?.avatar_url ?? null;
                     const initial = (actorName || "U").slice(0, 1).toUpperCase();
 
                     const commentPreview =
-                      (n.type === "comment" || n.type === "reply" || n.type === "comment_like") && n.comment?.body
+                      (n.type === "comment" || n.type === "reply" || n.type === "comment_like") &&
+                      n.comment?.body
                         ? n.comment.body
                         : null;
 
                     const reqPreview =
-                      (n.type === "detail_request" || n.type === "detail_answer") ? buildRequestPreview(dr) : null;
+                      n.type === "detail_request" || n.type === "detail_answer"
+                        ? buildRequestPreview(dr)
+                        : null;
 
                     const thumb = getThumbUrl(post);
                     const isJustRead = justReadIds.includes(n.id);
