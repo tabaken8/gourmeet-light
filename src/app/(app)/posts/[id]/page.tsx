@@ -379,7 +379,7 @@ export default async function PostPage({
   const hasDetails = detailRows.length > 0;
 
   // =========================
-  // この人の他の投稿（同ジャンル / 同店（他人もOK） / 最近）
+  // この人の他の投稿（同ジャンル / 最近）
   // =========================
   const currentGenre = (post.places?.primary_genre ?? "").trim() || null;
 
@@ -412,18 +412,6 @@ export default async function PostPage({
     .order("created_at", { ascending: false })
     .limit(12);
 
-  // ✅ 同じ店：他人もOK（ただし “この投稿” は除外）
-  const samePlaceAnyPromise =
-    post.place_id
-      ? supabase
-          .from("posts")
-          .select(baseSelect)
-          .eq("place_id", post.place_id)
-          .neq("id", post.id)
-          .order("created_at", { ascending: false })
-          .limit(12)
-      : Promise.resolve({ data: [] } as any);
-
   // ✅ 同じジャンル：この人の同ジャンル（フィルタを効かせるため places!inner）
   const sameGenreByUserPromise =
     currentGenre
@@ -437,14 +425,12 @@ export default async function PostPage({
           .limit(12)
       : Promise.resolve({ data: [] } as any);
 
-  const [{ data: recentByUser }, { data: samePlaceAny }, { data: sameGenreByUser }] = await Promise.all([
+  const [{ data: recentByUser }, { data: sameGenreByUser }] = await Promise.all([
     recentByUserPromise,
-    samePlaceAnyPromise,
     sameGenreByUserPromise,
   ]);
 
   const miniRecent = (recentByUser ?? []).map(toMiniPost);
-  const miniSamePlace = (samePlaceAny ?? []).map(toMiniPost);
   const miniSameGenre = (sameGenreByUser ?? []).map(toMiniPost);
 
   return (
@@ -574,7 +560,13 @@ export default async function PostPage({
         <section className="px-4 py-4 border-b border-black/[.06]">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-extrabold text-slate-900">Details</h2>
-            <DetailRequestModal postId={post.id} placeName={post.place_name} placeId={post.place_id} />
+            <DetailRequestModal
+              postId={post.id}
+              postUserId={post.user_id}
+              placeName={post.place_name}
+              placeId={post.place_id}
+              authorName={post.profiles?.display_name ?? null}
+            />
           </div>
 
           {hasDetails ? (
@@ -646,9 +638,7 @@ export default async function PostPage({
           currentPostId={post.id}
           initialTab="genre"
           genreLabel={currentGenre}
-          placeId={post.place_id}
           recent={miniRecent}
-          samePlace={miniSamePlace}
           sameGenre={miniSameGenre}
         />
       </div>

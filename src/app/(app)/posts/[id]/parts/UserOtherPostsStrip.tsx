@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Tag, Clock, Sparkles } from "lucide-react";
+import { Tag, Clock, Sparkles } from "lucide-react";
 
 type PlaceRow = {
   place_id: string;
@@ -25,7 +25,7 @@ export type MiniPost = {
   place_address?: string | null;
 };
 
-type Tab = "genre" | "place" | "recent";
+type Tab = "genre" | "recent";
 
 function toScore(x: any): number | null {
   if (typeof x === "number" && Number.isFinite(x)) return x;
@@ -57,27 +57,22 @@ export default function UserOtherPostsStrip({
   currentPostId,
   initialTab,
   genreLabel,
-  placeId,
   recent,
-  samePlace,
   sameGenre,
 }: {
   title: string;
   currentPostId: string;
   initialTab: Tab;
   genreLabel: string | null;
-  placeId: string | null;
   recent: MiniPost[];
-  samePlace: MiniPost[];
   sameGenre: MiniPost[];
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
 
   const items = useMemo(() => {
     if (tab === "genre") return sameGenre;
-    if (tab === "place") return samePlace;
     return recent;
-  }, [tab, sameGenre, samePlace, recent]);
+  }, [tab, sameGenre, recent]);
 
   const tabChip = (id: Tab, label: string, icon: React.ReactNode, disabled?: boolean) => {
     const active = tab === id;
@@ -109,7 +104,6 @@ export default function UserOtherPostsStrip({
 
           <div className="flex items-center gap-2 overflow-x-auto">
             {tabChip("genre", genreLabel ? `同じジャンル` : "同じジャンル", <Tag size={14} />, !genreLabel)}
-            {tabChip("place", placeId ? "同じお店" : "同じお店", <MapPin size={14} />, !placeId)}
             {tabChip("recent", "最近", <Clock size={14} />)}
           </div>
         </div>
@@ -120,9 +114,7 @@ export default function UserOtherPostsStrip({
       </div>
 
       {items.length === 0 ? (
-        <div className="px-4 py-6 text-[12px] text-slate-500">
-          まだ表示できる投稿がありません。
-        </div>
+        <div className="px-4 py-6 text-[12px] text-slate-500">まだ表示できる投稿がありません。</div>
       ) : (
         <div className="px-4 py-4">
           <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1">

@@ -29,6 +29,10 @@ export type PostTag = {
 
 export const TAG_CATEGORIES: { id: TagCategory; label: string }[] = [
   { id: "all", label: "すべて" },
+
+  // ★ 追加：visit_time
+  { id: "visit_time", label: "来店" },
+
   { id: "scene", label: "用途" },
   { id: "mood", label: "雰囲気" },
   { id: "noise", label: "騒がしさ" },
@@ -158,12 +162,6 @@ export function normalizeForSearch(s: string) {
 export function matchesTagQuery(tag: PostTag, q: string) {
   const qq = normalizeForSearch(q);
   if (!qq) return true;
-  const hay = [
-    tag.id,
-    tag.label,
-    ...(tag.keywords ?? []),
-  ]
-    .map(normalizeForSearch)
-    .join(" ");
+  const hay = [tag.id, tag.label, ...(tag.keywords ?? [])].map(normalizeForSearch).join(" ");
   return hay.includes(qq);
 }

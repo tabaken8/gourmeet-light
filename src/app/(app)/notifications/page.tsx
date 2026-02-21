@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, MessageCircle, Heart, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { MapPin, MessageCircle, Heart, UserPlus, HelpCircle, Pencil } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Actor = {
@@ -27,7 +28,14 @@ type Comment = {
   created_at: string;
 };
 
-type NotificationType = "like" | "want" | "comment" | "reply" | "follow" | "comment_like";
+type NotificationType =
+  | "like"
+  | "want"
+  | "comment"
+  | "reply"
+  | "follow"
+  | "comment_like"
+  | "detail_request";
 
 type Notification = {
   id: string;
@@ -85,6 +93,8 @@ function labelForType(t: NotificationType) {
       return "があなたをフォローしました";
     case "comment_like":
       return "があなたのコメントにいいねしました";
+    case "detail_request":
+      return "があなたの投稿にリクエストしました";
   }
 }
 
@@ -101,6 +111,8 @@ function iconForType(t: NotificationType) {
       return <UserPlus size={14} className="text-sky-600" />;
     case "comment_like":
       return <Heart size={14} className="text-rose-500" />;
+    case "detail_request":
+      return <HelpCircle size={14} className="text-orange-600" />;
   }
 }
 
@@ -110,7 +122,9 @@ function getThumbUrl(post: Post | null) {
 }
 
 export default function NotificationsPage() {
+  const router = useRouter();
   const supabase = createClientComponentClient();
+
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [justReadIds, setJustReadIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,7 +231,9 @@ export default function NotificationsPage() {
                         ? `/posts/${post.id}`
                         : "/timeline";
 
-                    const actorName = actor?.display_name ?? actor?.username ?? "ユーザー";
+                    // ★ actor が null の場合は匿名
+                    const actorName =
+                      actor?.display_name ?? actor?.username ?? (n.type === "detail_request" ? "匿名" : "ユーザー");
                     const actorAvatar = actor?.avatar_url ?? null;
                     const initial = (actorName || "U").slice(0, 1).toUpperCase();
 
@@ -230,6 +246,8 @@ export default function NotificationsPage() {
                     const thumb = getThumbUrl(post);
                     const isJustRead = justReadIds.includes(n.id);
 
+                    const showRequestActions = n.type === "detail_request" && !!post?.id;
+
                     return (
                       <Link
                         key={n.id}
@@ -241,7 +259,8 @@ export default function NotificationsPage() {
                         ].join(" ")}
                       >
                         <div className="shrink-0">
-                          {actorAvatar ? (
+                          {/* detail_request で匿名ならアバター出さない（匿名感） */}
+                          {actorAvatar && !(n.type === "detail_request" && !actor?.id) ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={actorAvatar}
@@ -251,7 +270,7 @@ export default function NotificationsPage() {
                             />
                           ) : (
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-[12px] font-bold text-slate-700">
-                              {initial}
+                              {n.type === "detail_request" && !actor?.id ? "？" : initial}
                             </div>
                           )}
                         </div>
@@ -292,9 +311,38 @@ export default function NotificationsPage() {
                             </div>
                           ) : null}
 
-                          <div className="mt-0.5 text-[11px] text-slate-400">
-                            {formatRelativeJp(n.created_at)}
-                          </div>
+                          {/* ★ detail_request のときはアクション（薄いDM/追記） */}
+                          {showRequestActions ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  router.push(`/posts/${post!.id}?requests=1&mode=dm`);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                <MessageCircle size={14} className="text-slate-500" />
+                                薄いDMで答える
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  router.push(`/posts/${post!.id}?requests=1&mode=edit`);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:bg-orange-100"
+                              >
+                                <Pencil size={14} className="text-orange-600" />
+                                追記で答える
+                              </button>
+                            </div>
+                          ) : null}
+
+                          <div className="mt-0.5 text-[11px] text-slate-400">{formatRelativeJp(n.created_at)}</div>
                         </div>
 
                         <div className="shrink-0">
