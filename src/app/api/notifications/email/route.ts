@@ -13,7 +13,15 @@ const supabaseAdmin = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
-type NotifType = "like" | "want" | "comment" | "reply" | "follow" | "post";
+type NotifType =
+  | "like"
+  | "want"
+  | "comment"
+  | "reply"
+  | "follow"
+  | "post"
+  | "detail_request"
+  | "detail_answer";
 
 function appOrigin() {
   return process.env.NEXT_PUBLIC_SITE_URL ?? "https://gourmeet.jp";
@@ -24,7 +32,7 @@ function extractNotificationId(body: any): string | null {
 }
 
 function escapeHtml(s: string) {
-  return s
+  return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -32,21 +40,80 @@ function escapeHtml(s: string) {
     .replace(/'/g, "&#039;");
 }
 
-function berealStyleLine(t: NotifType, actorName: string, placeName?: string | null) {
+// ざっくり：通知一覧と同じテンプレ辞書（必要な分だけでもOK）
+const TEMPLATE_LABELS: Record<string, string> = {
+  "visit:when": "行った時間帯（昼/夜）は？",
+  "visit:day": "曜日はいつ？",
+  "visit:duration": "滞在時間はどれくらい？",
+  "visit:busy": "その時間帯、混んでた？",
+  "visit:repeat": "リピあり？また行きたい？",
+
+  "scene:who": "誰と行くのが良さそう？",
+  "scene:best": "おすすめの使い方は？",
+
+  "mood:vibe": "雰囲気ってどんな感じ？",
+  "mood:date": "デート向き？",
+
+  "work:wifi": "Wi-Fi/電源あった？",
+  "work:stay": "長居できそう？",
+
+  "food:must": "絶対頼むべきメニューは？",
+  "food:portion": "量は多い？少ない？",
+  "food:photo": "料理の写真もっと見たい！",
+
+  "resv:need": "予約した？必須？",
+  "resv:wait": "待ち時間はどれくらい？",
+
+  "comfort:seat": "席（個室/カウンター）どうだった？",
+
+  "budget:pp": "結局いくらくらい？（1人あたり）",
+  "budget:value": "コスパ感は？",
+  "budget:charge": "席料/チャージ/お通しあった？",
+};
+
+function prettyTemplateLabel(id: string) {
+  return TEMPLATE_LABELS[id] ?? id;
+}
+
+function buildRequestPreview(templateIds: any, freeText: any) {
+  const parts: string[] = [];
+  const tids = Array.isArray(templateIds) ? templateIds : [];
+  if (tids.length) {
+    const head = tids.slice(0, 3).map(prettyTemplateLabel);
+    parts.push(...head);
+    if (tids.length > 3) parts.push(`他${tids.length - 3}件`);
+  }
+  const ft = typeof freeText === "string" ? freeText.trim() : "";
+  if (ft) parts.push(ft);
+  const s = parts.join(" / ");
+  return s || null;
+}
+
+function berealStyleLine(
+  t: NotifType,
+  actorName: string,
+  placeName?: string | null,
+  extraLine?: string | null
+) {
   const place = placeName ? ` @ ${placeName}` : "";
+  const extra = extraLine ? `\n${extraLine}` : "";
   switch (t) {
     case "follow":
-      return `⏰ Time to Gourmeet. ${actorName} があなたをフォロー！`;
+      return `⏰ Time to Gourmeet. ${actorName} があなたをフォロー！${extra}`;
     case "comment":
-      return `⏰ Time to Gourmeet. ${actorName} からコメントが届いた！${place}`;
+      return `⏰ Time to Gourmeet. ${actorName} からコメントが届いた！${place}${extra}`;
     case "reply":
-      return `⏰ Time to Gourmeet. ${actorName} から返信が届いた！${place}`;
+      return `⏰ Time to Gourmeet. ${actorName} から返信が届いた！${place}${extra}`;
     case "like":
-      return `💛 ${actorName} がいいねしたよ${place}`;
+      return `💛 ${actorName} がいいねしたよ${place}${extra}`;
     case "want":
-      return `✨ ${actorName} が「行きたい！」したよ${place}`;
+      return `✨ ${actorName} が「行きたい！」したよ${place}${extra}`;
     case "post":
-      return `📸 ${actorName} が新しいお店ログを追加したよ！${place}`;
+      return `📸 ${actorName} が新しいお店ログを追加したよ！${place}${extra}`;
+    case "detail_request":
+      return `📝 ${actorName} からリクエストが届いた！${place}${extra}`;
+    case "detail_answer":
+      return `✅ ${actorName} がリクエストに回答したよ${place}${extra}`;
   }
 }
 
@@ -55,14 +122,18 @@ function buildSubject(t: NotifType, actorName: string, placeName?: string | null
     t === "follow"
       ? "フォローされた"
       : t === "comment"
-        ? "コメントが届いた"
-        : t === "reply"
-          ? "返信が届いた"
-          : t === "like"
-            ? "いいねされた"
-            : t === "want"
-              ? "「行きたい！」された"
-              : "新しい投稿";
+      ? "コメントが届いた"
+      : t === "reply"
+      ? "返信が届いた"
+      : t === "like"
+      ? "いいねされた"
+      : t === "want"
+      ? "「行きたい！」された"
+      : t === "post"
+      ? "新しい投稿"
+      : t === "detail_request"
+      ? "リクエストが届いた"
+      : "回答が届いた";
 
   const tail = placeName ? `｜${placeName}` : "";
   return `Gourmeet｜${actorName}に${core}${tail}`;
@@ -98,9 +169,7 @@ async function shouldCooldownLike(opts: {
 async function getEmailPrefs(userId: string) {
   const { data } = await supabaseAdmin
     .from("user_notification_settings")
-    .select(
-      "email_enabled,email_like,email_comment,email_reply,email_follow,email_post,email_want"
-    )
+    .select("email_enabled,email_like,email_comment,email_reply,email_follow,email_post,email_want")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -113,7 +182,7 @@ async function getEmailPrefs(userId: string) {
     email_reply: d?.email_reply ?? true,
     email_follow: d?.email_follow ?? true,
     email_post: d?.email_post ?? true,
-    email_want: d?.email_want ?? false, // wantはデフォルトOFF推奨（爆撃になりやすい）
+    email_want: d?.email_want ?? false,
   };
 }
 
@@ -132,7 +201,18 @@ function isTypeEmailAllowed(prefs: Awaited<ReturnType<typeof getEmailPrefs>>, t:
       return prefs.email_post;
     case "want":
       return prefs.email_want;
+
+    // ★今回は既存設定を壊さないため、commentと同じ扱い
+    case "detail_request":
+    case "detail_answer":
+      return prefs.email_comment;
   }
+}
+
+function cutPreview(s: string | null, n = 140) {
+  const x = (s ?? "").trim();
+  if (!x) return null;
+  return x.length > n ? x.slice(0, n) + "…" : x;
 }
 
 export async function POST(req: Request) {
@@ -146,7 +226,9 @@ export async function POST(req: Request) {
   // 1) 通知本体
   const { data: n, error: nErr } = await supabaseAdmin
     .from("notifications")
-    .select("id,type,created_at,user_id,actor_id,post_id,comment_id,email_status,email_sent_at")
+    .select(
+      "id,type,created_at,user_id,actor_id,post_id,comment_id,detail_request_id,email_status,email_sent_at"
+    )
     .eq("id", notificationId)
     .single();
 
@@ -161,8 +243,16 @@ export async function POST(req: Request) {
 
   const t = n.type as NotifType;
 
-  // ✅ 送信対象（post を追加）
-  const sendable: NotifType[] = ["follow", "comment", "reply", "like", "post"];
+  // ✅ 送信対象
+  const sendable: NotifType[] = [
+    "follow",
+    "comment",
+    "reply",
+    "like",
+    "post",
+    "detail_request",
+    "detail_answer",
+  ];
   if (!sendable.includes(t)) {
     await supabaseAdmin
       .from("notifications")
@@ -211,11 +301,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "no recipient email" }, { status: 400 });
   }
 
-  // 3) actor / post / comment
+  // 3) actor / post / comment / detail_request / answer
   let actorName = "だれか";
   let actorUsername: string | null = null;
 
-  if (n.actor_id) {
+  if (t === "detail_request" && !n.actor_id) {
+    actorName = "匿名";
+  } else if (n.actor_id) {
     const { data: actor } = await supabaseAdmin
       .from("profiles")
       .select("display_name,username")
@@ -250,12 +342,45 @@ export async function POST(req: Request) {
     commentBody = c?.body ?? null;
   }
 
+  // ★ detail_request のプレビュー（質問内容）
+  let requestPreview: string | null = null;
+  if ((t === "detail_request" || t === "detail_answer") && n.detail_request_id) {
+    const { data: pdr } = await supabaseAdmin
+      .from("post_detail_requests")
+      .select("template_ids,free_text")
+      .eq("id", n.detail_request_id)
+      .maybeSingle();
+
+    requestPreview = buildRequestPreview(pdr?.template_ids, pdr?.free_text);
+  }
+
+  // ★ detail_answer のプレビュー（最新回答）
+  let answerPreview: string | null = null;
+  if (t === "detail_answer" && n.detail_request_id) {
+    const { data: ans } = await supabaseAdmin
+      .from("post_detail_request_answers")
+      .select("body")
+      .eq("request_id", n.detail_request_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    answerPreview = cutPreview(ans?.body ?? null, 140);
+  }
+
   // 4) リンク
   const notificationsUrl = `${appOrigin()}/notifications`;
   const settingsUrl = `${appOrigin()}/settings/notifications`;
 
-  // 「プロフィールの🔔からOFF」リンク（相手ページ）
+  // actor profile（匿名なら notificationsへ）
   const actorProfileUrl = n.actor_id ? `${appOrigin()}/u/${n.actor_id}` : notificationsUrl;
+
+  // ★ detail_request / detail_answer の“直リンク”
+  const requestUrl =
+    n.detail_request_id ? `${appOrigin()}/requests/${encodeURIComponent(n.detail_request_id)}` : notificationsUrl;
+
+  const answerUrl =
+    n.detail_request_id ? `${appOrigin()}/answers/${encodeURIComponent(n.detail_request_id)}` : notificationsUrl;
 
   // iPhoneネイティブ/WEBどっちでも開きやすいGoogle Mapsリンク
   const mapsUrl = placeId
@@ -264,18 +389,34 @@ export async function POST(req: Request) {
       )}&query_place_id=${encodeURIComponent(placeId)}`
     : null;
 
+  // 「今すぐ見る」リンク：タイプごとに出し分け
+  const primaryUrl =
+    t === "detail_request" ? answerUrl : t === "detail_answer" ? requestUrl : notificationsUrl;
+
   // 5) 文面
-  const headline = berealStyleLine(t, actorName, placeName);
   const subject = buildSubject(t, actorName, placeName);
 
-  const commentPreview =
-    commentBody ? commentBody.slice(0, 140) + (commentBody.length > 140 ? "…" : "") : null;
+  const extraLine =
+    t === "detail_request"
+      ? requestPreview
+        ? `“${cutPreview(requestPreview, 140)}”`
+        : null
+      : t === "detail_answer"
+      ? answerPreview
+        ? `“${answerPreview}”`
+        : null
+      : commentBody
+      ? `“${cutPreview(commentBody, 140)}”`
+      : null;
+
+  const headline = berealStyleLine(t, actorName, placeName, extraLine);
 
   const text = [
     headline,
     placeName ? `場所：${placeName}` : null,
-    commentPreview ? `\n“${commentPreview}”` : null,
-    `\n確認する：${notificationsUrl}`,
+    t === "detail_request" && requestPreview ? `\n質問：${requestPreview}` : null,
+    t === "detail_answer" && answerPreview ? `\n回答：${answerPreview}` : null,
+    `\n確認する：${primaryUrl}`,
     mapsUrl ? `Google Maps：${mapsUrl}` : null,
     `\n通知設定：${settingsUrl}`,
     n.actor_id ? `この人の投稿通知だけOFF：${actorProfileUrl} の🔔をOFF` : null,
@@ -285,9 +426,11 @@ export async function POST(req: Request) {
 
   const safeHeadline = escapeHtml(headline);
   const safePlace = placeName ? escapeHtml(placeName) : "";
-  const safeComment = commentPreview ? escapeHtml(commentPreview) : "";
   const safeActorName = escapeHtml(actorName);
   const safeActorHandle = actorUsername ? escapeHtml(actorUsername) : null;
+
+  const safeReq = requestPreview ? escapeHtml(requestPreview) : "";
+  const safeAns = answerPreview ? escapeHtml(answerPreview) : "";
 
   const html = `
   <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;line-height:1.6;background:#fff;padding:20px">
@@ -298,7 +441,7 @@ export async function POST(req: Request) {
         ${
           n.actor_id
             ? `<div style="margin-top:6px;font-size:12px;color:#444">from ${safeActorName}${safeActorHandle ? ` (@${safeActorHandle})` : ""}</div>`
-            : ""
+            : `<div style="margin-top:6px;font-size:12px;color:#444">from ${safeActorName}</div>`
         }
       </div>
 
@@ -310,17 +453,29 @@ export async function POST(req: Request) {
         }
 
         ${
-          commentPreview
+          t === "detail_request" && requestPreview
             ? `
           <div style="margin-top:12px;padding:12px;border-left:4px solid #fed7aa;background:#fffaf5;border-radius:10px;color:#111">
-            “${safeComment}”
+            <div style="font-size:12px;color:#555;font-weight:700;margin-bottom:6px">質問</div>
+            “${safeReq}”
+          </div>
+        `
+            : ""
+        }
+
+        ${
+          t === "detail_answer" && answerPreview
+            ? `
+          <div style="margin-top:12px;padding:12px;border-left:4px solid #bfdbfe;background:#eff6ff;border-radius:10px;color:#111">
+            <div style="font-size:12px;color:#555;font-weight:700;margin-bottom:6px">回答</div>
+            “${safeAns}”
           </div>
         `
             : ""
         }
 
         <div style="margin-top:16px">
-          <a href="${notificationsUrl}"
+          <a href="${primaryUrl}"
              style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:10px 14px;border-radius:12px;font-weight:700">
             今すぐ見る →
           </a>

@@ -4,103 +4,9 @@ import React, { useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { X, Loader2 } from "lucide-react";
 import { TAG_CATEGORIES, type TagCategory, tagCategoryLabel } from "@/lib/postTags";
+import { templatesByCategory, templateLabelMap } from "@/lib/detailTemplates"; // ✅ 追加
 
 type Template = { id: string; label: string };
-
-const TEMPLATE_BY_CATEGORY: Record<Exclude<TagCategory, "all">, Template[]> = {
-  visit_time: [
-    { id: "visit:when", label: "行った時間帯（昼/夜）は？" },
-    { id: "visit:day", label: "曜日はいつ？" },
-    { id: "visit:duration", label: "滞在時間はどれくらい？" },
-    { id: "visit:busy", label: "その時間帯、混んでた？" },
-    { id: "visit:repeat", label: "リピあり？また行きたい？" },
-  ],
-  scene: [
-    { id: "scene:who", label: "誰と行くのが良さそう？" },
-    { id: "scene:best", label: "おすすめの使い方は？" },
-    { id: "scene:solo", label: "1人でも行けそう？" },
-    { id: "scene:group", label: "大人数でもいける？" },
-    { id: "scene:family", label: "家族向き？" },
-  ],
-  mood: [
-    { id: "mood:vibe", label: "雰囲気ってどんな感じ？" },
-    { id: "mood:date", label: "デート向き？" },
-    { id: "mood:lighting", label: "照明/店内の明るさは？" },
-    { id: "mood:music", label: "音楽/空気感はどんな感じ？" },
-    { id: "mood:photo", label: "写真映えする？（内装/料理）" },
-  ],
-  noise: [
-    { id: "noise:level", label: "騒がしさどれくらい？" },
-    { id: "noise:talk", label: "会話しやすい？（声の通り）" },
-    { id: "noise:kids", label: "子どもの声とか気になりそう？" },
-  ],
-  work: [
-    { id: "work:wifi", label: "Wi-Fi/電源あった？" },
-    { id: "work:stay", label: "長居できそう？" },
-    { id: "work:space", label: "席の広さ・PC広げやすさは？" },
-    { id: "work:rules", label: "作業NGっぽい雰囲気ある？" },
-  ],
-  food: [
-    { id: "food:must", label: "絶対頼むべきメニューは？" },
-    { id: "food:portion", label: "量は多い？少ない？" },
-    { id: "food:taste", label: "味の系統（濃い/あっさり）は？" },
-    { id: "food:menu", label: "メニューの幅（選びやすさ）は？" },
-    { id: "food:photo", label: "料理の写真もっと見たい！" },
-  ],
-  drink: [
-    { id: "drink:menu", label: "お酒の充実度どう？" },
-    { id: "drink:nonal", label: "ノンアル/ソフドリ充実してた？" },
-    { id: "drink:pairing", label: "料理との相性（ペアリング）良い？" },
-  ],
-  reservation: [
-    { id: "resv:need", label: "予約した？必須？" },
-    { id: "resv:wait", label: "待ち時間はどれくらい？" },
-    { id: "resv:tip", label: "予約のコツある？（何時/何日前）" },
-    { id: "resv:peak", label: "混む時間帯はいつ？" },
-    { id: "resv:walkin", label: "飛び込みでも入れそう？" },
-  ],
-  comfort: [
-    { id: "comfort:seat", label: "席（個室/カウンター）どうだった？" },
-    { id: "comfort:space", label: "席の間隔・狭さ/広さは？" },
-    { id: "comfort:temp", label: "店内の温度（暑い/寒い）どう？" },
-    { id: "comfort:clean", label: "清潔感どう？" },
-  ],
-  service: [
-    { id: "svc:staff", label: "接客どうだった？" },
-    { id: "svc:speed", label: "提供スピードは？" },
-    { id: "svc:explain", label: "説明が丁寧？おすすめ聞けた？" },
-    { id: "svc:rule", label: "ルール厳しめ？（席時間/注文制）" },
-  ],
-  kids: [
-    { id: "kids:ok", label: "子連れいけそう？" },
-    { id: "kids:chair", label: "子ども椅子/取り皿ありそう？" },
-    { id: "kids:space", label: "ベビーカーいけそう？通路広い？" },
-  ],
-  access: [
-    { id: "acc:walk", label: "駅からの体感距離は？" },
-    { id: "acc:landmark", label: "迷わず行けた？目印ある？" },
-    { id: "acc:weather", label: "雨の日つらい？（坂/屋外多め）" },
-  ],
-  payment: [
-    { id: "pay:card", label: "カード使えた？" },
-    { id: "pay:cashless", label: "電子マネー/QRは？" },
-    { id: "pay:cash", label: "現金のみっぽい？" },
-    { id: "pay:split", label: "割り勘しやすい？（個別会計）" },
-  ],
-  budget: [
-    { id: "budget:pp", label: "結局いくらくらい？（1人あたり）" },
-    { id: "budget:menu", label: "代表的なメニューの価格は？" },
-    { id: "budget:drink", label: "お酒頼むとどれくらい上がる？" },
-    { id: "budget:value", label: "コスパ感は？（満足度との釣り合い）" },
-    { id: "budget:charge", label: "席料/チャージ/お通しあった？" },
-    { id: "budget:timing", label: "ランチ/ディナーで価格差ある？" },
-  ],
-  health: [
-    { id: "health:allergy", label: "アレルギー/体質配慮できそう？" },
-    { id: "health:veg", label: "ベジ/ヴィーガン対応ありそう？" },
-    { id: "health:spice", label: "辛さ調整できそう？" },
-  ],
-};
 
 const CATEGORY_PRIORITY: Exclude<TagCategory, "all">[] = [
   "budget",
@@ -151,24 +57,18 @@ export default function DetailRequestModal({
   const [freeText, setFreeText] = useState("");
   const [revealName, setRevealName] = useState(false);
 
+  // ✅ 共通テンプレ定義から生成（初回だけ）
+  const TEMPLATE_BY_CATEGORY = useMemo(() => templatesByCategory(), []);
+  const templateLabelById = useMemo(() => templateLabelMap(), []);
+
   const cats = useMemo(() => {
-    const available = new Set(
-      TAG_CATEGORIES.map((x) => x.id).filter((x): x is Cat => x !== "all")
-    );
+    const available = new Set(TAG_CATEGORIES.map((x) => x.id).filter((x): x is Cat => x !== "all"));
     const ordered = uniqueKeepOrder(CATEGORY_PRIORITY).filter((c) => available.has(c));
     const rest = Array.from(available).filter((c) => !ordered.includes(c));
     return [...ordered, ...rest];
   }, []);
 
-  const templates = useMemo(() => TEMPLATE_BY_CATEGORY[category] ?? [], [category]);
-
-  const templateLabelById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const cat of Object.keys(TEMPLATE_BY_CATEGORY) as Cat[]) {
-      for (const t of TEMPLATE_BY_CATEGORY[cat]) m.set(t.id, t.label);
-    }
-    return m;
-  }, []);
+  const templates: Template[] = useMemo(() => TEMPLATE_BY_CATEGORY[category] ?? [], [TEMPLATE_BY_CATEGORY, category]);
 
   const selectedIdsInCurrent = useMemo(() => selectedByCat[category] ?? [], [selectedByCat, category]);
 
@@ -224,29 +124,20 @@ export default function DetailRequestModal({
         reveal_name: revealName,
       };
 
-      // ★ id を受け取る
       const { data: reqRow, error: reqErr } = await supabase
         .from("post_detail_requests")
         .insert(payload)
         .select("id")
         .single();
+      if (reqErr) throw reqErr;
 
-      if (reqErr) {
-        if ((reqErr as any)?.code === "23505") {
-          setErr("今日はすでにリクエスト済みです（1日1回まで）。また明日送ってね。");
-          return;
-        }
-        throw reqErr;
-      }
-
-      // ★ 通知（自分の投稿には送らない）
       if (postUserId && postUserId !== uid && reqRow?.id) {
         const { error: nerr } = await supabase.from("notifications").insert({
           user_id: postUserId,
           actor_id: revealName ? uid : null,
           post_id: postId,
           type: "detail_request",
-          detail_request_id: reqRow.id, // ★重要
+          detail_request_id: reqRow.id,
           read: false,
         });
         if (nerr) console.warn("notification insert failed:", nerr);
@@ -273,8 +164,7 @@ export default function DetailRequestModal({
     setRevealName(false);
   }
 
-  const freePlaceholder =
-    "例）もっと写真見たい！／おすすめメニューは？／混み具合は？／1人いくらくらい？";
+  const freePlaceholder = "例）もっと写真見たい！／おすすめメニューは？／混み具合は？／1人いくらくらい？";
 
   return (
     <>
@@ -288,12 +178,7 @@ export default function DetailRequestModal({
 
       {open ? (
         <div className="fixed inset-0 z-[80]">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/40"
-            onClick={close}
-            aria-label="close overlay"
-          />
+          <button type="button" className="absolute inset-0 bg-black/40" onClick={close} aria-label="close overlay" />
 
           <div className="absolute left-1/2 top-1/2 w-[min(560px,92vw)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
             <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
@@ -301,13 +186,9 @@ export default function DetailRequestModal({
                 <div className="text-sm font-bold text-slate-900">リクエスト</div>
                 <div className="mt-0.5 text-[12px] text-slate-500">
                   {placeName ? `「${placeName}」について` : "この投稿について"}、もっと知りたい点を{" "}
-                  <span className="font-semibold text-slate-700">
-                    {authorName ? `${authorName}さん` : "投稿者"}
-                  </span>{" "}
+                  <span className="font-semibold text-slate-700">{authorName ? `${authorName}さん` : "投稿者"}</span>{" "}
                   にリクエストできます。{" "}
-                  <span className="text-slate-500">
-                    ※{authorName ? `${authorName}さん` : "投稿者"}にだけ届きます
-                  </span>
+                  <span className="text-slate-500">※{authorName ? `${authorName}さん` : "投稿者"}にだけ届きます</span>
                 </div>
               </div>
 
@@ -380,14 +261,14 @@ export default function DetailRequestModal({
                         <div className="text-[11px] text-slate-400">{allSelectedIds.length}件</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {allSelectedIds.map((id) => (
+                        {allSelectedIds.map((tid) => (
                           <button
-                            key={id}
+                            key={tid}
                             type="button"
-                            onClick={() => removeSelected(id)}
+                            onClick={() => removeSelected(tid)}
                             className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:bg-orange-100"
                           >
-                            {templateLabelById.get(id) ?? id}
+                            {templateLabelById.get(tid) ?? tid}
                             <X size={14} className="opacity-70" />
                           </button>
                         ))}
@@ -474,8 +355,6 @@ export default function DetailRequestModal({
                       リクエストする
                     </button>
                   </div>
-
-                  <div className="text-[11px] text-slate-400">※リクエストは1日1回まで（日本時間基準）</div>
                 </>
               )}
             </div>

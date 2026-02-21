@@ -214,9 +214,8 @@ function planDiscoverTiles(posts: PostRow[], seed: string, opts?: { maxTiles?: n
   return tiles;
 }
 
-function gateHref(next: string, meId: string | null) {
-  if (meId) return next;
-  return `/auth/required?next=${encodeURIComponent(next)}`;
+function gateHref(next: string) {
+  return next;
 }
 
 // =========================
@@ -227,13 +226,11 @@ function DiscoverFlipTile({
   big,
   post,
   onInViewChange,
-  meId,
 }: {
   slotIndex: number;
   big: boolean;
   post: PostRow | null;
   onInViewChange: (slotIndex: number, inView: boolean) => void;
-  meId: string | null;
 }) {
   const ref = useRef<HTMLAnchorElement | null>(null);
   const inView = useInView(ref as any, { margin: "120px" });
@@ -250,7 +247,7 @@ function DiscoverFlipTile({
   const placeName = post?.place_name ?? "";
   const genre = post?.place_genre ?? null;
 
-  const href = post?.id ? gateHref(`/posts/${post.id}`, meId) : "#";
+  const href = post?.id ? gateHref(`/posts/${post.id}`) : "#";
 
   return (
     <Link
@@ -444,7 +441,6 @@ function DiscoverGrid({
                 big={slot.big}
                 post={p}
                 onInViewChange={onInViewChange}
-                meId={meId}
               />
             );
           })}
@@ -452,7 +448,7 @@ function DiscoverGrid({
       </div>
 
       <div className="pb-2 pt-4 text-center text-[11px] text-slate-500">
-        <Link className="font-semibold text-orange-700 hover:underline" href={gateHref("/timeline?tab=discover", meId)}>
+        <Link className="font-semibold text-orange-700 hover:underline" href={gateHref("/timeline?tab=discover")}>
           発見タブで全部見る
         </Link>
       </div>
@@ -538,7 +534,6 @@ export default function FriendsTimelineClient({
 
   // ✅ guest でも zero-follow でも “プレビューgrid” を取る（必要時のみ）
   useEffect(() => {
-    // 未ログインでもOK
     const needPreview =
       (!meId && discoverPosts.length === 0) ||
       (meId && followCount === 0 && (posts?.length ?? 0) === 0 && discoverPosts.length === 0);
@@ -565,7 +560,7 @@ export default function FriendsTimelineClient({
   // Views
   // -------------------------
 
-  // ✅ 未ログイン：welcome + grid + faq（フォロー0相当）
+  // ✅ 未ログイン：welcome + grid + faq
   if (!meId) {
     return (
       <div className="flex flex-col gap-4">

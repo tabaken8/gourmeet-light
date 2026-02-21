@@ -126,10 +126,7 @@ export default function Sidebar({ name }: { name?: string }) {
   const supabase = createClientComponentClient();
   const displayNameMemo = useMemo(() => displayNameSafe ?? "", [displayNameSafe]);
 
-  const gate = (href: string, allowGuest = false) => {
-    if (allowGuest) return href;
-    return isAuthed ? href : `/auth/required?next=${encodeURIComponent(href)}`;
-  };
+  const gate = (href: string, _allowGuest = false) => href;
 
   // ===== 投稿インセンティブ判定（初回 or 今日の+50未取得） =====
   const [uid, setUid] = useState<string | null>(null);

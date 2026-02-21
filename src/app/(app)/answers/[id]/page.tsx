@@ -1,8 +1,11 @@
-// src/app/(app)/answer/[id]/page.tsx
+// src/app/(app)/answers/[id]/page.tsx
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Loader2, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+
+import * as DetailTemplates from "@/lib/detailTemplates";
+const DT: any = DetailTemplates;
 
 export const dynamic = "force-dynamic";
 
@@ -34,73 +37,22 @@ type ProfileLite = {
   username?: string | null;
 };
 
-const TEMPLATE_LABELS: Record<string, string> = {
-  "visit:when": "行った時間帯（昼/夜）は？",
-  "visit:day": "曜日はいつ？",
-  "visit:duration": "滞在時間はどれくらい？",
-  "visit:busy": "その時間帯、混んでた？",
-  "visit:repeat": "リピあり？また行きたい？",
-  "scene:who": "誰と行くのが良さそう？",
-  "scene:best": "おすすめの使い方は？",
-  "scene:solo": "1人でも行けそう？",
-  "scene:group": "大人数でもいける？",
-  "scene:family": "家族向き？",
-  "mood:vibe": "雰囲気ってどんな感じ？",
-  "mood:date": "デート向き？",
-  "mood:lighting": "照明/店内の明るさは？",
-  "mood:music": "音楽/空気感はどんな感じ？",
-  "mood:photo": "写真映えする？（内装/料理）",
-  "noise:level": "騒がしさどれくらい？",
-  "noise:talk": "会話しやすい？（声の通り）",
-  "noise:kids": "子どもの声とか気になりそう？",
-  "work:wifi": "Wi-Fi/電源あった？",
-  "work:stay": "長居できそう？",
-  "work:space": "席の広さ・PC広げやすさは？",
-  "work:rules": "作業NGっぽい雰囲気ある？",
-  "food:must": "絶対頼むべきメニューは？",
-  "food:portion": "量は多い？少ない？",
-  "food:taste": "味の系統（濃い/あっさり）は？",
-  "food:menu": "メニューの幅（選びやすさ）は？",
-  "food:photo": "料理の写真もっと見たい！",
-  "drink:menu": "お酒の充実度どう？",
-  "drink:nonal": "ノンアル/ソフドリ充実してた？",
-  "drink:pairing": "料理との相性（ペアリング）良い？",
-  "resv:need": "予約した？必須？",
-  "resv:wait": "待ち時間はどれくらい？",
-  "resv:tip": "予約のコツある？（何時/何日前）",
-  "resv:peak": "混む時間帯はいつ？",
-  "resv:walkin": "飛び込みでも入れそう？",
-  "comfort:seat": "席（個室/カウンター）どうだった？",
-  "comfort:space": "席の間隔・狭さ/広さは？",
-  "comfort:temp": "店内の温度（暑い/寒い）どう？",
-  "comfort:clean": "清潔感どう？",
-  "svc:staff": "接客どうだった？",
-  "svc:speed": "提供スピードは？",
-  "svc:explain": "説明が丁寧？おすすめ聞けた？",
-  "svc:rule": "ルール厳しめ？（席時間/注文制）",
-  "kids:ok": "子連れいけそう？",
-  "kids:chair": "子ども椅子/取り皿ありそう？",
-  "kids:space": "ベビーカーいけそう？通路広い？",
-  "acc:walk": "駅からの体感距離は？",
-  "acc:landmark": "迷わず行けた？目印ある？",
-  "acc:weather": "雨の日つらい？（坂/屋外多め）",
-  "pay:card": "カード使えた？",
-  "pay:cashless": "電子マネー/QRは？",
-  "pay:cash": "現金のみっぽい？",
-  "pay:split": "割り勘しやすい？（個別会計）",
-  "budget:pp": "結局いくらくらい？（1人あたり）",
-  "budget:menu": "代表的なメニューの価格は？",
-  "budget:drink": "お酒頼むとどれくらい上がる？",
-  "budget:value": "コスパ感は？（満足度との釣り合い）",
-  "budget:charge": "席料/チャージ/お通しあった？",
-  "budget:timing": "ランチ/ディナーで価格差ある？",
-  "health:allergy": "アレルギー/体質配慮できそう？",
-  "health:veg": "ベジ/ヴィーガン対応ありそう？",
-  "health:spice": "辛さ調整できそう？",
-};
+// ✅ export名が変わっても落ちにくいテンプレラベル取得
+function labelForTemplateSafe(id: string): string {
+  if (typeof DT.labelForDetailTemplate === "function") {
+    return String(DT.labelForDetailTemplate(id) ?? id);
+  }
 
-function labelForTemplate(id: string) {
-  return TEMPLATE_LABELS[id] ?? id;
+  const labels = DT.DETAIL_TEMPLATE_LABELS as Record<string, string> | undefined;
+  if (labels && typeof labels[id] === "string") return labels[id];
+
+  const defs = DT.DETAIL_TEMPLATE_DEFS as Array<{ id: string; label: string }> | undefined;
+  if (Array.isArray(defs)) {
+    const hit = defs.find((x) => x?.id === id);
+    if (hit?.label) return hit.label;
+  }
+
+  return id;
 }
 
 function Avatar({ name, url }: { name: string; url: string | null }) {
@@ -124,10 +76,10 @@ async function submitAnswer(formData: FormData): Promise<void> {
   const body = String(formData.get("body") || "").trim();
   const isPublic = String(formData.get("is_public") || "true") === "true";
 
-  if (!requestId || !body) redirect(`/answer/${requestId}?err=empty`);
+  if (!requestId || !body) redirect(`/answers/${requestId}?err=empty`);
 
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect(`/answer/${requestId}?err=auth`);
+  if (!auth.user) redirect(`/answers/${requestId}?err=auth`);
 
   // request
   const { data: pdr } = await supabase
@@ -136,13 +88,13 @@ async function submitAnswer(formData: FormData): Promise<void> {
     .eq("id", requestId)
     .single();
 
-  if (!pdr) redirect(`/answer/${requestId}?err=notfound`);
+  if (!pdr) redirect(`/answers/${requestId}?err=notfound`);
 
   // post（2段階）
   const { data: post } = await supabase.from("posts").select("id, user_id").eq("id", pdr.post_id).single();
-  if (!post) redirect(`/answer/${requestId}?err=post`);
+  if (!post) redirect(`/answers/${requestId}?err=post`);
 
-  if (post.user_id !== auth.user.id) redirect(`/answer/${requestId}?err=forbidden`);
+  if (post.user_id !== auth.user.id) redirect(`/answers/${requestId}?err=forbidden`);
 
   // save answer
   const { error: ierr } = await supabase.from("post_detail_request_answers").insert({
@@ -151,7 +103,7 @@ async function submitAnswer(formData: FormData): Promise<void> {
     body,
     is_public: isPublic,
   });
-  if (ierr) redirect(`/answer/${requestId}?err=save`);
+  if (ierr) redirect(`/answers/${requestId}?err=save`);
 
   await supabase.from("post_detail_requests").update({ status: "answered" }).eq("id", requestId);
 
@@ -174,9 +126,14 @@ export default async function AnswerPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams?: { err?: string };
+  // ✅ Next.js 15 で警告が出てもいいように最初から await 形式に寄せる
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ err?: string }>;
 }) {
+  const { id } = await params;
+  const sp = (await searchParams) ?? {};
+  const err = sp.err ?? null;
+
   const supabase = await createClient();
 
   const { data: auth } = await supabase.auth.getUser();
@@ -186,7 +143,7 @@ export default async function AnswerPage({
   const { data: pdr, error: pdrErr } = await supabase
     .from("post_detail_requests")
     .select("id, post_id, requester_user_id, category, template_ids, free_text, reveal_name, status, created_at")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (pdrErr || !pdr) notFound();
@@ -224,7 +181,7 @@ export default async function AnswerPage({
   const freeText = (pdr as PDR).free_text?.trim() || null;
 
   const postHref = `/posts/${(post as PostRow).id}`;
-  const err = searchParams?.err ?? null;
+
   const errMsg =
     err === "empty"
       ? "回答を入力してください"
@@ -278,7 +235,7 @@ export default async function AnswerPage({
                 <ul className="mt-2 space-y-1">
                   {templates.map((tid) => (
                     <li key={tid} className="text-[12px] text-slate-700">
-                      ・{labelForTemplate(tid)}
+                      ・{labelForTemplateSafe(tid)}
                     </li>
                   ))}
                 </ul>

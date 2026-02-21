@@ -451,7 +451,7 @@ export default function NotificationsPage() {
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  router.push(`/answer/${dr!.id}`);
+                                  router.push(`/answers/${dr!.id}`);
                                 }}
                                 className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
                               >

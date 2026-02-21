@@ -101,10 +101,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
   const isActive = (p: string) => pathname === p || pathname.startsWith(p + "/");
 
-  const gate = (href: string, allowGuest = false) => {
-    if (allowGuest) return href;
-    return isAuthed ? href : `/auth/required?next=${encodeURIComponent(href)}`;
-  };
+  const gate = (href: string, _allowGuest = false) => href;
 
   const homeHref = "/timeline?tab=friends";
 

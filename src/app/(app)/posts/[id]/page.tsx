@@ -19,6 +19,10 @@ import UserOtherPostsStrip, { type MiniPost } from "./parts/UserOtherPostsStrip"
 
 import { TAG_CATEGORIES, type TagCategory, findTagById, tagCategoryLabel } from "@/lib/postTags";
 
+// ✅ export名が変わっても落ちないために namespace import + any
+import * as DetailTemplates from "@/lib/detailTemplates";
+const DT: any = DetailTemplates;
+
 export const dynamic = "force-dynamic";
 
 type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
@@ -63,6 +67,58 @@ type PostRow = {
   profiles: ProfileLite | null;
   places?: PlaceLite | null;
 };
+
+// ---- Q&A（公開回答） ----
+type PDR = {
+  id: string;
+  category: string;
+  template_ids: string[];
+  free_text: string | null;
+  created_at: string;
+};
+
+type PDRAnswer = {
+  id: string;
+  request_id: string;
+  body: string;
+  is_public: boolean;
+  created_at: string;
+};
+
+// ✅ detailTemplates.ts の export 形が変わっても動く “質問文生成”
+function buildQuestionTextSafe(r: PDR) {
+  // 1) もし buildQuestionTextFromTemplateIds があればそれを使う
+  if (typeof DT.buildQuestionTextFromTemplateIds === "function") {
+    return String(
+      DT.buildQuestionTextFromTemplateIds({
+        template_ids: r.template_ids,
+        free_text: r.free_text,
+      }) ?? ""
+    );
+  }
+
+  // 2) labelForDetailTemplate があればそれを使う
+  const labelFor =
+    typeof DT.labelForDetailTemplate === "function"
+      ? (id: string) => String(DT.labelForDetailTemplate(id) ?? id)
+      : (id: string) => {
+          const labels = DT.DETAIL_TEMPLATE_LABELS as Record<string, string> | undefined;
+          if (labels && typeof labels[id] === "string") return labels[id];
+          // defs 配列がある場合も拾う
+          const defs = DT.DETAIL_TEMPLATE_DEFS as Array<{ id: string; label: string }> | undefined;
+          if (Array.isArray(defs)) {
+            const hit = defs.find((x) => x?.id === id);
+            if (hit?.label) return hit.label;
+          }
+          return id;
+        };
+
+  const parts: string[] = [];
+  const tids = Array.isArray(r.template_ids) ? r.template_ids : [];
+  for (const id of tids) parts.push(labelFor(id));
+  if (r.free_text?.trim()) parts.push(r.free_text.trim());
+  return parts.filter(Boolean).join(" / ");
+}
 
 function formatJST(iso: string) {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -219,9 +275,15 @@ export default async function PostPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams?: { img_index?: string };
+  // ✅ Next.js 15: sync-dynamic-apis 回避（awaitして使う）
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ img_index?: string }>;
 }) {
+  // ✅ awaitして “普通の値” にしてから使う
+  const { id } = await params;
+  const sp = (await searchParams) ?? {};
+  const imgIndexStr = sp.img_index;
+
   const supabase = await createClient();
 
   const {
@@ -229,8 +291,8 @@ export default async function PostPage({
   } = await supabase.auth.getUser();
 
   let safeIndex = 0;
-  if (searchParams?.img_index) {
-    const n = Number(searchParams.img_index);
+  if (imgIndexStr) {
+    const n = Number(imgIndexStr);
     if (Number.isFinite(n) && n > 0) safeIndex = n - 1;
   }
 
@@ -268,7 +330,7 @@ export default async function PostPage({
       )
     `
     )
-    .eq("id", params.id)
+    .eq("id", id)
     .maybeSingle();
 
   if (postErr) return notFound();
@@ -278,17 +340,10 @@ export default async function PostPage({
   const isMine = !!(user?.id && user.id === post.user_id);
 
   // ---- likes ----
-  const likeCountPromise = supabase
-    .from("post_likes")
-    .select("*", { count: "exact", head: true })
-    .eq("post_id", post.id);
+  const likeCountPromise = supabase.from("post_likes").select("*", { count: "exact", head: true }).eq("post_id", post.id);
 
   const likedPromise = user
-    ? supabase
-        .from("post_likes")
-        .select("*", { count: "exact", head: true })
-        .eq("post_id", post.id)
-        .eq("user_id", user.id)
+    ? supabase.from("post_likes").select("*", { count: "exact", head: true }).eq("post_id", post.id).eq("user_id", user.id)
     : Promise.resolve({ count: 0 } as any);
 
   const recentLikersPromise = supabase
@@ -338,12 +393,12 @@ export default async function PostPage({
     const map: Record<string, any> = {};
     for (const p of likerProfs ?? []) map[(p as any).id] = p;
     initialLikers = likerIds
-      .map((id) => map[id])
+      .map((lid) => map[lid])
       .filter(Boolean)
       .map((p: any) => ({ id: p.id, display_name: p.display_name, avatar_url: p.avatar_url }));
   }
 
-  const myStatus = (myFollowEdge as any)?.status as ("accepted" | "pending" | undefined);
+  const myStatus = (myFollowEdge as any)?.status as "accepted" | "pending" | undefined;
   const iFollow = myStatus === "accepted";
   const requested = myStatus === "pending";
   const showFollowButton = !!(user?.id && !isMine && !iFollow && !requested);
@@ -369,14 +424,49 @@ export default async function PostPage({
         post.place_id
       )}`
     : post.place_address
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
-      : null;
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
+    : null;
 
   const imageUrls = getAllImageUrls(post);
-  const summaryLine = (post.content ?? "").trim().split("\n").map((s) => s.trim()).filter(Boolean)[0] ?? null;
+  const summaryLine =
+    (post.content ?? "")
+      .trim()
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)[0] ?? null;
 
   const { rows: detailRows } = buildDetailsRows(post.tag_ids);
   const hasDetails = detailRows.length > 0;
+
+  // ---- Q&A（公開回答のみ） ----
+  const { data: pdrRows } = await supabase
+    .from("post_detail_requests")
+    .select("id, category, template_ids, free_text, created_at")
+    .eq("post_id", post.id)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  const reqs = ((pdrRows as any[]) ?? []) as PDR[];
+  const reqIds = reqs.map((r) => r.id).filter(Boolean);
+
+  let answers: PDRAnswer[] = [];
+  if (reqIds.length) {
+    const { data: ansRows } = await supabase
+      .from("post_detail_request_answers")
+      .select("id, request_id, body, is_public, created_at")
+      .in("request_id", reqIds)
+      .eq("is_public", true)
+      .order("created_at", { ascending: true });
+    answers = ((ansRows as any[]) ?? []) as PDRAnswer[];
+  }
+
+  const ansByReq: Record<string, PDRAnswer[]> = {};
+  for (const a of answers) {
+    if (!a?.request_id) continue;
+    (ansByReq[a.request_id] ||= []).push(a);
+  }
+
+  const publicReqs: PDR[] = reqs.filter((r) => (ansByReq[r.id]?.length ?? 0) > 0);
 
   // =========================
   // この人の他の投稿（同ジャンル / 最近）
@@ -403,7 +493,6 @@ export default async function PostPage({
     )
   `;
 
-  // ✅ 最近：この人の最近
   const recentByUserPromise = supabase
     .from("posts")
     .select(baseSelect)
@@ -412,7 +501,6 @@ export default async function PostPage({
     .order("created_at", { ascending: false })
     .limit(12);
 
-  // ✅ 同じジャンル：この人の同ジャンル（フィルタを効かせるため places!inner）
   const sameGenreByUserPromise =
     currentGenre
       ? supabase
@@ -425,10 +513,7 @@ export default async function PostPage({
           .limit(12)
       : Promise.resolve({ data: [] } as any);
 
-  const [{ data: recentByUser }, { data: sameGenreByUser }] = await Promise.all([
-    recentByUserPromise,
-    sameGenreByUserPromise,
-  ]);
+  const [{ data: recentByUser }, { data: sameGenreByUser }] = await Promise.all([recentByUserPromise, sameGenreByUserPromise]);
 
   const miniRecent = (recentByUser ?? []).map(toMiniPost);
   const miniSameGenre = (sameGenreByUser ?? []).map(toMiniPost);
@@ -469,12 +554,7 @@ export default async function PostPage({
 
             <div className="flex items-center gap-2">
               {showFollowButton ? (
-                <FollowButton
-                  targetUserId={post.user_id}
-                  initiallyFollowing={false}
-                  initiallyRequested={false}
-                  label={followCtaLabel}
-                />
+                <FollowButton targetUserId={post.user_id} initiallyFollowing={false} initiallyRequested={false} label={followCtaLabel} />
               ) : null}
               <PostMoreMenu postId={post.id} isMine={isMine} />
             </div>
@@ -506,9 +586,7 @@ export default async function PostPage({
 
               <div className="mt-0.5 text-[11px] text-slate-500">{formatJST(post.created_at)}</div>
 
-              {summaryLine ? (
-                <div className="mt-2 text-[12px] font-semibold text-slate-800 line-clamp-2">{summaryLine}</div>
-              ) : null}
+              {summaryLine ? <div className="mt-2 text-[12px] font-semibold text-slate-800 line-clamp-2">{summaryLine}</div> : null}
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
                 {visitedLabel ? (
@@ -581,11 +659,43 @@ export default async function PostPage({
                   ))}
                 </div>
               </div>
-              <div className="mt-2 text-[11px] text-slate-400">※ これは「この投稿の体験メモ」です（店舗の公式情報ではありません）</div>
             </div>
           ) : (
             <div className="mt-2 text-[12px] text-slate-500">まだDetailsがありません。</div>
           )}
+
+          {/* 補足 / Q&A（公開回答） */}
+          {publicReqs.length > 0 ? (
+            <div className="mt-5">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-extrabold text-slate-900">補足 / Q&A</h3>
+                <div className="text-[11px] text-slate-400">{publicReqs.length}件</div>
+              </div>
+
+              <div className="mt-2 space-y-2">
+                {publicReqs.map((r) => {
+                  const q = buildQuestionTextSafe(r);
+                  const ans = ansByReq[r.id] ?? [];
+                  return (
+                    <div key={r.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                      <div className="text-[12px] font-bold text-slate-800">
+                        Q. <span className="font-semibold">{q || "（質問）"}</span>
+                      </div>
+
+                      <div className="mt-2 space-y-2">
+                        {ans.map((a) => (
+                          <div key={a.id} className="rounded-xl bg-slate-50 px-3 py-2">
+                            <div className="text-[12px] font-bold text-slate-700">A.</div>
+                            <div className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-900">{a.body}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {/* Actions */}
