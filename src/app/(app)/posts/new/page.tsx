@@ -3,10 +3,25 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Image as ImageIcon, MapPin, X, Check, Loader2, ChevronDown, ChevronUp, Search } from "lucide-react";
+import {
+  Image as ImageIcon,
+  MapPin,
+  X,
+  Check,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  Search,
+} from "lucide-react";
 import confetti from "canvas-confetti";
 
-import { POST_TAGS, TAG_CATEGORIES, type TagCategory, findTagById, matchesTagQuery } from "@/lib/postTags";
+import {
+  POST_TAGS,
+  TAG_CATEGORIES,
+  type TagCategory,
+  findTagById,
+  matchesTagQuery,
+} from "@/lib/postTags";
 
 // =====================
 // types
@@ -30,13 +45,18 @@ type PreparedImage = {
   // UIには出さない（来店日の自動入力にのみ使う）
   exifDate?: Date | null;
 };
+
 type TimeOfDay = "day" | "night" | null;
+
+// DBに入れる型（posts.time_of_day が NOT NULL 'unknown' なので）
+type DbTimeOfDay = "day" | "night" | "unknown";
 
 function guessTimeOfDayFromDate(dt: Date): Exclude<TimeOfDay, null> {
   // ざっくり：6:00〜17:59 = day、それ以外 = night
   const h = dt.getHours();
   return h >= 6 && h <= 17 ? "day" : "night";
 }
+
 // =====================
 // utils: heic
 // =====================
@@ -395,11 +415,12 @@ export default function NewPostPage() {
 
   // visited
   const [visitedOn, setVisitedOn] = useState<string>(""); // yyyy-mm-dd
-// time of day (optional)
+
+  // time of day (optional UI state)
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(null);
-  // ユーザーが触ったか（触ったならEXIF推定で上書きしない）
   const [timeOfDayTouched, setTimeOfDayTouched] = useState(false);
-    // tags
+
+  // tags
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagCategory, setTagCategory] = useState<TagCategory>("all");
   const [tagQuery, setTagQuery] = useState("");
@@ -519,12 +540,11 @@ export default function NewPostPage() {
         if (dt && !visitedOn) {
           setVisitedOn(toYmd(dt));
         }
-          // ✅ 初期値だけ入れる：未選択で、かつユーザーが触ってない場合のみ
+        // 初期値だけ入れる：未選択で、かつユーザーが触ってない場合のみ
         if (dt && timeOfDay === null && !timeOfDayTouched) {
           setTimeOfDay(guessTimeOfDayFromDate(dt));
         }
       }
-      
     } catch (e: any) {
       setMsg(e?.message ?? "画像の前処理に失敗しました");
     } finally {
@@ -566,7 +586,6 @@ export default function NewPostPage() {
     return !!priceYenValue && priceYenValue > 0;
   }, [priceMode, priceYenValue]);
 
-  // required completeness
   const isPhotoComplete = imgs.length > 0;
   const isPlaceComplete = !!selectedPlace?.place_id;
   const isPriceOk = isPriceComplete;
@@ -699,8 +718,9 @@ export default function NewPostPage() {
 
       const visited_on = visitedOn ? visitedOn : null;
 
-      // tags: string[]
-      const tags = selectedTagIds;
+      // DB columns
+      const tag_ids = selectedTagIds;
+      const time_of_day: DbTimeOfDay = (timeOfDay ?? "unknown") as DbTimeOfDay;
 
       const { error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
@@ -723,9 +743,9 @@ export default function NewPostPage() {
         price_range,
 
         visited_on,
-        time_of_day: timeOfDay, // "day" | "night" | null
+        time_of_day,
 
-        tags,
+        tag_ids,
       });
 
       if (insErr) throw insErr;
@@ -744,8 +764,12 @@ export default function NewPostPage() {
     <main className="min-h-screen bg-orange-50 text-slate-800">
       <div className="w-full pb-32 pt-6">
         <header className="border-b border-orange-100 bg-white/70 p-3 backdrop-blur">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">New Post</h1>
-          <p className="mt-1 text-sm text-slate-600">いまの “おいしい” を、写真と一緒にふわっと残す。</p>
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+            New Post
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            いまの “おいしい” を、写真と一緒にふわっと残す。
+          </p>
           <div className="mt-3">{progressRow}</div>
         </header>
 
@@ -806,8 +830,12 @@ export default function NewPostPage() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">{imgs.length ? "写真を追加する" : "ここに写真を追加"}</div>
-                  <div className="mt-0.5 text-[12px] text-slate-500">{processing ? "変換 / 生成中…" : "タップして選択"}</div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    {imgs.length ? "写真を追加する" : "ここに写真を追加"}
+                  </div>
+                  <div className="mt-0.5 text-[12px] text-slate-500">
+                    {processing ? "変換 / 生成中…" : "タップして選択"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -832,7 +860,11 @@ export default function NewPostPage() {
                   {imgs.map((img) => (
                     <div key={img.id} className="relative shrink-0">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img.previewUrl} alt={img.label} className="h-24 w-24 rounded-2xl object-cover shadow-sm" />
+                      <img
+                        src={img.previewUrl}
+                        alt={img.label}
+                        className="h-24 w-24 rounded-2xl object-cover shadow-sm"
+                      />
                       <button
                         type="button"
                         onClick={() => removeImage(img.id)}
@@ -881,51 +913,53 @@ export default function NewPostPage() {
               </div>
             </div>
           </Section>
-{/* 昼 / 夜（任意） */}
-<Section title="" >
-  <div className="flex items-center justify-between gap-3">
-    <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
-      {[
-        { v: "day" as const, label: "昼" },
-        { v: "night" as const, label: "夜" },
-      ].map((x) => {
-        const active = timeOfDay === x.v;
-        return (
-          <button
-            key={x.v}
-            type="button"
-            onClick={() => {
-              setTimeOfDayTouched(true);
-              setTimeOfDay(x.v);
-            }}
-            className={[
-              "h-9 rounded-full px-5 text-sm font-semibold transition",
-              active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
-            ].join(" ")}
-            aria-pressed={active}
-          >
-            {x.label}
-          </button>
-        );
-      })}
-    </div>
 
-    {timeOfDay !== null ? (
-      <button
-        type="button"
-        onClick={() => {
-          setTimeOfDayTouched(true);
-          setTimeOfDay(null);
-        }}
-        className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 border border-slate-200"
-      >
-        未選択に戻す
-      </button>
-    ) : (
-      <div className="text-[12px] font-semibold text-slate-400">未選択</div>
-    )}
-  </div>
-</Section>
+          {/* 昼 / 夜（任意） */}
+          <Section title="">
+            <div className="flex items-center justify-between gap-3">
+              <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
+                {[
+                  { v: "day" as const, label: "昼" },
+                  { v: "night" as const, label: "夜" },
+                ].map((x) => {
+                  const active = timeOfDay === x.v;
+                  return (
+                    <button
+                      key={x.v}
+                      type="button"
+                      onClick={() => {
+                        setTimeOfDayTouched(true);
+                        setTimeOfDay(x.v);
+                      }}
+                      className={[
+                        "h-9 rounded-full px-5 text-sm font-semibold transition",
+                        active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
+                      ].join(" ")}
+                      aria-pressed={active}
+                    >
+                      {x.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {timeOfDay !== null ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimeOfDayTouched(true);
+                    setTimeOfDay(null);
+                  }}
+                  className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 border border-slate-200"
+                >
+                  未選択に戻す
+                </button>
+              ) : (
+                <div className="text-[12px] font-semibold text-slate-400">未選択</div>
+              )}
+            </div>
+          </Section>
+
           {/* お店（必須） */}
           <Section
             title="お店"
@@ -1227,7 +1261,7 @@ export default function NewPostPage() {
                   </div>
                 )}
 
-                {/* 絞り込み UI（チップと似せない：タブ/下線タイプ） */}
+                {/* 絞り込み UI */}
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[12px] font-semibold text-slate-600 shrink-0">絞り込み:</div>
                   <div className="flex-1 overflow-x-auto">
