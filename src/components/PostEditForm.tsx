@@ -1,3 +1,4 @@
+// src/components/PostEditForm.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -13,7 +14,6 @@ import {
   ChevronUp,
   Search,
 } from "lucide-react";
-
 import confetti from "canvas-confetti";
 
 import {
@@ -46,7 +46,7 @@ export type EditInitialPost = {
   image_variants: any[] | null;
   image_urls: string[] | null;
 
-  // ✅ editでも tags / time_of_day を持てるように（無くても動く）
+  // editでも持てる（無くても動く）
   tag_ids?: string[] | null;
   time_of_day?: DbTimeOfDay | null;
 };
@@ -66,23 +66,21 @@ type PreparedImage = {
   label: string;
   origW: number;
   origH: number;
-  exifDate?: Date | null; // UIには出さない
+  exifDate?: Date | null;
 };
 
-// 既存画像（DBにすでにあるURL）
 type ExistingImage = {
   id: string;
-  pin?: string | null;
   square?: string | null;
-  full: string; // 表示と保存の中心
-  preview: string; // UI用（square優先）
+  full: string;
+  preview: string;
 };
 
 type TimeOfDay = "day" | "night" | null;
 type DbTimeOfDay = "day" | "night" | "unknown";
 
 // =====================
-// utils: date/time
+// utils: time/date (from posts/new)
 // =====================
 function guessTimeOfDayFromDate(dt: Date): Exclude<TimeOfDay, null> {
   const h = dt.getHours();
@@ -93,22 +91,6 @@ function toYmd(dt: Date): string {
   const mm = String(dt.getMonth() + 1).padStart(2, "0");
   const dd = String(dt.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-function jstTodayKey() {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-  } catch {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
 }
 
 // =====================
@@ -157,7 +139,6 @@ function pickOutputFormat() {
   return { mime: "image/jpeg", ext: "jpg" as const };
 }
 
-/** 高品質段階縮小（半分ずつ） */
 function scaleCanvasHighQuality(src: HTMLCanvasElement, tw: number, th: number) {
   let cur = src;
   let curW = src.width;
@@ -206,7 +187,6 @@ async function canvasToFile(
   return new File([blob], `${nameBase}.${opts.ext}`, { type: opts.mime });
 }
 
-/** 中心クロップで正方形キャンバスを作る */
 function cropCenterSquare(bitmap: ImageBitmap) {
   const w = bitmap.width;
   const h = bitmap.height;
@@ -227,7 +207,6 @@ function cropCenterSquare(bitmap: ImageBitmap) {
   return canvas;
 }
 
-/** 長辺指定で（アスペクト維持で）縮小キャンバスを作る */
 function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
   const w = bitmap.width;
   const h = bitmap.height;
@@ -249,7 +228,6 @@ function resizeKeepAspect(bitmap: ImageBitmap, maxLongEdge: number) {
   return scaleCanvasHighQuality(base, tw, th);
 }
 
-/** EXIFから撮影日時を取る（来店日の自動入力にのみ使う） */
 async function parseExifDate(file: File): Promise<Date | null> {
   try {
     const mod: any = await import("exifr");
@@ -272,12 +250,6 @@ async function parseExifDate(file: File): Promise<Date | null> {
   }
 }
 
-/**
- * 画像を用意：
- * - square: 正方形（中心クロップ）→ 1080px
- * - pin   : square をさらに 160px
- * - full  : 元アスペクト維持で長辺 3072px
- */
 async function prepareImage(file: File): Promise<PreparedImage> {
   const normalized = isHeicLike(file) ? await convertHeicToJpeg(file) : file;
   const fmt = pickOutputFormat();
@@ -287,7 +259,6 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   const origH = bitmap.height;
 
   const baseName = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
   const squareBase = cropCenterSquare(bitmap);
 
   const [squareCanvas, pinCanvas, fullCanvas] = await Promise.all([
@@ -330,7 +301,6 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   };
 }
 
-/** 同時実行数を制限する簡易プール */
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>) {
   const results: R[] = new Array(items.length);
   let i = 0;
@@ -421,14 +391,13 @@ function Section({
         </div>
         {right && <div className="shrink-0">{right}</div>}
       </div>
-
       <div className="border-t border-orange-100 bg-white p-3">{children}</div>
     </section>
   );
 }
 
 // =====================
-// initial images (from DB) -> ExistingImage[]
+// initial existing images
 // =====================
 function buildExistingImages(initial: EditInitialPost): ExistingImage[] {
   const variants = Array.isArray(initial.image_variants) ? initial.image_variants : [];
@@ -439,29 +408,16 @@ function buildExistingImages(initial: EditInitialPost): ExistingImage[] {
       if (!full && !square) return null;
       const preview = square ?? full ?? "";
       const f = full ?? square ?? "";
-      return {
-        id: `existing-${idx}-${f}`,
-        pin: null,
-        square,
-        full: f,
-        preview,
-      };
+      return { id: `existing-${idx}-${f}`, square, full: f, preview };
     })
     .filter(Boolean) as ExistingImage[];
 
   if (fromVariants.length > 0) return fromVariants;
 
   const urls = Array.isArray(initial.image_urls) ? initial.image_urls : [];
-  const fromUrls: ExistingImage[] = urls
+  return urls
     .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-    .map((u, idx) => ({
-      id: `existing-url-${idx}-${u}`,
-      full: u,
-      preview: u,
-      square: null,
-      pin: null,
-    }));
-  return fromUrls;
+    .map((u, idx) => ({ id: `existing-url-${idx}-${u}`, full: u, preview: u, square: null }));
 }
 
 // =====================
@@ -471,22 +427,22 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
   const supabase = createClientComponentClient();
   const router = useRouter();
 
-  // ---- auth uid
   const [uid, setUid] = useState<string | null>(null);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, [supabase]);
 
-  // ---- core
+  // core
   const [content, setContent] = useState(initial.content ?? "");
   const [visitedOn, setVisitedOn] = useState<string>(initial.visited_on ?? "");
+
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(() => {
     const t = initial.time_of_day ?? null;
     return t === "day" ? "day" : t === "night" ? "night" : null;
   });
   const [timeOfDayTouched, setTimeOfDayTouched] = useState(false);
 
-  // recommend (same UX as new)
+  // recommend (posts/new同様)
   const [recommendSelected, setRecommendSelected] = useState<boolean>(() => initial.recommend_score != null);
   const [recommendScore, setRecommendScore] = useState<number>(() => {
     const v = typeof initial.recommend_score === "number" ? initial.recommend_score : 7.0;
@@ -494,7 +450,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     return Math.round(clamped * 10) / 10;
   });
 
-  // tags (optional)
+  // tags
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(Array.isArray(initial.tag_ids) ? initial.tag_ids : []);
   const [tagCategory, setTagCategory] = useState<TagCategory>("all");
   const [tagQuery, setTagQuery] = useState("");
@@ -537,7 +493,10 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
   const [processing, setProcessing] = useState(false);
   const [attempted, setAttempted] = useState(false);
 
-  // ---- place search debounce
+  const MAX = 9;
+  const imgCount = existingImgs.length + newImgs.length;
+
+  // place search debounce
   useEffect(() => {
     if (placeQuery.trim().length < 2) {
       setPlaceResults([]);
@@ -548,6 +507,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         setIsSearchingPlace(true);
         const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
         const data = await res.json().catch(() => ({}));
+
         const normalized: PlaceResult[] = Array.isArray(data?.results)
           ? data.results
               .map((r: any) => ({
@@ -558,6 +518,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
               .filter((r: PlaceResult) => r.place_id && r.name)
               .slice(0, 6)
           : [];
+
         setPlaceResults(normalized);
       } catch (e) {
         console.error(e);
@@ -565,10 +526,11 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         setIsSearchingPlace(false);
       }
     }, 400);
+
     return () => clearTimeout(timer);
   }, [placeQuery]);
 
-  // ---- objectURL cleanup
+  // objectURL cleanup
   const newImgsRef = useRef<PreparedImage[]>([]);
   useEffect(() => {
     newImgsRef.current = newImgs;
@@ -579,7 +541,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     };
   }, []);
 
-  // ---- paste images (Command+V)
+  // paste images
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
       const items = Array.from(e.clipboardData?.items ?? []);
@@ -598,10 +560,11 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newImgs, existingImgs, visitedOn, timeOfDay, timeOfDayTouched]);
+  }, [existingImgs, newImgs, visitedOn, timeOfDay, timeOfDayTouched]);
 
-  // ---- tags helpers
+  // tags helpers
   const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
+
   const visibleTags = useMemo(() => {
     const q = tagQuery.trim();
     if (q) return POST_TAGS.filter((t) => matchesTagQuery(t, q));
@@ -626,13 +589,12 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
       return [...removed, id];
     });
   }
+
   function removeTag(id: string) {
     setSelectedTagIds((prev) => prev.filter((x) => x !== id));
   }
 
-  // ---- images: add / remove
-  const MAX = 9;
-
+  // images add/remove
   const addImages = async (files: File[]) => {
     const currentCount = existingImgs.length + newImgs.length;
     if (currentCount >= MAX) return;
@@ -648,7 +610,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
       const prepared = await mapWithConcurrency(limited, 2, async (f) => prepareImage(f));
       setNewImgs((prev) => [...prev, ...prepared]);
 
-      // 1枚目追加タイミングで visitedOn/timeOfDay を静かに補完（未入力の場合のみ）
+      // 1枚目追加時に visitedOn を未入力なら補完
       if (!visitedOn && prepared.length > 0) {
         const dt = prepared[0]?.exifDate ?? null;
         if (dt) setVisitedOn(toYmd(dt));
@@ -666,9 +628,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     await addImages(Array.from(newFiles));
   };
 
-  const removeExistingImage = (id: string) => {
-    setExistingImgs((prev) => prev.filter((x) => x.id !== id));
-  };
+  const removeExistingImage = (id: string) => setExistingImgs((prev) => prev.filter((x) => x.id !== id));
 
   const removeNewImage = (id: string) => {
     setNewImgs((prev) => {
@@ -685,7 +645,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     if (files.length > 0) await addImages(files);
   };
 
-  // ---- derived
+  // derived
   const priceYenValue = useMemo(() => {
     const digits = onlyDigits(priceYenText);
     if (!digits) return null;
@@ -699,13 +659,13 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     return !!priceYenValue && priceYenValue > 0;
   }, [priceMode, priceYenValue]);
 
-  const imgCount = existingImgs.length + newImgs.length;
   const isPhotoComplete = imgCount > 0;
   const isPlaceComplete = !!selectedPlace?.place_id;
   const isContentComplete = content.trim().length > 0;
   const isRecommendComplete = recommendSelected;
 
-  const isAllRequiredComplete = isPhotoComplete && isPlaceComplete && isPriceComplete && isContentComplete && isRecommendComplete;
+  const isAllRequiredComplete =
+    isPhotoComplete && isPlaceComplete && isPriceComplete && isContentComplete && isRecommendComplete;
 
   const progressRow = (
     <div className="flex flex-wrap gap-2">
@@ -741,7 +701,6 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     </div>
   );
 
-  // ---- ensure places lat/lng
   const ensurePlaceWithLatLng = async (): Promise<string> => {
     if (!selectedPlace?.place_id) throw new Error("お店を選んでください。");
 
@@ -759,15 +718,12 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     return selectedPlace.place_id;
   };
 
-  // =====================
-  // submit (edit)
-  // =====================
   const submit = async () => {
     setAttempted(true);
 
     if (!uid) return setMsg("ログインしてください。");
     if (processing) return setMsg("画像を処理中です。少し待ってください。");
-    if (imgCount === 0) return setMsg("写真を追加してください。");
+    if (!imgCount) return setMsg("写真を追加してください。");
     if (!selectedPlace?.place_id) return setMsg("お店を選んでください。");
     if (!isPriceComplete)
       return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
@@ -780,10 +736,10 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     try {
       const ensuredPlaceId = await ensurePlaceWithLatLng();
 
-      // 1) 新規画像を storage にアップロード（posts/new と同じ）
+      // new images upload (same as posts/new)
       const uploadedNew = await (async () => {
         if (newImgs.length === 0) return [];
-        const CACHE = "31536000"; // 1年
+        const CACHE = "31536000";
         const bucket = supabase.storage.from("post-images");
 
         return await mapWithConcurrency(newImgs, 2, async (img) => {
@@ -821,19 +777,15 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         });
       })();
 
-      // 2) 既存保持分 + 新規分を結合して posts/new と同じカラムを生成
+      // existing keep
       const existingAsAssets = existingImgs.map((x) => ({
-        pin: x.pin ?? null,
+        pin: null,
         square: x.square ?? null,
         full: x.full,
-        // origは不明でもOK（型が許すなら null / undefined で）
       }));
 
       const image_assets = [...existingAsAssets, ...uploadedNew];
-      const image_variants = image_assets.map((x: any) => ({
-        thumb: x.square ?? x.full,
-        full: x.full,
-      }));
+      const image_variants = image_assets.map((x: any) => ({ thumb: x.square ?? x.full, full: x.full }));
       const image_urls = image_assets.map((x: any) => x.full);
 
       const cover_pin_url = image_assets[0]?.pin ?? null;
@@ -846,7 +798,6 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
       const visited_on = visitedOn ? visitedOn : null;
       const time_of_day: DbTimeOfDay = (timeOfDay ?? "unknown") as DbTimeOfDay;
 
-      // 3) edit/update にまとめて送る（posts/new 互換）
       const payload: Record<string, any> = {
         content,
 
@@ -893,12 +844,8 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
     }
   };
 
-  // =====================
-  // UI
-  // =====================
   return (
     <div className="bg-white">
-      {/* header (posts/new風) */}
       <header className="border-b border-orange-100 bg-white/70 p-3 backdrop-blur">
         <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Edit Post</h1>
         <p className="mt-1 text-sm text-slate-600">投稿を編集する（写真 / 店 / 価格 / 本文 / おすすめ度）</p>
@@ -975,9 +922,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
                 <button
                   type="button"
                   onClick={() => {
-                    // 既存は消すだけ（URLはそのまま）
                     setExistingImgs([]);
-                    // 新規は objectURL 解放して消す
                     newImgs.forEach((x) => URL.revokeObjectURL(x.previewUrl));
                     setNewImgs([]);
                   }}
@@ -1019,9 +964,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
                 ))}
               </div>
 
-              <div className="mt-2 text-[11px] text-slate-500">
-                ※「差し替え」は、消してから追加すればOK（UI的に同じ操作）
-              </div>
+              <div className="mt-2 text-[11px] text-slate-500">※差し替えは「削除して追加」でOK</div>
             </div>
           )}
         </Section>
@@ -1031,7 +974,6 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
           <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0 text-[12px] font-semibold text-slate-700">いつ行った？</div>
-
               {visitedOn ? (
                 <button
                   type="button"
@@ -1048,7 +990,6 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
             <div className="mt-2">
               <input
                 type="date"
-                name="visited_on"
                 value={visitedOn}
                 onChange={(e) => setVisitedOn(e.target.value)}
                 max={new Date().toISOString().slice(0, 10)}
@@ -1060,7 +1001,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
           </div>
         </Section>
 
-        {/* 昼 / 夜（任意） */}
+        {/* 昼 / 夜 */}
         <Section title="">
           <div className="flex items-center justify-between gap-3">
             <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
@@ -1106,7 +1047,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
           </div>
         </Section>
 
-        {/* お店（必須） */}
+        {/* お店 */}
         <Section
           title="お店"
           required
@@ -1270,7 +1211,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
           )}
         </Section>
 
-        {/* おすすめ度（必須） */}
+        {/* おすすめ度 */}
         <Section
           title="おすすめ度"
           required
@@ -1478,7 +1419,7 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         {msg && <div className="px-3 pb-3 text-sm font-semibold text-red-600">{msg}</div>}
       </form>
 
-      {/* 画面下 fixed CTA（posts/new風） */}
+      {/* fixed CTA */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         <div
           className="border-t border-orange-100 bg-white/95 p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur"
