@@ -6,7 +6,12 @@ import Link from "next/link";
 import TimelinePostList from "@/components/timeline/TimelinePostList";
 import PostsSkeleton from "@/components/PostsSkeleton";
 import SuggestFollowCard from "@/components/SuggestFollowCard";
-import { AnimatePresence, motion, useInView } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+} from "framer-motion";
 import { Lock, ChevronDown } from "lucide-react";
 
 type PostLite = any;
@@ -34,7 +39,12 @@ type SuggestMeta =
   | null
   | undefined;
 
-type ProfileLite = { id: string; display_name: string | null; avatar_url: string | null; is_public: boolean | null };
+type ProfileLite = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_public: boolean | null;
+};
 type PostRow = {
   id: string;
   user_id: string;
@@ -90,40 +100,127 @@ function EmptyState({
 }
 
 // =========================
-// White FAQ (smooth expand)
+// White FAQ (no height:auto jank)
+// - grid-rows animation avoids the "最後にカクッ" from height:auto
 // =========================
 function GuestFAQ() {
-  const items = [
-    { q: "Gourmeetとは？", a: "友達のおすすめ投稿だけで店を選べるSNSアプリです。" },
-    { q: "ログインすると何ができる？", a: "友達のフォロー、いいね、コメント、投稿、コレクション保存などが使えます。" },
-    { q: "料金はかかる？", a: "完全に無料です。" },
-    { q: "プライベート投稿は見える？", a: "非公開アカウントの投稿は、フォローが承認された人だけが見られます。" },
-  ];
+  const reduceMotion = useReducedMotion();
+
+ const items = [
+  {
+    q: "Gourmeetは何が“他と違う”の？",
+    a: "星3.5の平均評価に疲れてませんか？ Gourmeetは、遠くの誰だかわからない点数より、あなたの大切な人たちの「ここ良かった」で店を選ぶアプリです。だからこそ、行って良かった店を「大切な人に勧めたい」という気持ちで気軽に投稿できます。",
+  },
+  {
+    q: "どんな人に向いてる？",
+    a: "「外したくない」「友達の行った店を知りたい」「行きたい店をコレクションしたい」人に向いてます。",
+  },
+  {
+    q: "投稿を見るだけでも使える？",
+    a: "はい。ログインなしでも一部の公開投稿はプレビューできます（ログインすると全部の機能が使えます）。",
+  },
+  {
+    q: "店選びにどう役立つの？",
+    a: "価格感・雰囲気・おすすめ度が投稿にまとまっているので、候補の比較が一瞬でできます。",
+  },
+  {
+    q: "フォローすると相手に通知される？",
+    a: "はい、フォローしたことが相手に分かります（相手が非公開なら承認制です）。",
+  },
+  {
+    q: "非公開アカウント（鍵）って何？",
+    a: "フォローが承認された人だけに投稿を見せる設定です。友達だけに共有したい人向けです。",
+  },
+  {
+    q: "ブロックはできる？",
+    a: "できます。ブロックすると、お互いの投稿やプロフィールが表示されなくなります。",
+  },
+  {
+    q: "投稿には何を書けばいい？",
+    a: "「何が良かったか」だけでOK。写真＋店名があれば、十分おすすめになります。",
+  },
+  {
+    q: "お店情報はどうやって決まる？",
+    a: "Googleマップの店舗情報（店名・住所など）と紐づけて、投稿に表示しています。",
+  },
+  {
+    q: "発見タブって何？",
+    a: "みんなの投稿から、新しいお店やユーザーを見つけるためのタブです。",
+  },
+  {
+    q: "友達がいなくても楽しめる？",
+    a: "発見タブで雰囲気は掴めます。友達や恋人と使うと「次どこ行く？」が決めやすくなります。",
+  },
+  {
+    q: "お店検索はできる？",
+    a: "できます。店名だけでなく、駅名やジャンルなどでも探せます。",
+  },
+  {
+    q: "コレクション（保存）って何？",
+    a: "「行きたい」「あとで見返したい」投稿やお店を、自分のリストとして残せる機能です。",
+  },
+  {
+    q: "保存した店をあとから見返せる？",
+    a: "はい。自分のコレクションからいつでも見返せます。",
+  },
+  {
+    q: "位置情報は勝手に公開される？",
+    a: "勝手には公開されません。投稿に表示されるのは基本的に店情報（店名/住所など）です。",
+  },
+  {
+    q: "アカウント作成に必要なものは？",
+    a: "メールアドレスでも、Googleログインでも始められます。",
+  },
+  {
+    q: "ほんとに無料？後から課金ある？",
+    a: "現在は完全無料です。将来変更がある場合は、事前に分かる形で案内します。",
+  },
+  {
+    q: "友達に“詳しく教えて”って聞ける？",
+    a: "できます。気になる投稿に「詳細リクエスト」を送って、雰囲気やおすすめポイントを追加で聞けます。匿名でも送れるので、気軽に質問できます。",
+  },
+];
 
   const [open, setOpen] = useState<number | null>(0);
 
+  const t = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.22, ease: [0.2, 0.9, 0.2, 1] as any };
+
   return (
-    <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden">
-      <div className="px-4 pt-4 pb-2">
+    <div className="overflow-hidden rounded-2xl border border-black/[.06] bg-white">
+      <div className="px-4 pb-2 pt-4">
         <div className="text-base font-semibold text-slate-900">よくある質問</div>
       </div>
 
       <div className="divide-y divide-black/[.06]">
         {items.map((it, idx) => {
           const isOpen = open === idx;
+          const panelId = `faq-panel-${idx}`;
+          const buttonId = `faq-btn-${idx}`;
 
           return (
             <div key={idx}>
               <button
+                id={buttonId}
                 type="button"
+                aria-controls={panelId}
+                aria-expanded={isOpen}
                 onClick={() => setOpen((cur) => (cur === idx ? null : idx))}
-                className="w-full text-left px-4 py-4 hover:bg-black/[.02]"
+                className={[
+                  "w-full text-left px-4 py-4",
+                  "hover:bg-black/[.02] active:bg-black/[.03]",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400",
+                ].join(" ")}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[15px] font-semibold text-slate-900">{it.q}</div>
+                  <div className="text-[15px] font-semibold text-slate-900">
+                    {it.q}
+                  </div>
+
                   <motion.span
                     animate={{ rotate: isOpen ? 180 : 0 }}
-                    transition={{ duration: 0.25, ease: [0.2, 0.9, 0.2, 1] }}
+                    transition={t}
                     className="shrink-0 text-slate-500"
                     aria-hidden="true"
                   >
@@ -132,19 +229,37 @@ function GuestFAQ() {
                 </div>
               </button>
 
-              <AnimatePresence initial={false}>
-                {isOpen ? (
+              {/* ✅ No height:auto.
+                  We animate grid rows 0fr <-> 1fr, which is smooth + stable. */}
+              <motion.div
+                id={panelId}
+                role="region"
+                aria-labelledby={buttonId}
+                initial={false}
+                animate={{
+                  gridTemplateRows: isOpen ? "1fr" : "0fr",
+                  opacity: isOpen ? 1 : 0,
+                }}
+                transition={t}
+                className="grid px-4"
+                style={{ willChange: "grid-template-rows, opacity" }}
+              >
+                <div className="overflow-hidden">
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.35, ease: [0.2, 0.9, 0.2, 1] }}
-                    className="px-4 pb-4"
+                    initial={false}
+                    animate={{
+                      y: isOpen ? 0 : -2,
+                      filter: isOpen ? "blur(0px)" : "blur(2px)",
+                    }}
+                    transition={t}
+                    className="pb-4"
                   >
-                    <div className="text-[13px] leading-6 text-slate-600">{it.a}</div>
+                    <div className="text-[13px] leading-6 text-slate-600">
+                      {it.a}
+                    </div>
                   </motion.div>
-                ) : null}
-              </AnimatePresence>
+                </div>
+              </motion.div>
             </div>
           );
         })}
@@ -194,7 +309,11 @@ function getFirstSquareThumb(p: PostRow): string | null {
 }
 
 type PlannedTile = { big: boolean; p: PostRow };
-function planDiscoverTiles(posts: PostRow[], seed: string, opts?: { maxTiles?: number; maxBig?: number }) {
+function planDiscoverTiles(
+  posts: PostRow[],
+  seed: string,
+  opts?: { maxTiles?: number; maxBig?: number }
+) {
   const maxTiles = opts?.maxTiles ?? 12; // 3x4
   const maxBig = opts?.maxBig ?? 3;
 
@@ -283,7 +402,11 @@ function DiscoverFlipTile({
                   filter: "blur(14px) brightness(0.8)",
                   transform: "translateX(-12px) scale(1.03)",
                 }}
-                animate={{ opacity: 1, filter: "blur(0px) brightness(1)", transform: "translateX(0px) scale(1)" }}
+                animate={{
+                  opacity: 1,
+                  filter: "blur(0px) brightness(1)",
+                  transform: "translateX(0px) scale(1)",
+                }}
                 transition={{ duration: 1.05, ease: [0.2, 0.9, 0.2, 1] }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -344,7 +467,10 @@ function DiscoverGrid({
   meId: string | null;
   seed: string;
 }) {
-  const discoverBase = useMemo(() => (meId ? posts.filter((p) => p.user_id !== meId) : posts), [posts, meId]);
+  const discoverBase = useMemo(
+    () => (meId ? posts.filter((p) => p.user_id !== meId) : posts),
+    [posts, meId]
+  );
 
   const discoverGridPosts = useMemo(() => {
     const jitterWeight = 8;
@@ -448,7 +574,10 @@ function DiscoverGrid({
       </div>
 
       <div className="pb-2 pt-4 text-center text-[11px] text-slate-500">
-        <Link className="font-semibold text-orange-700 hover:underline" href={gateHref("/timeline?tab=discover")}>
+        <Link
+          className="font-semibold text-orange-700 hover:underline"
+          href={gateHref("/timeline?tab=discover")}
+        >
           発見タブで全部見る
         </Link>
       </div>
@@ -468,7 +597,9 @@ export default function FriendsTimelineClient({
   initialMeta?: SuggestMeta;
 }) {
   const [posts, setPosts] = useState<PostLite[]>(initialPosts ?? []);
-  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor ?? null);
+  const [nextCursor, setNextCursor] = useState<string | null>(
+    initialNextCursor ?? null
+  );
   const [loadingMore, setLoadingMore] = useState(false);
   const [meta, setMeta] = useState<SuggestMeta>(initialMeta ?? null);
 
@@ -529,14 +660,19 @@ export default function FriendsTimelineClient({
 
   const suggestAtIndex = useMemo(() => {
     const x = meta?.suggestAtIndex;
-    return typeof x === "number" && Number.isFinite(x) ? Math.max(0, Math.floor(x)) : 1;
+    return typeof x === "number" && Number.isFinite(x)
+      ? Math.max(0, Math.floor(x))
+      : 1;
   }, [meta]);
 
   // ✅ guest でも zero-follow でも “プレビューgrid” を取る（必要時のみ）
   useEffect(() => {
     const needPreview =
       (!meId && discoverPosts.length === 0) ||
-      (meId && followCount === 0 && (posts?.length ?? 0) === 0 && discoverPosts.length === 0);
+      (meId &&
+        followCount === 0 &&
+        (posts?.length ?? 0) === 0 &&
+        discoverPosts.length === 0);
 
     if (!needPreview) return;
     if (discoverLoading) return;
@@ -545,7 +681,9 @@ export default function FriendsTimelineClient({
       setDiscoverLoading(true);
       try {
         const params = new URLSearchParams({ limit: "60" });
-        const res = await fetch(`/api/timeline/discover?${params.toString()}`, { cache: "no-store" });
+        const res = await fetch(`/api/timeline/discover?${params.toString()}`, {
+          cache: "no-store",
+        });
         if (!res.ok) return;
         const json = await res.json();
         const arr = (json.posts ?? []) as PostRow[];
@@ -575,14 +713,20 @@ export default function FriendsTimelineClient({
 
         <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
           <div className="px-4 pt-4">
-            <div className="text-sm font-semibold text-slate-900">みんなの投稿をのぞいてみる</div>
+            <div className="text-sm font-semibold text-slate-900">
+              みんなの投稿をのぞいてみる
+            </div>
           </div>
 
           <div className="mt-3">
             {discoverLoading && discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">読み込み中...</div>
+              <div className="py-8 text-center text-xs text-slate-500">
+                読み込み中...
+              </div>
             ) : discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">表示できる投稿がありません</div>
+              <div className="py-8 text-center text-xs text-slate-500">
+                表示できる投稿がありません
+              </div>
             ) : (
               <DiscoverGrid posts={discoverPosts} meId={null} seed={`guest-welcome`} />
             )}
@@ -611,16 +755,26 @@ export default function FriendsTimelineClient({
 
         <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
           <div className="px-4 pt-4">
-            <div className="text-sm font-semibold text-slate-900">みんなの投稿をのぞいてみる</div>
+            <div className="text-sm font-semibold text-slate-900">
+              みんなの投稿をのぞいてみる
+            </div>
           </div>
 
           <div className="mt-3">
             {discoverLoading && discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">読み込み中...</div>
+              <div className="py-8 text-center text-xs text-slate-500">
+                読み込み中...
+              </div>
             ) : discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">表示できる投稿がありません</div>
+              <div className="py-8 text-center text-xs text-slate-500">
+                表示できる投稿がありません
+              </div>
             ) : (
-              <DiscoverGrid posts={discoverPosts} meId={meId} seed={`friends-welcome:${meId}`} />
+              <DiscoverGrid
+                posts={discoverPosts}
+                meId={meId}
+                seed={`friends-welcome:${meId}`}
+              />
             )}
           </div>
         </div>
