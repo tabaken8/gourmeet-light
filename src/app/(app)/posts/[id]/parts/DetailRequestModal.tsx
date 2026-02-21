@@ -130,7 +130,7 @@ export default function DetailRequestModal({
         onClick={() => setOpen(true)}
         className="inline-flex items-center rounded-full border border-orange-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:bg-orange-50"
       >
-        匿名リクエスト
+        リクエスト
       </button>
 
       {open ? (
@@ -140,9 +140,9 @@ export default function DetailRequestModal({
           <div className="absolute left-1/2 top-1/2 w-[min(560px,92vw)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
             <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-900">匿名リクエスト</div>
+                <div className="text-sm font-bold text-slate-900">リクエスト</div>
                 <div className="mt-0.5 text-[12px] text-slate-500">
-                  {placeName ? `「${placeName}」について` : "この投稿について"}、もう少し詳しく知りたい点を送れます。
+                  {placeName ? `「${placeName}」について` : "この投稿について"}、もっと知りたくなった点を匿名でリクエストできます。投稿者がリクエストを見て追記してくれるかも。気軽にリクエストしましょう！
                 </div>
               </div>
 
