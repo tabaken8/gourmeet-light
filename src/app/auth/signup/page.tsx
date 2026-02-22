@@ -490,10 +490,10 @@ export default function SignUpPage() {
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="例: たばけん"
+              placeholder="グルミート太郎"
             />
             <p className="mt-1 text-xs text-black/60">
-              タイムラインなどに表示される名前です(@つきユーザーIDとは別)。未入力の場合はメールアドレスから自動的に補完されます。
+              タイムラインなどに表示される名前です(@つきユーザーIDとは別)。
             </p>
           </label>
 

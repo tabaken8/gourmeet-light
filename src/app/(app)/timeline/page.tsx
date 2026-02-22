@@ -21,11 +21,15 @@ export default async function TimelinePage({
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isLoggedIn = !!user;
+
   return (
     <main className="min-h-screen bg-white text-slate-800">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8">
         <header className="mb-4">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Timeline</h1>
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+            Timeline
+          </h1>
           <p className="mt-1 text-sm text-slate-600"></p>
         </header>
 
@@ -57,9 +61,14 @@ export default async function TimelinePage({
               </Link>
             </div>
 
-            <p className="mt-2 text-[11px] text-slate-500">
-              {activeTab === "friends" ? "おすすめ投稿" : "気になる人を見つけられます。"}
-            </p>
+            {/* ✅ 未ログインでも discover は説明を出す / friends の「おすすめ投稿」はログイン時のみ */}
+            {(isLoggedIn || activeTab === "discover") ? (
+              <p className="mt-2 text-[11px] text-slate-500">
+                {activeTab === "friends"
+                  ? "おすすめ投稿"
+                  : "気になる人を見つけられます。"}
+              </p>
+            ) : null}
           </div>
 
           {activeTab === "friends" ? (
