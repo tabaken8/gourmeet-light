@@ -45,6 +45,7 @@ type ProfileLite = {
   avatar_url: string | null;
   is_public: boolean | null;
 };
+
 type PostRow = {
   id: string;
   user_id: string;
@@ -57,6 +58,29 @@ type PostRow = {
   cover_square_url?: string | null;
   profile?: ProfileLite | null;
 };
+
+// =========================
+// Full bleed helper (parent padding independent)
+// =========================
+function FullBleed({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={[
+        // force full viewport width even inside padded containers
+        "relative left-1/2 right-1/2 w-screen -translate-x-1/2",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </div>
+  );
+}
 
 function CTASection({
   title,
@@ -102,7 +126,9 @@ function CTASection({
 }
 
 // =========================
-// White FAQ (no height:auto jank)
+// Guest FAQ (no height:auto jank)
+// - 表記揺れ: 「なに」統一
+// - ログイン/無料/詳細リクエストを上へ
 // =========================
 function GuestFAQ() {
   const reduceMotion = useReducedMotion();
@@ -110,71 +136,71 @@ function GuestFAQ() {
   const items = [
     {
       q: "Gourmeetってなに？",
-      a: "デート、居酒屋、会食...日常のお店選びの際、グルメサイトの情報に疲れていませんか？ Gourmeetは、遠くの誰だかわからない他人がつけた点数じゃなくて、あなたの大切な人たちの「ここ良かった」に出会える、グルメ専用の新しいSNSです。あなたが行って良かった店を「大切な人に勧めたい」という気持ちで気軽に投稿できます。",
-    },
-    {
-      q: "どんな人に向いてる？",
-      a: "「友達のお気に入りのお店を知りたい」「お気に入りのお店を友達に知ってほしい」「次どこ行くか友達と相談したい」そんな人にぴったりです。外食をこれまで以上に楽しみたい人におすすめです。",
+      a: "Gourmeetは、遠くの誰だかわからない口コミよりも、あなたの大切な人たちの「ここ良かった」で店に出会える、グルメ専用SNSです。写真だけの投稿でもOK。気軽にシェアして、あとから自分のコレクションとして見返せます。",
     },
     {
       q: "投稿を見るだけでも使える？",
-      a: "はい。ログインなしでも一部の公開投稿はプレビューできます。ログインすると全部の機能が使えます。",
+      a: "はい。ログインなしでも一部の公開投稿はプレビューできます。ログインすると、フォローした人の投稿や非公開投稿（承認制）など、より自分向けのタイムラインが使えるようになります。",
     },
     {
-      q: "店選びにどう役立つの？",
-      a: "価格感・雰囲気・おすすめ度が投稿にまとまっているので、候補の比較が一瞬でできます。",
+      q: "ほんとに無料？後から課金ある？",
+      a: "いまは完全無料です。後から急に課金されることはありません。",
+    },
+    {
+      q: "アカウント作成に必要なものはなに？",
+      a: "メールアドレスまたはGoogleアカウントでサインアップできます。だれでも数秒（体感5秒）で始められます。",
+    },
+    {
+      q: "詳細リクエスト機能ってなに？",
+      a: "気になる投稿に「詳細リクエスト」を送って、雰囲気やおすすめポイントを追加で聞ける機能です。匿名でも送れるので、気軽に質問できます。",
+    },
+    {
+      q: "店選びにどう役立つ？",
+      a: "写真・店名に加えて、雰囲気や価格感などが投稿にまとまっているので、候補の比較がスムーズになります。",
+    },
+    {
+      q: "どんな人に向いてる？",
+      a: "「友達のお気に入りを知りたい」「自分のお気に入りを友達に勧めたい」「次どこ行くか一緒に考えたい」そんな人に合います。",
     },
     {
       q: "フォローすると相手に通知される？",
-      a: "はい、フォローしたことが相手に分かります。相手が非公開アカウントの場合、フォローリクエストが承認されると相手の投稿が見えるようになります。",
+      a: "はい。フォローしたことは相手に分かります。相手が非公開アカウントの場合、フォローリクエストが承認されると投稿が見えるようになります。",
     },
     {
-      q: "非公開アカウントって何？",
+      q: "非公開アカウントってなに？",
       a: "フォローが承認された人だけに投稿を見せる設定です。友達だけに共有したい人向けです。",
     },
     {
-      q: "繋がりたくない人をブロックすることはできる？",
-      a: "できます。アカウントをブロックすると、お互いの投稿やプロフィールが表示されなくなります。",
+      q: "ブロックはできる？",
+      a: "できます。ブロックすると、お互いの投稿やプロフィールが表示されなくなります。",
     },
     {
-      q: "投稿には何を書けばいい？",
-      a: "お店を訪れた際に感じたイチオシポイントやおすすめ度、豊富に用意されたお店の特徴タグなどを合わせて自由に表現できます。もちろん、簡単な一言でもOK。写真＋店名があれば、十分おすすめになります。あなただけのグルメ体験をシェアしましょう。",
+      q: "投稿にはなにを書けばいい？",
+      a: "イチオシポイントやおすすめ度、タグなどを自由に書けます。もちろん一言でもOK。写真＋店名だけでも十分おすすめになります。",
     },
     {
-      q: "投稿するとき、お店情報はどうやって入れるの？",
-      a: "店名を入力すると、Googleマップの店舗情報（店名・住所など）を自動的に取得して表示します。",
+      q: "投稿するとき、店情報はどうやって入れるの？",
+      a: "店名を入力すると、Googleマップの店舗情報（店名・住所など）を自動で取得して表示します。",
     },
     {
-      q: "発見タブって何？",
-      a: "全国の投稿から、新しいお店やユーザーを見つけるためのタブです。",
+      q: "発見タブってなに？",
+      a: "全国の公開投稿から、新しい店やユーザーを見つけるためのタブです。",
     },
     {
       q: "友達がいなくても楽しめる？",
-      a: "発見タブで雰囲気は掴めます。友達や家族、恋人と一緒に使うとさらに楽しめます！",
+      a: "発見タブで雰囲気は掴めます。友達や家族、恋人と一緒に使うとさらに楽しくなります。",
     },
     {
       q: "お店検索はできる？",
-      a: "できます。検索機能では、エリアや駅名、ジャンルやお店の特徴タグなど、豊富な条件を使った絞り込みが可能です。今日のあなたに一番合ったお店を簡単に見つけられます！",
+      a: "できます。エリアや駅名、ジャンルやタグなど、条件を組み合わせて絞り込めます。",
     },
     {
-      q: "コレクションって何？",
-      a: "「行きたい」「あとで見返したい」投稿やお店を、目的別に自分専用のリストとして残しておける機能です。",
+      q: "コレクションってなに？",
+      a: "「行きたい」「あとで見返したい」投稿やお店を、自分専用のリストとして保存できる機能です。",
     },
     {
       q: "保存した店をあとから見返せる？",
       a: "はい。自分のコレクションからいつでも見返せます。",
-    },
-    {
-      q: "アカウント作成に必要なものは？",
-      a: "メールアドレスまたはGoogleアカウントによるサインアップに対応しています。どちらも数秒で完了します！",
-    },
-    {
-      q: "ほんとに無料？後から課金ある？",
-      a: "完全無料です。",
-    },
-    {
-      q: "友達に“詳しく教えて”って聞ける？",
-      a: "できます。気になる投稿に「詳細リクエスト」を送って、雰囲気やおすすめポイントを追加で聞けます。匿名でも送れるので、気軽に質問できます。",
     },
   ];
 
@@ -220,7 +246,9 @@ function GuestFAQ() {
                 ].join(" ")}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[15px] font-semibold text-slate-900">{it.q}</div>
+                  <div className="text-[15px] font-semibold text-slate-900">
+                    {it.q}
+                  </div>
 
                   <motion.span
                     animate={{ rotate: isOpen ? 180 : 0 }}
@@ -256,7 +284,9 @@ function GuestFAQ() {
                     transition={t}
                     className="pb-4"
                   >
-                    <div className="text-[13px] leading-6 text-slate-600">{it.a}</div>
+                    <div className="text-[13px] leading-6 text-slate-600">
+                      {it.a}
+                    </div>
                   </motion.div>
                 </div>
               </motion.div>
@@ -484,7 +514,10 @@ function DiscoverGrid({
   }, [discoverBase, seed]);
 
   const discoverTiles = useMemo(() => {
-    return planDiscoverTiles(discoverGridPosts, seed, { maxTiles: 12, maxBig: 3 });
+    return planDiscoverTiles(discoverGridPosts, seed, {
+      maxTiles: 12,
+      maxBig: 3,
+    });
   }, [discoverGridPosts, seed]);
 
   const [discoverSlots, setDiscoverSlots] = useState<DiscoverSlot[]>([]);
@@ -584,6 +617,9 @@ function DiscoverGrid({
   );
 }
 
+// =========================
+// FriendsTimelineClient
+// =========================
 export default function FriendsTimelineClient({
   meId,
   initialPosts,
@@ -602,6 +638,7 @@ export default function FriendsTimelineClient({
   const [loadingMore, setLoadingMore] = useState(false);
   const [meta, setMeta] = useState<SuggestMeta>(initialMeta ?? null);
 
+  // guest/zero-follow 共通：discover grid 投稿
   const [discoverPosts, setDiscoverPosts] = useState<PostRow[]>([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
 
@@ -663,6 +700,7 @@ export default function FriendsTimelineClient({
       : 1;
   }, [meta]);
 
+  // guest でも zero-follow でも “プレビューgrid” を取る（必要時のみ）
   useEffect(() => {
     const needPreview =
       (!meId && discoverPosts.length === 0) ||
@@ -691,64 +729,78 @@ export default function FriendsTimelineClient({
     })();
   }, [meId, followCount, posts, discoverPosts.length, discoverLoading]);
 
-  // ✅ 未ログイン：ヘッダーを大きく＆枠なし → フルブリードgrid → FAQ → 下に導線
+  // -------------------------
+  // Views
+  // -------------------------
+
+  // ✅ 未ログイン：枠なし説明 → 上にログイン導線 → 端までgrid → FAQ
   if (!meId) {
     return (
       <div className="flex flex-col gap-4">
-        {/* ✅ 枠/角丸なし（ダサい外枠撤去） */}
+        {/* 先頭説明（枠なし） */}
         <div className="px-1">
-          <div className="text-[22px] leading-tight font-extrabold text-slate-900">
+          <div className="text-[24px] leading-tight font-extrabold text-slate-900">
             ようこそGourmeetへ！
           </div>
 
           <div className="mt-2 text-[14px] leading-6 text-slate-600">
-            Gourmeet(グルミート)は、「グルメサイトの平均点」や「誰だかわからない口コミ」よりも、あなたの身近な人たちの
-            <span className="font-semibold text-slate-900"> “ここ良かった” </span>
-            でお店に出会える、グルメ専用SNSです。
+            Gourmeetは、<span className="font-semibold text-slate-900">あなたの大切な人たち</span>の
+            「ここ良かった」で店が見つかる、グルメ専用SNSです。
             <br />
             <br />
-            お店を探すときには、身近な人たちが投稿してくれている写真・店名・雰囲気・価格感がまとまった投稿を眺めるだけで候補が絞れて、
-            お気に入りのお店は「大切な人に勧めたい」という気持ちで気軽にシェアできます。
+            投稿は<strong className="text-slate-900">写真だけでもOK</strong>。気軽にシェアして、
+            あとから自分のコレクションとしても見返せます。
+            <br />
+            <span className="text-slate-500">※ 掲載されるのは公開設定の投稿のみです。</span>
           </div>
         </div>
 
-        {/* ✅ フルブリード（モバイル端まで） */}
-        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
-          <div className="mt-0">
-            {discoverLoading && discoverPosts.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-500">
-                読み込み中...
-              </div>
-            ) : discoverPosts.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-500">
-                表示できる投稿がありません
-              </div>
-            ) : (
-              <div className="-mx-4 md:mx-0">
-                <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
-                  <DiscoverGrid posts={discoverPosts} meId={null} seed="guest-welcome" />
-                </div>
-              </div>
-            )}
+        {/* ログイン/サインアップ導線（上へ） */}
+        <div className="rounded-2xl border border-black/[.06] bg-white p-5">
+          <div className="text-sm font-semibold text-slate-900">
+            だれでも<strong className="text-slate-900">5秒</strong>で無料サインアップ
+          </div>
+          <div className="mt-1 text-[13px] leading-6 text-slate-600">
+            メールアドレス or Googleで、すぐ始められます。
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/auth/signup"
+              className="inline-flex items-center justify-center rounded-full bg-orange-700 px-4 py-2 text-sm font-semibold !text-white hover:bg-orange-800"
+            >
+              アカウント作成
+            </Link>
+            <Link
+              href="/auth/login"
+              className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-200"
+            >
+              ログイン
+            </Link>
           </div>
         </div>
+
+        {/* ✅ 端まで表示（Searchと同じ “余白ゼロ感”） */}
+        <FullBleed className="md:relative md:left-auto md:right-auto md:w-auto md:translate-x-0">
+          {discoverLoading && discoverPosts.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-500">読み込み中...</div>
+          ) : discoverPosts.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-500">
+              表示できる投稿がありません
+            </div>
+          ) : (
+            <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
+              <DiscoverGrid posts={discoverPosts} meId={null} seed="guest-welcome" />
+            </div>
+          )}
+        </FullBleed>
 
         <GuestFAQ />
-
-        {/* ✅ 導線は最後に */}
-        <CTASection
-          title="続きはログインして見る"
-          desc="フォローや非公開投稿、コレクションなど、Gourmeetを“自分のもの”として育てられます。"
-          primaryHref="/auth/signup"
-          primaryLabel="アカウント作成"
-          secondaryHref="/auth/login"
-          secondaryLabel="ログイン"
-        />
       </div>
     );
   }
 
-  // ✅ フォローゼロ：welcome + suggestion + フルブリードgrid
+  // ✅ フォローゼロ：welcome + suggestion + grid + 導線
   if (followCount === 0 && (posts?.length ?? 0) === 0) {
     return (
       <div className="flex flex-col gap-4">
@@ -758,35 +810,29 @@ export default function FriendsTimelineClient({
           </div>
           <div className="mt-2 text-sm leading-6 text-slate-600">
             まずは発見タブで、友達や気になる人をフォローしてタイムラインを育ててみましょう。
-            少人数でも「行く店が決まる」感覚が出てきます。
           </div>
         </div>
 
         {suggestBlock ? <div>{suggestBlock}</div> : null}
 
-        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
-          <div className="mt-0">
-            {discoverLoading && discoverPosts.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-500">
-                読み込み中...
-              </div>
-            ) : discoverPosts.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-500">
-                表示できる投稿がありません
-              </div>
-            ) : (
-              <div className="-mx-4 md:mx-0">
-                <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
-                  <DiscoverGrid
-                    posts={discoverPosts}
-                    meId={meId}
-                    seed={`friends-welcome:${meId}`}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* ここも同様に端までOK（好み） */}
+        <FullBleed className="md:relative md:left-auto md:right-auto md:w-auto md:translate-x-0">
+          {discoverLoading && discoverPosts.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-500">読み込み中...</div>
+          ) : discoverPosts.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-500">
+              表示できる投稿がありません
+            </div>
+          ) : (
+            <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
+              <DiscoverGrid
+                posts={discoverPosts}
+                meId={meId}
+                seed={`friends-welcome:${meId}`}
+              />
+            </div>
+          )}
+        </FullBleed>
 
         <CTASection
           title="友達を探してフォローする"
