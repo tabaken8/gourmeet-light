@@ -564,17 +564,17 @@ export default async function PostPage({
         {/* 投稿サマリー */}
         <section className="border-b border-black/[.06] px-4 py-4">
           <div className="flex items-start gap-3 min-w-0">
-            <Link
-              href={`/u/${post.user_id}`}
-              className="gm-press flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700 ring-1 ring-black/[.06]"
-            >
-              {avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatar} alt="" className="h-full w-full object-cover" />
-              ) : (
-                initial
-              )}
-            </Link>
+<Link
+  href={`/u/${post.user_id}`}
+  className="gm-press flex h-10 w-10 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700 ring-1 ring-black/[.06]"
+>
+  {avatar ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={avatar} alt="" className="h-full w-full object-cover" />
+  ) : (
+    initial
+  )}
+</Link>
 
             <div className="min-w-0">
               <div className="flex items-center gap-1 min-w-0">

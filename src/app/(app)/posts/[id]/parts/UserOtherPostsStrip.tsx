@@ -54,7 +54,7 @@ function miniMeta(p: MiniPost): string {
 
 export default function UserOtherPostsStrip({
   title,
-  currentPostId,
+  currentPostId, // 現状未使用だけど残してOK
   initialTab,
   genreLabel,
   recent,
@@ -82,7 +82,8 @@ export default function UserOtherPostsStrip({
         onClick={() => !disabled && setTab(id)}
         disabled={!!disabled}
         className={[
-          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition",
+          // ✅ 折り返し禁止 & 縮まない
+          "shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition",
           disabled
             ? "border-slate-200 bg-white text-slate-300"
             : active
@@ -90,8 +91,9 @@ export default function UserOtherPostsStrip({
               : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
         ].join(" ")}
       >
-        {icon}
-        {label}
+        {/* アイコンも縮まない */}
+        <span className="shrink-0">{icon}</span>
+        <span className="whitespace-nowrap">{label}</span>
       </button>
     );
   };
@@ -99,17 +101,22 @@ export default function UserOtherPostsStrip({
   return (
     <section className="gm-card overflow-hidden">
       <div className="border-b border-black/[.06] bg-white px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-extrabold text-slate-900">{title}</div>
+        {/* ✅ 左は省略、右は死守 */}
+        <div className="flex items-center gap-3">
+          {/* ✅ min-w-0 + truncate で「左が伸びても右を圧迫しない」 */}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-extrabold text-slate-900">{title}</div>
+          </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {tabChip("genre", genreLabel ? `同じジャンル` : "同じジャンル", <Tag size={14} />, !genreLabel)}
+          {/* ✅ 右側は縮まない。入り切らなければ横スクロール */}
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto">
+            {tabChip("genre", "同じジャンル", <Tag size={14} />, !genreLabel)}
             {tabChip("recent", "最近", <Clock size={14} />)}
           </div>
         </div>
 
         {tab === "genre" && genreLabel ? (
-          <div className="mt-1 text-[12px] text-slate-500">ジャンル: {genreLabel}</div>
+          <div className="mt-1 truncate text-[12px] text-slate-500">ジャンル: {genreLabel}</div>
         ) : null}
       </div>
 
