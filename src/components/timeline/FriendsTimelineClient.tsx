@@ -58,7 +58,7 @@ type PostRow = {
   profile?: ProfileLite | null;
 };
 
-function EmptyState({
+function CTASection({
   title,
   desc,
   primaryHref,
@@ -76,9 +76,11 @@ function EmptyState({
   return (
     <div className="rounded-2xl border border-black/[.06] bg-white p-6">
       <div className="text-base font-semibold text-slate-900">{title}</div>
-      {desc ? <div className="mt-2 text-sm text-slate-600">{desc}</div> : null}
+      {desc ? (
+        <div className="mt-2 text-sm leading-6 text-slate-600">{desc}</div>
+      ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         <Link
           href={primaryHref}
           className="inline-flex items-center justify-center rounded-full bg-orange-700 px-4 py-2 text-sm font-semibold !text-white hover:bg-orange-800"
@@ -101,7 +103,6 @@ function EmptyState({
 
 // =========================
 // White FAQ (no height:auto jank)
-// - grid-rows animation avoids the "最後にカクッ" from height:auto
 // =========================
 function GuestFAQ() {
   const reduceMotion = useReducedMotion();
@@ -137,7 +138,7 @@ function GuestFAQ() {
     },
     {
       q: "投稿には何を書けばいい？",
-      a: "お店を訪れた際に感じたイチオシポイントやおすすめ度、豊富に用意されたお店の特徴タグなどを合わせて自由に表現できます。もちろん、簡単な一言でもOK。写真＋店名があれば、十分おすすめになります。あなただけのグルメ体験をシェアしてください！",
+      a: "お店を訪れた際に感じたイチオシポイントやおすすめ度、豊富に用意されたお店の特徴タグなどを合わせて自由に表現できます。もちろん、簡単な一言でもOK。写真＋店名があれば、十分おすすめになります。あなただけのグルメ体験をシェアしましょう。",
     },
     {
       q: "投稿するとき、お店情報はどうやって入れるの？",
@@ -177,8 +178,6 @@ function GuestFAQ() {
     },
   ];
 
-  // ✅ 複数開閉できるように Set に変更
-  // 初期で最初だけ開けておきたいなら new Set([0]) / 全部閉じたいなら new Set()
   const [openSet, setOpenSet] = useState<Set<number>>(() => new Set([0]));
 
   const t = reduceMotion
@@ -221,9 +220,7 @@ function GuestFAQ() {
                 ].join(" ")}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[15px] font-semibold text-slate-900">
-                    {it.q}
-                  </div>
+                  <div className="text-[15px] font-semibold text-slate-900">{it.q}</div>
 
                   <motion.span
                     animate={{ rotate: isOpen ? 180 : 0 }}
@@ -236,8 +233,6 @@ function GuestFAQ() {
                 </div>
               </button>
 
-              {/* ✅ No height:auto.
-                  We animate grid rows 0fr <-> 1fr, which is smooth + stable. */}
               <motion.div
                 id={panelId}
                 role="region"
@@ -261,9 +256,7 @@ function GuestFAQ() {
                     transition={t}
                     className="pb-4"
                   >
-                    <div className="text-[13px] leading-6 text-slate-600">
-                      {it.a}
-                    </div>
+                    <div className="text-[13px] leading-6 text-slate-600">{it.a}</div>
                   </motion.div>
                 </div>
               </motion.div>
@@ -562,7 +555,6 @@ function DiscoverGrid({
 
   return (
     <div className="w-full">
-      {/* 線は “gap” + 親bg で作る（外周も1px） */}
       <div className="bg-black/[.06] p-[1px]">
         <div className="grid grid-cols-3 gap-[1px] md:gap-[2px] [grid-auto-flow:dense]">
           {discoverSlots.map((slot, slotIndex) => {
@@ -610,7 +602,6 @@ export default function FriendsTimelineClient({
   const [loadingMore, setLoadingMore] = useState(false);
   const [meta, setMeta] = useState<SuggestMeta>(initialMeta ?? null);
 
-  // ✅ guest/zero-follow 共通：discover grid 投稿
   const [discoverPosts, setDiscoverPosts] = useState<PostRow[]>([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
 
@@ -672,7 +663,6 @@ export default function FriendsTimelineClient({
       : 1;
   }, [meta]);
 
-  // ✅ guest でも zero-follow でも “プレビューgrid” を取る（必要時のみ）
   useEffect(() => {
     const needPreview =
       (!meId && discoverPosts.length === 0) ||
@@ -701,90 +691,111 @@ export default function FriendsTimelineClient({
     })();
   }, [meId, followCount, posts, discoverPosts.length, discoverLoading]);
 
-  // -------------------------
-  // Views
-  // -------------------------
-
-  // ✅ 未ログイン：welcome + grid + faq
+  // ✅ 未ログイン：ヘッダーを大きく＆枠なし → フルブリードgrid → FAQ → 下に導線
   if (!meId) {
     return (
       <div className="flex flex-col gap-4">
-        <EmptyState
-          title="ようこそGourmeetへ！まずは雰囲気をのぞいてみましょう"
-          desc="ログインすると、投稿/フォロー/いいね/コレクションなど様々な機能が使えるようになります。"
-          primaryHref="/auth/login"
-          primaryLabel="ログイン"
-          secondaryHref="/auth/signup"
-          secondaryLabel="アカウント作成"
-        />
-
-        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
-          <div className="px-4 pt-4">
-            <div className="text-sm font-semibold text-slate-900">
-              みんなの投稿をのぞいてみる
-            </div>
+        {/* ✅ 枠/角丸なし（ダサい外枠撤去） */}
+        <div className="px-1">
+          <div className="text-[22px] leading-tight font-extrabold text-slate-900">
+            ようこそGourmeetへ！
           </div>
 
-          <div className="mt-3">
+          <div className="mt-2 text-[14px] leading-6 text-slate-600">
+            Gourmeet(グルミート)は、「グルメサイトの平均点」や「誰だかわからない口コミ」よりも、あなたの身近な人たちの
+            <span className="font-semibold text-slate-900"> “ここ良かった” </span>
+            でお店に出会える、グルメ専用SNSです。
+            <br />
+            <br />
+            お店を探すときには、身近な人たちが投稿してくれている写真・店名・雰囲気・価格感がまとまった投稿を眺めるだけで候補が絞れて、
+            お気に入りのお店は「大切な人に勧めたい」という気持ちで気軽にシェアできます。
+          </div>
+        </div>
+
+        {/* ✅ フルブリード（モバイル端まで） */}
+        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
+          <div className="mt-0">
             {discoverLoading && discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">
+              <div className="py-10 text-center text-xs text-slate-500">
                 読み込み中...
               </div>
             ) : discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">
+              <div className="py-10 text-center text-xs text-slate-500">
                 表示できる投稿がありません
               </div>
             ) : (
-              <DiscoverGrid posts={discoverPosts} meId={null} seed={`guest-welcome`} />
+              <div className="-mx-4 md:mx-0">
+                <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
+                  <DiscoverGrid posts={discoverPosts} meId={null} seed="guest-welcome" />
+                </div>
+              </div>
             )}
           </div>
         </div>
 
         <GuestFAQ />
+
+        {/* ✅ 導線は最後に */}
+        <CTASection
+          title="続きはログインして見る"
+          desc="フォローや非公開投稿、コレクションなど、Gourmeetを“自分のもの”として育てられます。"
+          primaryHref="/auth/signup"
+          primaryLabel="アカウント作成"
+          secondaryHref="/auth/login"
+          secondaryLabel="ログイン"
+        />
       </div>
     );
   }
 
-  // ✅ フォローゼロ：welcome + suggestion + grid
+  // ✅ フォローゼロ：welcome + suggestion + フルブリードgrid
   if (followCount === 0 && (posts?.length ?? 0) === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <EmptyState
-          title="ようこそGourmeetへ！まずは発見タブから友達をフォローしてみましょう。"
-          desc=""
+        <div className="rounded-2xl border border-black/[.06] bg-white p-6">
+          <div className="text-base font-semibold text-slate-900">
+            ようこそGourmeetへ
+          </div>
+          <div className="mt-2 text-sm leading-6 text-slate-600">
+            まずは発見タブで、友達や気になる人をフォローしてタイムラインを育ててみましょう。
+            少人数でも「行く店が決まる」感覚が出てきます。
+          </div>
+        </div>
+
+        {suggestBlock ? <div>{suggestBlock}</div> : null}
+
+        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
+          <div className="mt-0">
+            {discoverLoading && discoverPosts.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-500">
+                読み込み中...
+              </div>
+            ) : discoverPosts.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-500">
+                表示できる投稿がありません
+              </div>
+            ) : (
+              <div className="-mx-4 md:mx-0">
+                <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
+                  <DiscoverGrid
+                    posts={discoverPosts}
+                    meId={meId}
+                    seed={`friends-welcome:${meId}`}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <CTASection
+          title="友達を探してフォローする"
+          desc="検索からユーザーを見つけたり、発見タブで新しい投稿を追いかけられます。"
           primaryHref="/search"
           primaryLabel="友達を検索する"
           secondaryHref="/timeline?tab=discover"
           secondaryLabel="発見してみる"
         />
-
-        {suggestBlock ? <div>{suggestBlock}</div> : null}
-
-        <div className="rounded-2xl border border-black/[.06] bg-white overflow-hidden p-0">
-          <div className="px-4 pt-4">
-            <div className="text-sm font-semibold text-slate-900">
-              みんなの投稿をのぞいてみる
-            </div>
-          </div>
-
-          <div className="mt-3">
-            {discoverLoading && discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">
-                読み込み中...
-              </div>
-            ) : discoverPosts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">
-                表示できる投稿がありません
-              </div>
-            ) : (
-              <DiscoverGrid
-                posts={discoverPosts}
-                meId={meId}
-                seed={`friends-welcome:${meId}`}
-              />
-            )}
-          </div>
-        </div>
       </div>
     );
   }
@@ -794,7 +805,7 @@ export default function FriendsTimelineClient({
     return (
       <div className="flex flex-col gap-4">
         {suggestBlock}
-        <EmptyState
+        <CTASection
           title="まだ友達の投稿がありません"
           desc="まずは気になる人をフォローして、タイムラインを育てよう。"
           primaryHref="/search"
@@ -806,10 +817,10 @@ export default function FriendsTimelineClient({
     );
   }
 
-  // 投稿が0件で、サジェストも無い（フォローはあるが投稿がない等）
+  // 投稿が0件で、サジェストも無い
   if ((posts?.length ?? 0) === 0) {
     return (
-      <EmptyState
+      <CTASection
         title="フォロー中の人の投稿がまだありません"
         desc="フォローを増やすか、しばらくしてからまた見に来てね。"
         primaryHref="/search"
