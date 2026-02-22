@@ -737,10 +737,10 @@ export default function FriendsTimelineClient({
   if (!meId) {
     return (
       <div className="flex flex-col gap-4">
-        {/* 先頭説明（枠なし） */}
-        <div className="px-1">
-          <div className="text-[24px] leading-tight font-extrabold text-slate-900">
-            ようこそGourmeetへ！
+{/* 先頭説明（枠なし） */}
+<div className="mt-2 px-1">
+  <div className="text-[24px] leading-tight font-extrabold text-slate-900">
+    ようこそGourmeetへ！
           </div>
 
   <div className="mt-2 text-[14px] leading-6 text-slate-600">

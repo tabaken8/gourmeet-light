@@ -885,7 +885,7 @@ export default function TimelineFeed({
                       href={`/posts/${p.id}`}
                       className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-orange-700 hover:underline"
                     >
-                      詳細
+                      お店の詳細
                     </Link>
 
                     <span className="gm-chip inline-flex items-center px-2 py-1 text-[11px] text-slate-500">

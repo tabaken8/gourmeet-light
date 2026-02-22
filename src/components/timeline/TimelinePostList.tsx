@@ -435,7 +435,7 @@ export default function TimelinePostList({
                       href={`/posts/${p.id}`}
                       className="gm-chip inline-flex items-center px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:underline"
                     >
-                      詳細
+                      お店の詳細
                     </Link>
 
                     <span className="gm-chip inline-flex items-center px-3 py-1.5 text-[12px] text-slate-500">
