@@ -756,7 +756,7 @@ export default function FriendsTimelineClient({
         {/* ログイン/サインアップ導線（上へ） */}
         <div className="rounded-2xl border border-black/[.06] bg-white p-5">
           <div className="text-sm font-semibold text-slate-900">
-            だれでも<strong className="text-slate-900">5秒</strong>で無料サインアップ
+            だれでも5秒でサインアップ
           </div>
           <div className="mt-1 text-[13px] leading-6 text-slate-600">
             メールアドレス or Googleからから、すぐ始められます。
