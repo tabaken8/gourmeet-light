@@ -722,7 +722,7 @@ export default function NewPostPage() {
       const tag_ids = selectedTagIds;
       const time_of_day: DbTimeOfDay = (timeOfDay ?? "unknown") as DbTimeOfDay;
 
-      const { error: insErr } = await supabase.from("posts").insert({
+      const { data: inserted, error: insErr } = await supabase.from("posts").insert({
         user_id: uid,
         content,
 
@@ -746,9 +746,14 @@ export default function NewPostPage() {
         time_of_day,
 
         tag_ids,
-      });
+      }).select("id").single();
 
       if (insErr) throw insErr;
+
+      // 埋め込みベクトル生成（非同期・fire-and-forget）
+      if (inserted?.id) {
+        fetch(`/api/posts/${inserted.id}/embed`, { method: "POST" }).catch(() => {});
+      }
 
       confetti({ particleCount: 60, spread: 80, origin: { y: 0.7 } });
       router.push("/timeline");

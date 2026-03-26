@@ -1,10 +1,10 @@
 // src/app/(app)/search/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, TrainFront } from "lucide-react";
+import { HelpCircle, Search, Sparkles, TrainFront, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -151,10 +151,23 @@ export default function SearchPage() {
   const [q, setQ] = useState("");
   const [followOnly, setFollowOnly] = useState(false);
 
+  // --- @mention サジェスト ---
+  const [mentionSuggestions, setMentionSuggestions] = useState<{ id: string; username: string | null; display_name: string | null; avatar_url: string | null }[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // --- ヒントパネル ---
+  const [hintsOpen, setHintsOpen] = useState(false);
+
   // --- location ---
   const [mode, setMode] = useState<SearchMode>("geo");
   const [stationPlaceId, setStationPlaceId] = useState<string | null>(null);
   const [stationName, setStationName] = useState<string | null>(null);
+
+  // --- 結果モード（ユーザーが選ぶのではなく自動決定）---
+  // "ai"      = テキスト/ジャンルあり → セマンティック検索
+  // "keyword" = 駅のみ → キーワード検索（ブラウズ）
+  const [resultMode, setResultMode] = useState<"ai" | "keyword" | null>(null);
 
   // --- genre ---
   const [genre, setGenre] = useState("");
@@ -179,6 +192,18 @@ export default function SearchPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nudge, setNudge] = useState<any>(null);
+
+  // AI 検索結果 - キーワード結果とは別管理
+  const [semanticPosts, setSemanticPosts] = useState<PostRow[]>([]);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const [semanticError, setSemanticError] = useState<string | null>(null);
+  // LLM の返答テキスト
+  const [aiMessage, setAiMessage] = useState<string | null>(null);
+  // クエリから自動検出された駅情報
+  const [detectedStation, setDetectedStation] = useState<{ name: string; placeId: string } | null>(null);
+  // クエリから自動検出されたユーザー情報
+  const [detectedAuthor, setDetectedAuthor] = useState<{ username: string; displayName: string | null } | null>(null);
+  const [mentionNotFound, setMentionNotFound] = useState(false);
 
   // --- empty 時の遅延描画 ---
   const [showDiscover, setShowDiscover] = useState(false);
@@ -243,6 +268,57 @@ export default function SearchPage() {
       window.setTimeout(() => setShowDiscover(true), 220);
     return () => { anyWin.cancelIdleCallback?.(id); clearTimeout(id); };
   }, [isEmpty]);
+
+  // -------- AI チャット検索（tool use ループ）--------
+  async function loadAiChat(args: {
+    q: string;
+    follow: boolean;
+    stationId: string | null;
+    stationName: string | null;
+    genre: string;
+  }) {
+    const q = args.q.trim();
+    const genre = args.genre.trim();
+    const combined = [genre, q].filter(Boolean).join(" ");
+    if (!combined) return;
+
+    setSemanticLoading(true);
+    setSemanticError(null);
+    setSemanticPosts([]);
+    setAiMessage(null);
+    setDetectedStation(null);
+    setDetectedAuthor(null);
+    setMentionNotFound(false);
+
+    try {
+      // 明示的に選ばれた駅があればクエリに含める
+      const queryText = args.stationId
+        ? combined
+        : combined;
+
+      const res = await fetch("/api/search/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          q: queryText,
+          follow: args.follow,
+          // 明示的な駅指定は LLM に伝えず stationId として別途渡す方式も可だが
+          // 自然言語クエリ内に地名があれば LLM が自動解決するのでこのまま
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? `Error ${res.status}`);
+
+      setSemanticPosts(Array.isArray(payload?.posts) ? payload.posts : []);
+      if (payload?.message) setAiMessage(payload.message);
+      if (payload?.detectedStation) setDetectedStation(payload.detectedStation);
+      if (payload?.detectedAuthor) setDetectedAuthor(payload.detectedAuthor);
+    } catch (e: any) {
+      setSemanticError(e?.message ?? "AI検索に失敗しました");
+    } finally {
+      setSemanticLoading(false);
+    }
+  }
 
   // -------- API 呼び出し --------
   async function loadUsers(query: string) {
@@ -364,12 +440,62 @@ export default function SearchPage() {
     setDone(false);
     setError(null);
     setNudge(null);
+    setSemanticPosts([]);
+    setSemanticLoading(false);
+    setSemanticError(null);
+    setAiMessage(null);
+    setDetectedStation(null);
+    setDetectedAuthor(null);
+    setMentionNotFound(false);
 
     if (mm !== "station" && !nq && !ng) return;
     if (mm === "station" && !next.sid) return;
 
-    if (nq) loadUsers(nq);
-    loadMoreWith({ mode: mm, stationId: next.sid ?? null, stationName: next.sname ?? null, follow: next.follow, q: nq, genre: ng }, true);
+    // テキスト or ジャンルがあれば AI 検索、駅のみならキーワード検索
+    if (nq || ng) {
+      setResultMode("ai");
+      if (nq) loadUsers(nq);
+      loadAiChat({ q: nq, genre: ng, follow: next.follow, stationId: next.sid ?? null, stationName: next.sname ?? null });
+    } else {
+      // 駅のみ → キーワードブラウズ
+      setResultMode("keyword");
+      loadMoreWith({ mode: mm, stationId: next.sid ?? null, stationName: next.sname ?? null, follow: next.follow, q: nq, genre: ng }, true);
+    }
+  };
+
+  // -------- @mention サジェスト --------
+  const fetchMentionSuggestions = useCallback((partial: string) => {
+    if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
+    mentionTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/follows/suggest?q=${encodeURIComponent(partial)}&limit=8`);
+        const payload = await res.json().catch(() => ({}));
+        const users = Array.isArray(payload?.users) ? payload.users : [];
+        setMentionSuggestions(users);
+        setMentionOpen(users.length > 0);
+      } catch {
+        setMentionOpen(false);
+      }
+    }, 120);
+  }, []);
+
+  const handleQChange = (value: string) => {
+    setQ(value);
+    // 入力末尾が @xxx の形式なら mention サジェストを起動
+    const match = value.match(/@([\w]*)$/);
+    if (match) {
+      fetchMentionSuggestions(match[1]);
+    } else {
+      setMentionOpen(false);
+    }
+  };
+
+  const selectMention = (username: string) => {
+    // 末尾の @partial を @username に置換してスペースを追加
+    const next = q.replace(/@[\w]*$/, `@${username} `);
+    setQ(next);
+    setMentionOpen(false);
+    setMentionSuggestions([]);
   };
 
   // -------- 操作ハンドラ --------
@@ -402,10 +528,10 @@ export default function SearchPage() {
     commitSearch({ q: q.trim() ? q : committedQ, genre: genre || committedGenre, follow: next, mode, sid: stationPlaceId, sname: stationName });
   };
 
-  // -------- Infinite scroll --------
+  // -------- Infinite scroll（キーワードモードのみ）--------
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!sentinelRef.current || isEmpty) return;
+    if (!sentinelRef.current || isEmpty || resultMode !== "keyword") return;
     const el = sentinelRef.current;
     const io = new IntersectionObserver(
       (entries) => {
@@ -417,7 +543,7 @@ export default function SearchPage() {
     io.observe(el);
     return () => io.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor, done, loading, isEmpty, committedQ, committedFollow, committedMode, committedStationId, committedGenre]);
+  }, [cursor, done, loading, isEmpty, resultMode, committedQ, committedFollow, committedMode, committedStationId, committedGenre]);
 
   // -------- Title --------
   const titleText = useMemo(() => {
@@ -450,28 +576,96 @@ export default function SearchPage() {
 
         {/* 検索入力 */}
         <div className="relative w-full">
-          <Search
+          <Sparkles
             size={17}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-orange-400"
           />
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
-            placeholder="お店・料理・雰囲気を検索"
-            className="w-full rounded-full border border-black/[.08] bg-white py-2.5 pl-10 pr-12 text-base font-medium outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+            onChange={(e) => handleQChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { setMentionOpen(false); handleSearch(); }
+              if (e.key === "Escape") setMentionOpen(false);
+            }}
+            onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
+            placeholder="渋谷でデートディナー、@alice のカフェ…"
+            className="w-full rounded-full border border-black/[.08] bg-white py-2.5 pl-10 pr-20 text-base font-medium outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
             inputMode="search"
             enterKeyHint="search"
           />
+          {/* ヒントボタン */}
+          <button
+            type="button"
+            onClick={() => setHintsOpen((v) => !v)}
+            aria-label="検索ヒント"
+            className={`absolute right-9 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full transition hover:bg-slate-100 ${hintsOpen ? "text-orange-500" : "text-slate-400"}`}
+          >
+            <HelpCircle size={15} />
+          </button>
           <button
             type="button"
             onClick={handleSearch}
             aria-label="検索"
-            className="absolute right-3 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+            className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
           >
             <Search size={15} />
           </button>
+
+          {/* @mention サジェストドロップダウン */}
+          {mentionOpen && mentionSuggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-black/[.08] bg-white shadow-lg">
+              {mentionSuggestions.map((u) => {
+                const name = u.display_name ?? u.username ?? "";
+                const initial = (name || "U").slice(0, 1).toUpperCase();
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onMouseDown={() => selectMention(u.username ?? "")}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 active:bg-slate-100"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
+                      {u.avatar_url
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={u.avatar_url} alt="" className="h-8 w-8 object-cover" />
+                        : initial}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
+                      {u.username && <div className="text-xs text-slate-500">@{u.username}</div>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
+
+        {/* ヒントパネル */}
+        <AnimatePresence>
+          {hintsOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3 rounded-2xl bg-orange-50 px-4 py-3 text-xs text-slate-700">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-semibold text-orange-700">✨ こんな検索ができます</span>
+                  <button type="button" onClick={() => setHintsOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
+                </div>
+                <ul className="space-y-1.5 text-slate-600">
+                  <li><span className="font-medium text-slate-800">渋谷でデートに使えるレストラン</span> — 地名 + 雰囲気で検索</li>
+                  <li><span className="font-medium text-slate-800">友達と行ける賑やかな居酒屋</span> — 自然な言葉でOK</li>
+                  <li><span className="font-medium text-slate-800">@alice のおすすめカフェ</span> — フォロー中のユーザーの投稿に絞れる</li>
+                  <li><span className="font-medium text-slate-800">@alice の東京駅近くのランチ</span> — 地名 + ユーザー指定の組み合わせも可</li>
+                </ul>
+                <div className="mt-2 text-[11px] text-slate-400">※ ソート順や「僕と合いそう」などの指示には現在対応していません</div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 場所フィルター + フォロー */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -561,48 +755,105 @@ export default function SearchPage() {
             </motion.section>
           ) : null}
 
-          {/* Posts */}
-          {loading && posts.length === 0 ? (
-            <PostsSkeleton />
-          ) : posts.length > 0 ? (
-            <motion.div {...fadeUp}>
-              <SearchPostList posts={posts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} />
-            </motion.div>
-          ) : null}
-
-          <div ref={sentinelRef} className="h-10" />
-
-          {loading && posts.length > 0 && (
-            <motion.div {...fadeUp} className="pb-8">
-              <div className="text-center text-xs text-slate-500">読み込み中...</div>
-              <div className="mt-3">
-                <Skeleton height={10} />
-                <div className="mt-2"><Skeleton height={10} /></div>
-              </div>
-            </motion.div>
-          )}
-
-          {error && !error.includes("Unauthorized") && (
-            <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600">{error}</motion.div>
-          )}
-
-          {done && posts.length > 0 && (
-            <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</motion.div>
-          )}
-
-          {/* 0件 */}
-          {!loading && posts.length === 0 && !error && (
-            <motion.div {...fadeUp} className="space-y-3 pb-10">
-              {nudge?.type === "zero_results_suggestions" && (
-                <SearchZeroResultsNudge
-                  nudge={nudge}
-                  onSearchStation={(sid, sname) =>
-                    commitSearch({ q: committedQ, genre: committedGenre, follow: committedFollow, mode: "station", sid, sname })
-                  }
-                />
+          {/* ===== AI 検索結果 ===== */}
+          {resultMode === "ai" && (
+            <>
+              {semanticLoading && (
+                <PostsSkeleton />
               )}
-              <div className="py-6 text-center text-xs text-slate-500">該当する投稿がありません。</div>
-            </motion.div>
+              {!semanticLoading && semanticError && (
+                <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600">
+                  {semanticError}
+                </motion.div>
+              )}
+              {!semanticLoading && semanticPosts.length > 0 && (
+                <motion.div {...fadeUp}>
+                  {/* LLM の返答テキスト */}
+                  {aiMessage && (
+                    <div className="mb-3 rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 px-4 py-3 text-sm text-slate-700 leading-relaxed border border-orange-100">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-orange-600">
+                        <Sparkles size={11} />
+                        <span>AI</span>
+                      </div>
+                      {aiMessage}
+                    </div>
+                  )}
+                  {/* 地名自動検出バナー */}
+                  {detectedStation && (
+                    <div className="mb-2 flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-[11px] text-sky-700 w-fit">
+                      <TrainFront size={11} className="shrink-0" />
+                      <span>{detectedStation.name}駅周辺に絞って検索しました</span>
+                    </div>
+                  )}
+                  {/* @mention 自動検出バナー */}
+                  {detectedAuthor && (
+                    <div className="mb-2 flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 text-[11px] text-violet-700 w-fit">
+                      <span>@{detectedAuthor.username}{detectedAuthor.displayName ? `（${detectedAuthor.displayName}）` : ""}の投稿に絞って検索しました</span>
+                    </div>
+                  )}
+                  <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] text-orange-600">
+                    <Sparkles size={11} />
+                    <span>類似度の高い順に表示しています</span>
+                  </div>
+                  <SearchPostList posts={semanticPosts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} />
+                </motion.div>
+              )}
+              {!semanticLoading && !semanticError && semanticPosts.length === 0 && (
+                <motion.div {...fadeUp} className="py-6 text-center text-xs text-slate-500">
+                  {mentionNotFound
+                    ? `@${committedQ.match(/@([\w]+)/)?.[1] ?? "..."} というユーザーが見つかりませんでした。`
+                    : "該当する投稿が見つかりませんでした。"}
+                </motion.div>
+              )}
+            </>
+          )}
+
+          {/* ===== キーワード検索結果（駅のみブラウズ）===== */}
+          {resultMode === "keyword" && (
+            <>
+              {loading && posts.length === 0 ? (
+                <PostsSkeleton />
+              ) : posts.length > 0 ? (
+                <motion.div {...fadeUp}>
+                  <SearchPostList posts={posts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} />
+                </motion.div>
+              ) : null}
+
+              <div ref={sentinelRef} className="h-10" />
+
+              {loading && posts.length > 0 && (
+                <motion.div {...fadeUp} className="pb-8">
+                  <div className="text-center text-xs text-slate-500">読み込み中...</div>
+                  <div className="mt-3">
+                    <Skeleton height={10} />
+                    <div className="mt-2"><Skeleton height={10} /></div>
+                  </div>
+                </motion.div>
+              )}
+
+              {error && !error.includes("Unauthorized") && (
+                <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600">{error}</motion.div>
+              )}
+
+              {done && posts.length > 0 && (
+                <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</motion.div>
+              )}
+
+              {/* 0件 */}
+              {!loading && posts.length === 0 && !error && (
+                <motion.div {...fadeUp} className="space-y-3 pb-10">
+                  {nudge?.type === "zero_results_suggestions" && (
+                    <SearchZeroResultsNudge
+                      nudge={nudge}
+                      onSearchStation={(sid, sname) =>
+                        commitSearch({ q: committedQ, genre: committedGenre, follow: committedFollow, mode: "station", sid, sname })
+                      }
+                    />
+                  )}
+                  <div className="py-6 text-center text-xs text-slate-500">該当する投稿がありません。</div>
+                </motion.div>
+              )}
+            </>
           )}
         </div>
       )}

@@ -1,6 +1,7 @@
 // src/app/(app)/posts/[id]/edit/update/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { buildEmbeddingText, generateEmbedding, toVectorString } from "@/lib/embedding";
 
 type DbTimeOfDay = "day" | "night" | "unknown";
 
@@ -63,6 +64,42 @@ function normalizeStringArrayOrNull(v: any): string[] | null {
     .filter((s) => s.length > 0);
   // 重複排除（順序維持）
   return Array.from(new Set(out));
+}
+
+// 編集後に embedding を再生成するヘルパー
+async function reembedPost(postId: string, supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: post } = await supabase
+    .from("posts")
+    .select("id, content, place_id, place_name")
+    .eq("id", postId)
+    .maybeSingle();
+  if (!post) return;
+
+  let primary_genre: string | null = null;
+  let area_label_ja: string | null = null;
+  if (post.place_id) {
+    const { data: place } = await supabase
+      .from("places")
+      .select("primary_genre, area_label_ja")
+      .eq("place_id", post.place_id)
+      .maybeSingle();
+    primary_genre = place?.primary_genre ?? null;
+    area_label_ja = place?.area_label_ja ?? null;
+  }
+
+  const text = buildEmbeddingText({
+    content: post.content,
+    place_name: post.place_name,
+    primary_genre,
+    area_label_ja,
+  });
+  if (!text.trim()) return;
+
+  const embedding = await generateEmbedding(text);
+  await supabase
+    .from("posts")
+    .update({ embedding: toVectorString(embedding) } as any)
+    .eq("id", postId);
 }
 
 function normalizeAnyArrayOrNull(v: any): any[] | null {
@@ -137,6 +174,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     const { error: upErr } = await supabase.from("posts").update(patch).eq("id", id);
     if (upErr) {
       return NextResponse.json({ ok: false, error: upErr.message }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    }
+
+    // content や place_id が変わった場合は embedding を再生成（非同期）
+    const shouldReembed = "content" in patch || "place_id" in patch;
+    if (shouldReembed) {
+      reembedPost(id, supabase).catch((e) => console.error("[edit/update] re-embed failed:", e));
     }
 
     return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
