@@ -205,6 +205,9 @@ export default function SearchPage() {
   const [detectedAuthor, setDetectedAuthor] = useState<{ username: string; displayName: string | null } | null>(null);
   const [mentionNotFound, setMentionNotFound] = useState(false);
 
+  // --- placeholder のメンション（フォロー中ユーザー）---
+  const [placeholderMention, setPlaceholderMention] = useState<string | null>(null);
+
   // --- empty 時の遅延描画 ---
   const [showDiscover, setShowDiscover] = useState(false);
 
@@ -221,6 +224,24 @@ export default function SearchPage() {
       })
       .catch(() => { if (alive) setGenreCandidates([]); })
       .finally(() => { if (alive) setGenreCandidatesLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  // ---- placeholder 用にフォロー中ユーザーを1件取得（1回だけ）----
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/follows/suggest?limit=5")
+      .then((r) => r.json().catch(() => ({})))
+      .then((payload) => {
+        if (!alive) return;
+        const users: { username: string | null }[] = Array.isArray(payload?.users) ? payload.users : [];
+        const withUsername = users.filter((u) => u.username);
+        if (!withUsername.length) return;
+        // ランダムに1人選ぶ
+        const pick = withUsername[Math.floor(Math.random() * withUsername.length)];
+        setPlaceholderMention(pick.username);
+      })
+      .catch(() => {});
     return () => { alive = false; };
   }, []);
 
@@ -545,6 +566,12 @@ export default function SearchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, done, loading, isEmpty, resultMode, committedQ, committedFollow, committedMode, committedStationId, committedGenre]);
 
+  // -------- 検索 placeholder --------
+  const searchPlaceholder = useMemo(() => {
+    const mention = placeholderMention ? `@${placeholderMention}` : "@友達";
+    return `なんでも。渋谷で軽くランチ、記念日向きの雰囲気のいいフレンチ、${mention} のおすすめラーメン…`;
+  }, [placeholderMention]);
+
   // -------- Title --------
   const titleText = useMemo(() => {
     if (isEmpty) return "";
@@ -588,7 +615,7 @@ export default function SearchPage() {
               if (e.key === "Escape") setMentionOpen(false);
             }}
             onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
-            placeholder="渋谷でデートディナー、@alice のカフェ…"
+            placeholder={searchPlaceholder}
             className="w-full rounded-full border border-black/[.08] bg-white py-2.5 pl-10 pr-20 text-base font-medium outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
             inputMode="search"
             enterKeyHint="search"
