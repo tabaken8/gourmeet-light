@@ -3,33 +3,18 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { Globe2, Lock, Plus } from "lucide-react";
+import { Globe2, Lock } from "lucide-react";
 
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
 import AlbumBlock from "./parts/AlbumBlock";
 
 import InstagramIcon from "@/components/icons/InstagramIcon";
 import XIcon from "@/components/icons/XIcon";
+import { subtractDaysKeyJST } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 // ---- utils ----
-function formatJstYmdFromIso(iso: string): string {
-  const dtf = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  return dtf.format(new Date(iso));
-}
-
-function getRepresentativeDayKey(r: any): string {
-  if (r?.visited_on) return String(r.visited_on);
-  if (r?.created_at) return formatJstYmdFromIso(String(r.created_at));
-  return "0000-00-00";
-}
-
 function cleanHandle(v: any): string {
   const s = typeof v === "string" ? v.trim() : "";
   return s.replace(/^@+/, "");
@@ -93,192 +78,51 @@ function SnsChip({
 export default async function AccountPage() {
   const supabase = await createClient();
 
-  // auth
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  // profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select(
-      "display_name, bio, avatar_url, username, is_public, instagram_username, x_username"
-    )
-    .eq("id", user.id)
-    .single();
+  const { startKey: startJstKey, startIsoUtc, todayKey: todayJstKey } = subtractDaysKeyJST(364);
 
-  const displayName =
-    profile?.display_name ?? user.email?.split("@")[0] ?? "User";
-  const bio = profile?.bio ?? "";
-  const avatarUrl =
-    profile?.avatar_url ??
-    ((user.user_metadata as any)?.avatar_url ?? "") ??
-    "";
-  const username = profile?.username ?? "";
-  const isPublic = profile?.is_public ?? true;
-
-  const instagram = cleanHandle((profile as any)?.instagram_username ?? "");
-  const x = cleanHandle((profile as any)?.x_username ?? "");
-
-  const joinedLabel = joinLabelFromCreatedAt(user.created_at);
-
-  // counts
-  const [postsQ, wantsQ, followersQ, followingQ] = await Promise.all([
+  // 全部1発で並列取得
+  const [profileRes, countsRes, earliestRes, heatmapRes] = await Promise.all([
     supabase
-      .from("posts")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id),
-    supabase
-      .from("post_wants")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id),
-    supabase
-      .from("follows")
-      .select("*", { count: "exact", head: true })
-      .eq("followee_id", user.id)
-      .eq("status", "accepted"),
-    supabase
-      .from("follows")
-      .select("*", { count: "exact", head: true })
-      .eq("follower_id", user.id)
-      .eq("status", "accepted"),
+      .from("profiles")
+      .select(
+        "display_name, bio, avatar_url, username, is_public, instagram_username, x_username"
+      )
+      .eq("id", user.id)
+      .single(),
+    supabase.rpc("get_profile_counts", { p_user_id: user.id }),
+    supabase.rpc("get_earliest_post_key", { p_user_id: user.id }),
+    supabase.rpc("get_heatmap_days", {
+      p_user_id: user.id,
+      p_start_jst: startJstKey,
+      p_today_jst: todayJstKey,
+      p_start_iso: startIsoUtc,
+      p_end_iso: new Date(Date.now() + 86400000).toISOString(),
+    }),
   ]);
 
-  const postsCount = postsQ.count ?? 0;
-  const wantsCount = wantsQ.count ?? 0;
-  const followersCount = followersQ.count ?? 0;
-  const followingCount = followingQ.count ?? 0;
+  const profile = profileRes.data;
+  const displayName = profile?.display_name ?? user.email?.split("@")[0] ?? "User";
+  const bio = profile?.bio ?? "";
+  const avatarUrl =
+    profile?.avatar_url ?? ((user.user_metadata as any)?.avatar_url ?? "") ?? "";
+  const username = profile?.username ?? "";
+  const isPublic = profile?.is_public ?? true;
+  const instagram = cleanHandle((profile as any)?.instagram_username ?? "");
+  const x = cleanHandle((profile as any)?.x_username ?? "");
+  const joinedLabel = joinLabelFromCreatedAt(user.created_at);
 
-  // earliestKey
-  let earliestKey: string | null = null;
-  {
-    const [earliestVisitedQ, earliestCreatedQ] = await Promise.all([
-      supabase
-        .from("posts")
-        .select("visited_on")
-        .eq("user_id", user.id)
-        .not("visited_on", "is", null)
-        .order("visited_on", { ascending: true })
-        .limit(1),
-      supabase
-        .from("posts")
-        .select("created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true })
-        .limit(1),
-    ]);
+  const postsCount = countsRes.data?.posts_count ?? 0;
+  const wantsCount = countsRes.data?.wants_count ?? 0;
+  const followersCount = countsRes.data?.followers_count ?? 0;
+  const followingCount = countsRes.data?.following_count ?? 0;
 
-    const v = (earliestVisitedQ.data ?? [])[0]?.visited_on
-      ? String((earliestVisitedQ.data ?? [])[0].visited_on)
-      : null;
-    const cIso = (earliestCreatedQ.data ?? [])[0]?.created_at
-      ? String((earliestCreatedQ.data ?? [])[0].created_at)
-      : null;
-    const c = cIso ? formatJstYmdFromIso(cIso) : null;
-
-    if (v && c) earliestKey = v < c ? v : c;
-    else earliestKey = v ?? c ?? null;
-  }
-
-  // heatmapDays (1 year)
-  let heatmapDays: HeatmapDay[] = [];
-  {
-    const dtf = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-
-    const today = new Date();
-    const todayJst = dtf.format(today);
-    const startJst = dtf.format(
-      new Date(today.getTime() - 364 * 24 * 60 * 60 * 1000)
-    );
-
-    const startIso = new Date(
-      Date.now() - 364 * 24 * 60 * 60 * 1000
-    ).toISOString();
-    const endIso = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString();
-
-    const { data: withVisited } = await supabase
-      .from("posts")
-      .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
-      .eq("user_id", user.id)
-      .not("visited_on", "is", null)
-      .gte("visited_on", startJst)
-      .lte("visited_on", todayJst)
-      .limit(2000);
-
-    const { data: noVisited } = await supabase
-      .from("posts")
-      .select("id, visited_on, created_at, recommend_score, image_variants, image_urls")
-      .eq("user_id", user.id)
-      .is("visited_on", null)
-      .gte("created_at", startIso)
-      .lte("created_at", endIso)
-      .limit(2000);
-
-    const rows = new Map<string, any>();
-    for (const r of withVisited ?? []) rows.set(String(r.id), r);
-    for (const r of noVisited ?? []) rows.set(String(r.id), r);
-
-    type DayPost = { id: string; thumbUrl: string | null; score: number | null };
-    type DayAcc = { date: string; count: number; maxScore: number | null; posts: DayPost[] };
-    const dayMap = new Map<string, DayAcc>();
-
-    const getThumbUrlFromPostRow = (r: any): string | null => {
-      const v = r?.image_variants;
-      if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string")
-        return v[0].thumb;
-      const urls = r?.image_urls;
-      if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string")
-        return urls[0];
-      return null;
-    };
-
-    for (const r of rows.values()) {
-      const dateKey = getRepresentativeDayKey(r);
-      if (dateKey < startJst || dateKey > todayJst) continue;
-
-      const sRaw = (r as any)?.recommend_score;
-      const score =
-        typeof sRaw === "number"
-          ? Number.isFinite(sRaw)
-            ? sRaw
-            : null
-          : typeof sRaw === "string"
-          ? Number.isFinite(Number(sRaw))
-            ? Number(sRaw)
-            : null
-          : null;
-
-      const cur: DayAcc = dayMap.get(dateKey) ?? {
-        date: dateKey,
-        count: 0,
-        maxScore: null,
-        posts: [],
-      };
-
-      cur.count += 1;
-      if (score !== null)
-        cur.maxScore = cur.maxScore === null ? score : Math.max(cur.maxScore, score);
-      cur.posts.push({ id: String(r.id), thumbUrl: getThumbUrlFromPostRow(r), score });
-
-      dayMap.set(dateKey, cur);
-    }
-
-    heatmapDays = Array.from(dayMap.values())
-      .map((d) => {
-        const sorted = d.posts
-          .slice()
-          .sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
-        const top3 = sorted.slice(0, 3).map((p) => ({ id: p.id, thumbUrl: p.thumbUrl }));
-        return { date: d.date, count: d.count, maxScore: d.maxScore, posts: top3 };
-      })
-      .sort((a, b) => (a.date < b.date ? 1 : -1));
-  }
+  const earliestKey = (earliestRes.data as string | null) ?? null;
+  const heatmapDays = (heatmapRes.data ?? []) as HeatmapDay[];
 
   const initialLetter = displayName.slice(0, 1).toUpperCase();
 
@@ -340,7 +184,6 @@ export default async function AccountPage() {
                       ) : null}
                     </div>
 
-                    {/* SNS chips */}
                     {(instagram || x) ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         <SnsChip kind="instagram" handle={instagram} />
@@ -407,19 +250,18 @@ export default async function AccountPage() {
           </section>
 
           {/* ========================= HEATMAP ========================= */}
-<Suspense
-  fallback={
-    <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm">
-      <div className="h-5 w-32 rounded bg-slate-100" />
-      <div className="mt-3 h-32 rounded border border-black/[.06] bg-white" />
-    </section>
-  }
->
-  <section className="w-full overflow-hidden rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm md:p-5">
-    <VisitHeatmap userId={user.id} days={heatmapDays} earliestKey={earliestKey} />
-  </section>
-</Suspense>
-
+          <Suspense
+            fallback={
+              <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm">
+                <div className="h-5 w-32 rounded bg-slate-100" />
+                <div className="mt-3 h-32 rounded border border-black/[.06] bg-white" />
+              </section>
+            }
+          >
+            <section className="w-full overflow-hidden rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm md:p-5">
+              <VisitHeatmap userId={user.id} days={heatmapDays} earliestKey={earliestKey} />
+            </section>
+          </Suspense>
 
           {/* ========================= POSTS (ALBUM) ========================= */}
           <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm md:p-5">
@@ -427,8 +269,6 @@ export default async function AccountPage() {
               <h2 className="text-sm font-semibold text-slate-900 md:text-base">
                 投稿
               </h2>
-
-
             </div>
 
             <Suspense

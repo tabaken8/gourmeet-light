@@ -18,6 +18,7 @@
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.87.3",
+    "@tanstack/react-query": "^5.95.2",
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
     "exifr": "^7.1.3",

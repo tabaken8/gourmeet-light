@@ -198,8 +198,8 @@ export async function GET(req: Request) {
       for (const p of lprofs ?? []) likerProfMap[(p as any).id] = p;
     }
 
-    const placeIds = raw.map((r) => r.place_id).filter(Boolean);
-    const placePhotoMap = await buildPlacePhotoMap(placeIds, 6);
+    // const placeIds = raw.map((r) => r.place_id).filter(Boolean);
+    // const placePhotoMap = await buildPlacePhotoMap(placeIds, 6);
 
     const posts = raw.map((r) => {
       const initialLikers = (likersMap[r.id] ?? [])
@@ -243,7 +243,7 @@ export async function GET(req: Request) {
             }
           : null,
 
-        placePhotos: r.place_id ? placePhotoMap[r.place_id] ?? null : null,
+        placePhotos: null,
 
         likeCount: likeCountMap[r.id] ?? 0,
         likedByMe: user ? likedSet.has(r.id) : false,

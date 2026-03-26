@@ -1,97 +1,207 @@
 // src/components/timeline/FriendsTimelineServer.tsx
+import { createClient } from "@/lib/supabase/server";
 import FriendsTimelineClient from "./FriendsTimelineClient";
-import { headers, cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-// 「suggestionが無い」状態も許容しておく（= 空meta）
-export type Meta =
-  | {
-      suggestOnce?: boolean;
-      suggestAtIndex?: number;
-      suggestion?: {
-        title: string;
-        subtitle?: string | null;
-        users: Array<{
-          id: string;
-          display_name: string | null;
-          avatar_url: string | null;
-          is_following?: boolean;
-          reason?: string | null;
-        }>;
+type SuggestUser = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_following: boolean;
+  reason?: string | null;
+};
+
+type Meta = {
+  followCount: number;
+  suggestOnce?: boolean;
+  suggestAtIndex?: number;
+  suggestion?: {
+    title: string;
+    subtitle?: string | null;
+    users: SuggestUser[];
+  };
+} | null;
+
+function enforceNoRepeatWithin(posts: any[], window = 3) {
+  const out: any[] = [];
+  const pool = posts.slice();
+  while (pool.length) {
+    const recent = new Set(out.slice(-window).map((p) => p?.user_id).filter(Boolean));
+    let idx = pool.findIndex((p) => !recent.has(p?.user_id));
+    if (idx === -1) idx = 0;
+    out.push(pool.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+async function buildSuggestUsersPublic(supabase: any, excludeIds: Set<string>, take = 8): Promise<SuggestUser[]> {
+  const { data: cand, error } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, is_public")
+    .eq("is_public", true)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (error) return [];
+
+  return (cand ?? [])
+    .map((p: any) => ({
+      id: String(p.id),
+      display_name: (p.display_name ?? null) as string | null,
+      avatar_url: (p.avatar_url ?? null) as string | null,
+      is_following: false,
+      reason: "おすすめ",
+    }))
+    .filter((u: any) => u.id && !excludeIds.has(u.id))
+    .slice(0, take);
+}
+
+async function buildMetaForLoggedIn(supabase: any, meId: string): Promise<Meta> {
+  const { count, error } = await supabase
+    .from("follows")
+    .select("*", { count: "exact", head: true })
+    .eq("follower_id", meId)
+    .eq("status", "accepted");
+
+  const followCount = !error && typeof count === "number" ? count : 0;
+
+  if (followCount <= 1) {
+    const exclude = new Set<string>([meId]);
+    if (followCount === 1) {
+      const { data: follows } = await supabase
+        .from("follows")
+        .select("followee_id")
+        .eq("follower_id", meId)
+        .eq("status", "accepted");
+      const followeeIds = (follows ?? []).map((r: any) => r.followee_id).filter(Boolean) as string[];
+      for (const x of followeeIds) exclude.add(x);
+    }
+
+    const users = await buildSuggestUsersPublic(supabase, exclude, 8);
+    if (users.length > 0) {
+      return {
+        followCount,
+        suggestOnce: true,
+        suggestAtIndex: 1,
+        suggestion: {
+          title: followCount === 0 ? "気になる人をフォローしてみましょう" : "この人たちも良さそう",
+          subtitle: "おすすめのユーザーを表示しています",
+          users,
+        },
       };
     }
-  | null;
+  }
 
-function getBaseUrlFromHeaders(h: Headers) {
-  // Vercel/Proxy想定。localhostでも動く
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  return `${proto}://${host}`;
+  return { followCount, suggestOnce: false, suggestAtIndex: 1 };
 }
 
-function emptyMeta(): Meta {
-  return { suggestOnce: false, suggestAtIndex: 1 };
+async function buildMetaForGuest(supabase: any): Promise<Meta> {
+  const users = await buildSuggestUsersPublic(supabase, new Set<string>(), 8);
+  if (users.length === 0) return { followCount: 0, suggestOnce: false, suggestAtIndex: 1 };
+
+  return {
+    followCount: 0,
+    suggestOnce: true,
+    suggestAtIndex: 1,
+    suggestion: {
+      title: "気になる人をフォローしてみましょう。",
+      subtitle: "ログインするとフォローできます（まずは覗けます）。",
+      users,
+    },
+  };
 }
+
+const LIMIT = 20;
 
 export default async function FriendsTimelineServer({ meId }: { meId: string | null }) {
-  // 未ログインでも「真っ白」回避のため、Client側でログイン誘導UIを出す
+  const supabase = await createClient();
+
+  // 未ログイン
   if (!meId) {
+    const { data } = await supabase
+      .from("posts")
+      .select(
+        "id,user_id,created_at,visited_on,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range,profiles!inner(id,display_name,avatar_url,is_public)"
+      )
+      .eq("profiles.is_public", true)
+      .order("created_at", { ascending: false })
+      .limit(Math.max(120, LIMIT * 8));
+
+    const raw = (data ?? []).map((r: any) => {
+      const { profiles, ...rest } = r;
+      return {
+        ...rest,
+        profile: profiles ?? null,
+        likeCount: 0,
+        likedByMe: false,
+        initialLikers: [],
+      };
+    });
+
+    const arranged = enforceNoRepeatWithin(raw, 3).slice(0, LIMIT);
+    const nextCursor = arranged.length ? arranged[arranged.length - 1].created_at : null;
+    const meta = await buildMetaForGuest(supabase);
+
     return (
       <FriendsTimelineClient
         meId={null}
-        initialPosts={[]}
-        initialNextCursor={null}
-        initialMeta={emptyMeta()}
+        initialPosts={arranged}
+        initialNextCursor={nextCursor}
+        initialMeta={meta as any}
       />
     );
   }
 
-  const h = await headers();
-  const baseUrl = getBaseUrlFromHeaders(h);
+  // ログイン済み：直接RPC呼び出し
+  const [postsResult, meta] = await Promise.all([
+    supabase.rpc("timeline_friends_v1", {
+      p_limit: LIMIT,
+      p_cursor: null,
+    }),
+    buildMetaForLoggedIn(supabase, meId),
+  ]);
 
-  // ✅ cookie は encode しない（壊れる可能性がある）
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore
-    .getAll()
-    .map((c) => `${c.name}=${c.value}`)
-    .join("; ");
+  const rows = (postsResult.data ?? []) as any[];
+  const nextCursor = rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
-  const params = new URLSearchParams({ limit: "20" });
-  const url = `${baseUrl}/api/timeline/friends?${params.toString()}`;
-
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: {
-      cookie: cookieHeader,
-      accept: "application/json",
-    },
-  });
-
-  // 失敗時も「空状態UI」を出したいので、nullにせず空metaを渡す
-  if (!res.ok) {
-    return (
-      <FriendsTimelineClient
-        meId={meId}
-        initialPosts={[]}
-        initialNextCursor={null}
-        initialMeta={emptyMeta()}
-      />
-    );
-  }
-
-  const json = (await res.json()) as {
-    posts?: any[];
-    nextCursor?: string | null;
-    meta?: Meta;
-  };
+  const posts = postsResult.error
+    ? []
+    : rows.map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        created_at: r.created_at,
+        visited_on: r.visited_on,
+        content: r.content,
+        place_id: r.place_id,
+        place_name: r.place_name,
+        place_address: r.place_address,
+        image_urls: r.image_urls ?? null,
+        image_variants: r.image_variants ?? null,
+        image_assets: r.image_assets ?? null,
+        cover_square_url: r.cover_square_url ?? null,
+        cover_full_url: r.cover_full_url ?? null,
+        cover_pin_url: r.cover_pin_url ?? null,
+        recommend_score: r.recommend_score,
+        price_yen: r.price_yen,
+        price_range: r.price_range,
+        profile: {
+          id: r.user_id,
+          display_name: r.author_display_name,
+          avatar_url: r.author_avatar_url,
+          is_public: r.author_is_public ?? true,
+        },
+        likeCount: r.like_count ?? r.likeCount ?? 0,
+        likedByMe: r.liked_by_me ?? r.likedByMe ?? false,
+        initialLikers: r.initial_likers ?? r.initialLikers ?? [],
+      }));
 
   return (
     <FriendsTimelineClient
       meId={meId}
-      initialPosts={(json.posts ?? []) as any[]}
-      initialNextCursor={(json.nextCursor ?? null) as string | null}
-      initialMeta={(json.meta ?? emptyMeta()) as any}
+      initialPosts={posts}
+      initialNextCursor={nextCursor}
+      initialMeta={meta as any}
     />
   );
 }
