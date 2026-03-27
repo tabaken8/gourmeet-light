@@ -798,7 +798,27 @@ export default function SearchPage() {
           {resultMode === "ai" && (
             <>
               {semanticLoading && (
-                <PostsSkeleton />
+                <motion.div
+                  key="ai-thinking"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center gap-4 py-16"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">✨</span>
+                    <div className="flex gap-1.5">
+                      {[0, 150, 300].map((delay) => (
+                        <span
+                          key={delay}
+                          className="block h-2 w-2 rounded-full bg-orange-400 animate-bounce"
+                          style={{ animationDelay: `${delay}ms` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-500">考えています…</p>
+                </motion.div>
               )}
               {!semanticLoading && semanticError && (
                 <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600">
