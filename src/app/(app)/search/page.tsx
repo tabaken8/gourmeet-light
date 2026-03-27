@@ -199,8 +199,8 @@ export default function SearchPage() {
   const [semanticError, setSemanticError] = useState<string | null>(null);
   // LLM の返答テキスト
   const [aiMessage, setAiMessage] = useState<string | null>(null);
-  // クエリから自動検出された駅情報
-  const [detectedStation, setDetectedStation] = useState<{ name: string; placeId: string } | null>(null);
+  // クエリから自動検出された駅情報（複数対応）
+  const [detectedStations, setDetectedStations] = useState<{ name: string; placeId: string }[]>([]);
   // クエリから自動検出されたユーザー情報
   const [detectedAuthor, setDetectedAuthor] = useState<{ username: string; displayName: string | null } | null>(null);
   const [mentionNotFound, setMentionNotFound] = useState(false);
@@ -319,7 +319,7 @@ export default function SearchPage() {
     setSemanticError(null);
     setSemanticPosts([]);
     setAiMessage(null);
-    setDetectedStation(null);
+    setDetectedStations([]);
     setDetectedAuthor(null);
     setMentionNotFound(false);
 
@@ -344,7 +344,7 @@ export default function SearchPage() {
 
       setSemanticPosts(Array.isArray(payload?.posts) ? payload.posts : []);
       if (payload?.message) setAiMessage(payload.message);
-      if (payload?.detectedStation) setDetectedStation(payload.detectedStation);
+      if (Array.isArray(payload?.detectedStations)) setDetectedStations(payload.detectedStations);
       if (payload?.detectedAuthor) setDetectedAuthor(payload.detectedAuthor);
     } catch (e: any) {
       setSemanticError(e?.message ?? "AI検索に失敗しました");
@@ -477,7 +477,7 @@ export default function SearchPage() {
     setSemanticLoading(false);
     setSemanticError(null);
     setAiMessage(null);
-    setDetectedStation(null);
+    setDetectedStations([]);
     setDetectedAuthor(null);
     setMentionNotFound(false);
 
@@ -817,7 +817,7 @@ export default function SearchPage() {
                       ))}
                     </div>
                   </div>
-                  <p className="text-sm text-slate-500">考えています…</p>
+                  <p className="text-sm text-slate-500">Gourmeet AI が分析中…</p>
                 </motion.div>
               )}
               {!semanticLoading && semanticError && (
@@ -832,16 +832,18 @@ export default function SearchPage() {
                     <div className="mb-3 rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 px-4 py-3 text-sm text-slate-700 leading-relaxed border border-orange-100">
                       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-orange-600">
                         <Sparkles size={11} />
-                        <span>AI</span>
+                        <span>Gourmeet AI</span>
                       </div>
                       {aiMessage}
                     </div>
                   )}
-                  {/* 地名自動検出バナー */}
-                  {detectedStation && (
+                  {/* 地名自動検出バナー（複数駅対応） */}
+                  {detectedStations.length > 0 && (
                     <div className="mb-2 flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-[11px] text-sky-700 w-fit">
                       <TrainFront size={11} className="shrink-0" />
-                      <span>{detectedStation.name}駅周辺に絞って検索しました</span>
+                      <span>
+                        {detectedStations.map((s) => `${s.name}駅`).join("・")}周辺に絞って検索しました
+                      </span>
                     </div>
                   )}
                   {/* @mention 自動検出バナー */}
@@ -854,7 +856,7 @@ export default function SearchPage() {
                     <Sparkles size={11} />
                     <span>類似度の高い順に表示しています</span>
                   </div>
-                  <SearchPostList posts={semanticPosts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} />
+                  <SearchPostList posts={semanticPosts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} showRanks={true} />
                 </motion.div>
               )}
               {!semanticLoading && !semanticError && semanticPosts.length === 0 && (

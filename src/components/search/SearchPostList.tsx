@@ -195,12 +195,14 @@ export default function SearchPostList({
   mode = "auto",
   searchedStationName = null,
   revealImages = false,
+  showRanks = false,
 }: {
   posts: PostRow[];
   meId: string | null;
   mode?: SearchMode;
   searchedStationName?: string | null;
   revealImages?: boolean;
+  showRanks?: boolean;
 }) {
   const [openPhotos, setOpenPhotos] = useState<Record<string, boolean>>({});
 
@@ -311,8 +313,26 @@ export default function SearchPostList({
         const showStationChip =
           (isStationMode && (showSearchStation || showNearestStation)) || (!isStationMode && showNearestStation);
 
+        const rank = idx + 1;
+        const rankLabel = showRanks ? `${rank}位` : null;
+        // 1〜3位はオレンジ、4位以降はグレー
+        const rankStyle =
+          rank === 1
+            ? "bg-orange-500 text-white"
+            : rank <= 3
+            ? "bg-orange-100 text-orange-700"
+            : "bg-slate-100 text-slate-500";
+
         return (
-          <article key={key} className="gm-card gm-press overflow-hidden">
+          <article key={key} className="relative gm-card gm-press overflow-hidden">
+            {/* 順位タグ */}
+            {rankLabel && (
+              <div
+                className={`absolute top-3 left-3 z-10 rounded-full px-2 py-0.5 text-[11px] font-bold ${rankStyle}`}
+              >
+                {rankLabel}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
               <div className="md:border-r md:border-black/[.05]">
                 {/* Header */}
@@ -320,7 +340,7 @@ export default function SearchPostList({
                   <div className="flex items-center gap-3 min-w-0">
                     <Link
                       href={p.user_id ? `/u/${p.user_id}` : "#"}
-                      className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700"
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700 ${rankLabel ? "mt-3" : ""}`}
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element

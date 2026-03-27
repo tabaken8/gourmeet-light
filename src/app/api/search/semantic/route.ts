@@ -33,9 +33,9 @@ export async function GET(req: Request) {
     // ---- クエリ解析: 地名 + 検索意図を分離 ----
     const parsed = await parseSearchQuery(q);
 
-    // 自動検出した駅情報（UIにフィードバックするため）
-    let detectedStation: { name: string; placeId: string } | null = null;
-    let effectiveStationPlaceId = explicitStationPlaceId;
+    // 自動検出した駅情報（UIにフィードバックするため、複数対応）
+    const detectedStations: { name: string; placeId: string }[] = [];
+    let effectiveStationPlaceIds: string[] | null = explicitStationPlaceId ? [explicitStationPlaceId] : null;
 
     // 明示的な駅指定がなく、クエリに地名が含まれていた場合のみ自動解決
     if (!explicitStationPlaceId && parsed.location) {
@@ -45,11 +45,11 @@ export async function GET(req: Request) {
       });
       const first = Array.isArray(stationSuggests) ? stationSuggests[0] : null;
       if (first?.station_place_id) {
-        effectiveStationPlaceId = first.station_place_id;
-        detectedStation = {
+        effectiveStationPlaceIds = [first.station_place_id];
+        detectedStations.push({
           name: first.station_name ?? parsed.location,
           placeId: first.station_place_id,
-        };
+        });
       }
     }
 
@@ -89,7 +89,7 @@ export async function GET(req: Request) {
         query_embedding: queryEmbedding,
         p_user_id: user.id,
         p_follow_only: followOnly,
-        p_station_place_id: effectiveStationPlaceId,
+        p_station_place_ids: effectiveStationPlaceIds,
         p_radius_m: radiusM,
         p_threshold: threshold,
         p_limit: limit,
@@ -108,7 +108,7 @@ export async function GET(req: Request) {
         ok: true,
         mode: "semantic",
         posts: [],
-        detectedStation,
+        detectedStations,
         detectedAuthor,
         mentionNotFound,
         parsedQuery: { location: parsed.location, mention: parsed.mention, intent: parsed.intent },
@@ -162,7 +162,7 @@ export async function GET(req: Request) {
       mode: "semantic",
       posts: enriched,
       // フロント向けメタ情報
-      detectedStation,
+      detectedStations,
       detectedAuthor,
       mentionNotFound,
       parsedQuery: { location: parsed.location, mention: parsed.mention, intent: parsed.intent },

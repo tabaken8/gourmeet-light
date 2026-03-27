@@ -82,9 +82,12 @@ export const AI_SEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             type: "string",
             description: "resolve_username で得た user_id（特定ユーザーに絞る場合）",
           },
-          station_place_id: {
-            type: "string",
-            description: "resolve_station で得た station_place_id（エリア絞り込み）",
+          station_place_ids: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "resolve_station で得た station_place_id の配列。" +
+              "「東京駅か渋谷駅」のように複数エリアの OR 条件も指定できる。",
           },
           radius_m: {
             type: "number",
@@ -125,12 +128,14 @@ export const AI_SEARCH_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 export type ToolContext = {
   supabase: any;
   userId: string;
+  // フォロー中ユーザーの投稿のみに絞るか（UI のチェックボックスから来る）
+  followOnly: boolean;
   // get_my_taste_profile の結果（search_posts で use_taste_profile: true のとき使う）
   tasteEmbedding: number[] | null;
   // 最終的な UI 用フルデータ
   collectedPosts: any[];
-  // UIフィードバック用
-  detectedStation: { name: string; placeId: string } | null;
+  // UIフィードバック用（複数駅対応）
+  detectedStations: { name: string; placeId: string }[];
   detectedAuthor: { username: string; displayName: string | null } | null;
 };
 
@@ -192,10 +197,15 @@ async function resolveStation(location: string, ctx: ToolContext) {
     return { found: false, error: `「${location}」の駅・エリアが見つかりません` };
   }
 
-  ctx.detectedStation = {
+  const resolved = {
     name: first.station_name ?? location,
     placeId: first.station_place_id,
   };
+
+  // 既に同じ place_id が登録済みでなければ追加（重複防止）
+  if (!ctx.detectedStations.some((s) => s.placeId === resolved.placeId)) {
+    ctx.detectedStations.push(resolved);
+  }
 
   return {
     found: true,
@@ -253,7 +263,7 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
   const {
     query,
     author_id,
-    station_place_id,
+    station_place_ids,
     radius_m = 3000,
     genre,
     sort_by = "similarity",
@@ -277,10 +287,12 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
   const { data: rawPosts, error } = await ctx.supabase.rpc("search_posts_semantic", {
     query_embedding: queryEmbedding,
     p_user_id: ctx.userId,
-    p_follow_only: false,
-    p_station_place_id: station_place_id ?? null,
+    p_follow_only: ctx.followOnly,
+    p_station_place_ids: Array.isArray(station_place_ids) && station_place_ids.length > 0
+      ? station_place_ids
+      : null,
     p_radius_m: radius_m,
-    p_threshold: 0.08,
+    p_threshold: 0.15,
     p_limit: fetchLimit,
     p_author_id: author_id ?? null,
   });
@@ -303,15 +315,32 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
     if (!existingIds.has(p.id)) ctx.collectedPosts.push(p);
   }
 
-  // LLM に返すサマリー（軽量）
-  const posts_summary = posts.slice(0, 10).map((p) => ({
-    place_name: p.place_name,
-    genre: p.place_genre ?? null,
-    area: p.place_address ? p.place_address.split(" ")[0] : null,
-    recommend_score: p.recommend_score,
-    content_snippet: p.content?.slice(0, 60) ?? null,
-    similarity: Math.round((p.similarity ?? 0) * 100) / 100,
-  }));
+  // 投稿者プロフィールを一括取得（LLM サマリーに含めるため）
+  const userIds = [...new Set(posts.map((p) => p.user_id).filter(Boolean))];
+  const profileMap: Record<string, { display_name: string | null; username: string | null }> = {};
+  if (userIds.length) {
+    const { data: profiles } = await ctx.supabase
+      .from("profiles")
+      .select("id, display_name, username")
+      .in("id", userIds);
+    for (const pr of profiles ?? []) profileMap[pr.id] = pr;
+  }
+
+  // LLM に返すサマリー（投稿者・本文・おすすめ度を含む）
+  const posts_summary = posts.slice(0, 10).map((p) => {
+    const pr = profileMap[p.user_id];
+    const poster = pr?.display_name ?? pr?.username ?? null;
+    return {
+      place_name: p.place_name,
+      genre: p.place_genre ?? null,
+      area: p.place_address ? p.place_address.split(" ")[0] : null,
+      recommend_score: p.recommend_score ?? null,
+      content_snippet: p.content?.slice(0, 80) ?? null,
+      poster_name: poster,
+      poster_username: pr?.username ?? null,
+      similarity: Math.round((p.similarity ?? 0) * 100) / 100,
+    };
+  });
 
   return { count: posts.length, posts_summary };
 }
