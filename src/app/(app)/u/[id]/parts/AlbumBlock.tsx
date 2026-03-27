@@ -28,6 +28,7 @@ export default async function AlbumBlock({
         created_at,
         visited_on,
         recommend_score,
+        content,
         image_urls,
         image_variants,
         places:places (

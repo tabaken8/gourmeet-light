@@ -1,13 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 840 300" width="840" height="300">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 200" width="720" height="200">
   <defs>
-    <!-- Gourmeet text gradient: teal -> olive -> orange -->
     <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#1DB9A0"/>
       <stop offset="35%" stop-color="#6BAA44"/>
       <stop offset="65%" stop-color="#C8882A"/>
       <stop offset="100%" stop-color="#D06A28"/>
     </linearGradient>
-    <!-- Fork teal color -->
     <linearGradient id="forkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#20C9A6"/>
       <stop offset="100%" stop-color="#18B494"/>
@@ -17,26 +15,16 @@
     </style>
   </defs>
 
-  <!-- ===== Crossed Forks ===== -->
-  <g transform="translate(108, 145) scale(0.82)">
-    <!-- Fork shape defined once, used twice -->
-    <!-- Left fork (tilted -35deg) -->
+  <!-- Crossed Forks (scaled down) -->
+  <g transform="translate(75, 100) scale(0.72)">
     <g transform="rotate(-35)" fill="url(#forkGradient)">
-      <!-- Handle -->
       <path d="M-5,38 C-6,68 -5.5,100 -4.5,125 C-3.5,131 3.5,131 4.5,125 C5.5,100 6,68 5,38 Z"/>
-      <!-- Neck -->
       <path d="M-5,38 C-6,30 -8,22 -11,14 L-11,-2 C-6,-7 6,-7 11,-2 L11,14 C8,22 6,30 5,38 Z"/>
-      <!-- Tine 1 (left) -->
       <path d="M-11,-2 C-12,-28 -14.5,-58 -16,-82 C-16.5,-90 -11,-90 -10,-82 C-9,-58 -7.5,-28 -7,-2 Z"/>
-      <!-- Tine 2 -->
       <path d="M-6,-3 C-6,-30 -6.5,-60 -6.5,-84 C-6.5,-92 -1,-92 -1,-84 C-1,-60 -1,-30 -1,-3 Z"/>
-      <!-- Tine 3 -->
       <path d="M1,-3 C1,-30 1,-60 1,-84 C1,-92 6.5,-92 6.5,-84 C6.5,-60 6,-30 6,-3 Z"/>
-      <!-- Tine 4 (right) -->
       <path d="M7,-2 C7.5,-28 9,-58 10,-82 C11,-90 16.5,-90 16,-82 C14.5,-58 12,-28 11,-2 Z"/>
     </g>
-
-    <!-- Right fork (tilted +35deg) -->
     <g transform="rotate(35)" fill="url(#forkGradient)">
       <path d="M-5,38 C-6,68 -5.5,100 -4.5,125 C-3.5,131 3.5,131 4.5,125 C5.5,100 6,68 5,38 Z"/>
       <path d="M-5,38 C-6,30 -8,22 -11,14 L-11,-2 C-6,-7 6,-7 11,-2 L11,14 C8,22 6,30 5,38 Z"/>
@@ -47,22 +35,12 @@
     </g>
   </g>
 
-  <!-- ===== "Gourmeet" text ===== -->
-  <text x="270" y="168"
+  <!-- "Gourmeet" text only -->
+  <text x="185" y="125"
         font-family="'Pacifico', 'Dancing Script', cursive"
-        font-size="92"
+        font-size="82"
         fill="url(#textGradient)"
         letter-spacing="1">
     Gourmeet
-  </text>
-
-  <!-- ===== Tagline ===== -->
-  <text x="330" y="230"
-        font-family="'Pacifico', 'Dancing Script', cursive"
-        font-size="30"
-        fill="#C8882A"
-        font-style="italic"
-        letter-spacing="3">
-    Taste trusted by friends
   </text>
 </svg>

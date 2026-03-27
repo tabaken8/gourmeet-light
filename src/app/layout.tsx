@@ -43,10 +43,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <QueryProvider>
           {/* PC用ヘッダー（モバイルでは非表示） */}
           <header className="hidden md:block border-b border-black/[.06] bg-white/90 backdrop-blur">
-            <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+            <div className="mx-auto flex h-20 max-w-5xl items-center justify-between px-4">
               <Link href="/" className="flex items-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.svg" alt="Gourmeet" className="h-8 w-auto" />
+                <img src="/logo.svg" alt="Gourmeet" className="h-16 w-auto" />
               </Link>
               <ClientAuthNav />
             </div>

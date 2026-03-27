@@ -834,7 +834,10 @@ export default function PostEditForm({ initial }: { initial: EditInitialPost }) 
         throw new Error(j?.error ?? `Update failed (${res.status})`);
       }
 
-      confetti({ particleCount: 40, spread: 70, origin: { y: 0.75 } });
+      // origin.y はビューポート基準で計算
+      const viewportOriginY =
+        (window.scrollY + window.innerHeight * 0.75) / document.documentElement.scrollHeight;
+      confetti({ particleCount: 40, spread: 70, origin: { y: viewportOriginY } });
       router.push(`/posts/${initial.id}`);
       router.refresh();
     } catch (err: any) {

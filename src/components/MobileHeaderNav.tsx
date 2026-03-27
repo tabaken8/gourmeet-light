@@ -186,8 +186,9 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
       >
         {/* 1段目 */}
         <div className="flex h-12 items-center justify-between px-3">
-          <Link href={gate(homeHref)} className="text-[15px] font-bold tracking-tight">
-            Gourmeet
+          <Link href={gate(homeHref)} className="flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-mobile.svg" alt="Gourmeet" className="h-9 w-auto" />
           </Link>
 
           <div className="flex items-center gap-1">

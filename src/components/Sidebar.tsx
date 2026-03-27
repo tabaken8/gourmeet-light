@@ -240,14 +240,14 @@ export default function Sidebar({ name }: { name?: string }) {
       <div className="mb-6 px-1 relative">
         <div
           className="
-            text-xl font-bold tracking-tight
             overflow-hidden whitespace-nowrap
             max-w-0 opacity-0
             transition-all duration-200
             group-hover:max-w-[220px] group-hover:opacity-100
           "
         >
-          Gourmeet
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mobile.svg" alt="Gourmeet" className="h-10 w-auto" />
         </div>
       </div>
 

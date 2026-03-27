@@ -1,9 +1,10 @@
 // src/components/AlbumBrowser.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { MapPin, Search, Tag, MoreHorizontal, Sparkles } from "lucide-react";
+import { MapPin, Search, Tag, Sparkles, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type PlaceRow = {
@@ -21,6 +22,7 @@ export type AlbumPost = {
   created_at?: string | null;
   visited_on?: string | null;
   recommend_score?: number | string | null;
+  content?: string | null;
   image_urls?: string[] | null;
   image_variants?: any[] | null;
   places?: PlaceRow | null;
@@ -43,6 +45,15 @@ function getThumbUrl(p: AlbumPost): string | null {
   return null;
 }
 
+function getAllFullUrls(p: AlbumPost): string[] {
+  const v = p?.image_variants;
+  if (Array.isArray(v) && v.length > 0) {
+    const urls = v.map((x: any) => x?.full ?? x?.thumb ?? null).filter(Boolean) as string[];
+    if (urls.length > 0) return urls;
+  }
+  return (p?.image_urls ?? []).filter(Boolean) as string[];
+}
+
 function areaLabel(place: PlaceRow | null | undefined): string {
   const ja = (place?.area_label_ja ?? "").trim();
   return ja || "不明";
@@ -55,23 +66,18 @@ function normSpace(s: string) {
   return s.replace(/\s+/g, " ").trim();
 }
 function stableId(p: AlbumPost) {
-  return String(p.id); // post_idで一意
+  return String(p.id);
 }
 
 function buildMapUrl(p: AlbumPost): string | null {
   const place = p.places;
   const placeName = place?.name ?? null;
   const placeAddress = place?.address ?? null;
-
-  const mapUrl = p.place_id
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName ?? "place")}&query_place_id=${encodeURIComponent(
-        p.place_id
-      )}`
+  return p.place_id
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName ?? "place")}&query_place_id=${encodeURIComponent(p.place_id)}`
     : placeAddress
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeAddress)}`
       : null;
-
-  return mapUrl;
 }
 
 function comparePosts(a: AlbumPost, b: AlbumPost) {
@@ -79,15 +85,12 @@ function comparePosts(a: AlbumPost, b: AlbumPost) {
   const sb = toScore(b.recommend_score);
   const d = (sb ?? -Infinity) - (sa ?? -Infinity);
   if (d !== 0) return d;
-
   const va = a.visited_on ?? "";
   const vb = b.visited_on ?? "";
   if (va !== vb) return va < vb ? 1 : -1;
-
   const ca = a.created_at ?? "";
   const cb = b.created_at ?? "";
   if (ca !== cb) return ca < cb ? 1 : -1;
-
   return String(a.id) < String(b.id) ? 1 : -1;
 }
 
@@ -104,15 +107,35 @@ export default function AlbumBrowser({
 
   const [view, setView] = useState<View>("all");
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortKey>("score");
+  // デフォルトを投稿日順に変更
+  const [sort, setSort] = useState<SortKey>("created");
 
-  // pinned は “表示” に必要。編集は isOwner のときだけ。
   const [pinned, setPinned] = useState<string[]>(pinnedPostIdsInitial ?? []);
   const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
 
-  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
+  // lightbox
+  const [lightboxPost, setLightboxPost] = useState<AlbumPost | null>(null);
+  const [lightboxImgIdx, setLightboxImgIdx] = useState(0);
 
-  const toggleArea = () => setView((cur) => (cur === "area" ? "all" : "area"));
+  const openLightbox = (p: AlbumPost) => {
+    setLightboxPost(p);
+    setLightboxImgIdx(0);
+  };
+
+  // キーボード操作
+  useEffect(() => {
+    if (!lightboxPost) return;
+    const handle = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setLightboxPost(null); return; }
+      const imgs = getAllFullUrls(lightboxPost);
+      if (e.key === "ArrowLeft")  setLightboxImgIdx(i => Math.max(0, i - 1));
+      if (e.key === "ArrowRight") setLightboxImgIdx(i => Math.min(imgs.length - 1, i + 1));
+    };
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [lightboxPost]);
+
+  const toggleArea  = () => setView((cur) => (cur === "area"  ? "all" : "area"));
   const toggleGenre = () => setView((cur) => (cur === "genre" ? "all" : "genre"));
 
   const filtered = useMemo(() => {
@@ -120,11 +143,11 @@ export default function AlbumBrowser({
     if (!key) return posts;
     return posts.filter((p) => {
       const place = p.places;
-      const name = (place?.name ?? "").toLowerCase();
-      const area = areaLabel(place).toLowerCase();
+      const name  = (place?.name ?? "").toLowerCase();
+      const area  = areaLabel(place).toLowerCase();
       const genre = genreLabel(place).toLowerCase();
-      const st = (place?.search_text ?? "").toLowerCase();
-      const addr = (place?.address ?? "").toLowerCase();
+      const st    = (place?.search_text ?? "").toLowerCase();
+      const addr  = (place?.address ?? "").toLowerCase();
       return name.includes(key) || area.includes(key) || genre.includes(key) || st.includes(key) || addr.includes(key);
     });
   }, [posts, q]);
@@ -146,19 +169,16 @@ export default function AlbumBrowser({
     return arr;
   }, [filtered, sort]);
 
-  // all view: HRを分離
   const { hrPosts, restPosts } = useMemo(() => {
     const hr: AlbumPost[] = [];
     const rest: AlbumPost[] = [];
     for (const p of sortedPosts) {
-      const isHR = pinnedSet.has(String(p.id));
-      (isHR ? hr : rest).push(p);
+      (pinnedSet.has(String(p.id)) ? hr : rest).push(p);
     }
     hr.sort(comparePosts);
     return { hrPosts: hr, restPosts: rest };
   }, [sortedPosts, pinnedSet]);
 
-  // ジャンル代表HR（イタリアンならこれ）
   const hrPickByGenre = useMemo(() => {
     const m = new Map<string, AlbumPost[]>();
     for (const p of hrPosts) {
@@ -175,42 +195,25 @@ export default function AlbumBrowser({
     return pick;
   }, [hrPosts]);
 
-  // post_pins toggle（本人のみ）
   const toggleHighlyRecommended = async (postId: string) => {
     if (!isOwner) return;
-
     const already = pinnedSet.has(postId);
-
-    // optimistic UI
     setPinned((prev) => (already ? prev.filter((x) => x !== postId) : [postId, ...prev]));
-
     try {
       const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr) throw new Error(`auth.getUser error: ${authErr.message}`);
+      if (authErr) throw new Error(authErr.message);
       const uid = authData.user?.id;
       if (!uid) throw new Error("not logged in");
-
       if (already) {
-        const { error, status, statusText } = await supabase
-          .from("post_pins")
-          .delete()
-          .eq("user_id", uid)
-          .eq("post_id", postId);
-
-        if (error) throw new Error(`delete failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
+        const { error } = await supabase.from("post_pins").delete().eq("user_id", uid).eq("post_id", postId);
+        if (error) throw error;
       } else {
-        const { error, status, statusText } = await supabase
-          .from("post_pins")
-          .upsert({ user_id: uid, post_id: postId, sort_order: 0 }, { onConflict: "user_id,post_id" });
-
-        if (error) throw new Error(`upsert failed: ${error.message} (status=${status ?? "?"} ${statusText ?? ""})`);
+        const { error } = await supabase.from("post_pins").upsert({ user_id: uid, post_id: postId, sort_order: 0 }, { onConflict: "user_id,post_id" });
+        if (error) throw error;
       }
     } catch (e: any) {
-      // rollback
       setPinned((prev) => (already ? [postId, ...prev] : prev.filter((x) => x !== postId)));
       console.error("toggleHighlyRecommended error:", e);
-    } finally {
-      setMenuOpenFor(null);
     }
   };
 
@@ -222,9 +225,9 @@ export default function AlbumBrowser({
       arr.push(p);
       m.set(key, arr);
     }
-    const out = Array.from(m.entries()).map(([k, arr]) => ({ key: k, posts: arr }));
-    out.sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key, "ja"));
-    return out;
+    return Array.from(m.entries())
+      .map(([k, arr]) => ({ key: k, posts: arr }))
+      .sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key, "ja"));
   }, [sortedPosts]);
 
   const genreBlocks = useMemo(() => {
@@ -235,102 +238,164 @@ export default function AlbumBrowser({
       arr.push(p);
       m.set(key, arr);
     }
-    const out = Array.from(m.entries()).map(([k, arr]) => ({ key: k, posts: arr }));
-    out.sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key, "ja"));
-    return out;
+    return Array.from(m.entries())
+      .map(([k, arr]) => ({ key: k, posts: arr }))
+      .sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key, "ja"));
   }, [sortedPosts]);
 
-  function MoreMenu({ post, isHR, mapUrl }: { post: AlbumPost; isHR: boolean; mapUrl: string | null }) {
-    const id = stableId(post);
-    const open = menuOpenFor === id;
+  // ─── Lightbox ───────────────────────────────────────────────────────────────
+  function Lightbox() {
+    if (!lightboxPost) return null;
 
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setMenuOpenFor((cur) => (cur === id ? null : id));
-          }}
-          className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          title="More"
+    const images   = getAllFullUrls(lightboxPost);
+    const place    = lightboxPost.places;
+    const name     = place?.name ?? "Unknown";
+    const genre    = genreLabel(place);
+    const score    = toScore(lightboxPost.recommend_score);
+    const scoreText = score == null ? null : `${score.toFixed(1)} / 10`;
+    const mapUrl   = buildMapUrl(lightboxPost);
+    const content  = lightboxPost.content;
+    const isHR     = pinnedSet.has(String(lightboxPost.id));
+
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85"
+        onClick={() => setLightboxPost(null)}
+      >
+        <div
+          className="relative flex w-full flex-col md:flex-row bg-white md:max-w-4xl md:rounded-xl overflow-hidden mx-2 md:mx-0"
+          style={{ maxHeight: "90vh" }}
+          onClick={(e) => e.stopPropagation()}
         >
-          <MoreHorizontal size={16} />
-        </button>
-
-        {open ? (
-          <div
-            className="absolute right-0 top-10 z-[60] w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
-            role="menu"
+          {/* Close button */}
+          <button
+            onClick={() => setLightboxPost(null)}
+            className="absolute right-3 top-3 z-20 rounded-full bg-black/55 p-1.5 text-white hover:bg-black/75"
+            aria-label="閉じる"
           >
-            <div className="px-3 py-2 text-[11px] font-bold text-slate-500">ACTIONS</div>
+            <X size={18} />
+          </button>
 
-            {isOwner ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  toggleHighlyRecommended(String(post.id));
-                }}
-                className={[
-                  "w-full px-3 py-2 text-left text-sm font-bold hover:bg-slate-50",
-                  isHR ? "text-red-700" : "text-slate-800",
-                ].join(" ")}
-                role="menuitem"
-              >
-                {isHR ? "My Special Picks を解除" : "My Special Picks にする"}
-              </button>
-            ) : null}
+          {/* ─ Image area：高さを明示してロード前に潰れないようにする ─ */}
+          <div className="relative flex h-[50vh] shrink-0 items-center justify-center bg-slate-900 md:h-auto md:w-[60%]">
+            {images.length > 0 ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={images[lightboxImgIdx]}
+                alt=""
+                className="h-full w-full object-contain md:max-h-[90vh]"
+              />
+            ) : (
+              <div className="h-full w-full bg-slate-200" />
+            )}
 
-            {mapUrl ? (
-              <a
-                href={mapUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50"
-                role="menuitem"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Google Mapsで開く
-              </a>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setMenuOpenFor(null);
-              }}
-              className="w-full px-3 py-2 text-left text-sm font-bold text-slate-500 hover:bg-slate-50"
-              role="menuitem"
-            >
-              閉じる
-            </button>
+            {images.length > 1 && (
+              <>
+                <button
+                  onClick={() => setLightboxImgIdx((i) => Math.max(0, i - 1))}
+                  disabled={lightboxImgIdx === 0}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70 disabled:opacity-25"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  onClick={() => setLightboxImgIdx((i) => Math.min(images.length - 1, i + 1))}
+                  disabled={lightboxImgIdx === images.length - 1}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70 disabled:opacity-25"
+                >
+                  <ChevronRight size={20} />
+                </button>
+                <div className="absolute bottom-3 flex w-full justify-center gap-1.5">
+                  {images.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setLightboxImgIdx(i)}
+                      className={`h-1.5 w-1.5 rounded-full transition-all ${i === lightboxImgIdx ? "bg-white scale-125" : "bg-white/40"}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        ) : null}
-      </div>
+
+          {/* ─ Info panel ─ */}
+          <div className="flex flex-col overflow-y-auto p-4 md:w-[40%]">
+            {isHR && (
+              <div className="mb-2 inline-flex items-center gap-1.5 self-start rounded-full border-2 border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-extrabold text-red-700">
+                <Sparkles size={11} />
+                My Special Picks
+              </div>
+            )}
+
+            <div className="text-base font-bold leading-snug text-slate-900">{name}</div>
+            <div className="mt-0.5 text-sm text-slate-500">{genre}</div>
+
+            {scoreText && (
+              <div className="mt-2 inline-flex items-center gap-1 self-start rounded-full bg-orange-50 px-3 py-1 text-sm font-bold text-orange-600">
+                ⭐ {scoreText}
+              </div>
+            )}
+
+            {content && (
+              <p className="mt-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{content}</p>
+            )}
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+              {mapUrl && (
+                <a
+                  href={mapUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MapPin size={13} />
+                  地図
+                </a>
+              )}
+              <Link
+                href={`/posts/${encodeURIComponent(String(lightboxPost.id))}`}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold hover:bg-slate-700"
+                style={{ color: "#fff" }}
+              >
+                詳細を見る →
+              </Link>
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={() => toggleHighlyRecommended(String(lightboxPost.id))}
+                  className={[
+                    "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold",
+                    isHR
+                      ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  ].join(" ")}
+                >
+                  <Sparkles size={12} />
+                  {isHR ? "Special Picks を解除" : "Special Picks にする"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
     );
   }
 
+  // ─── PostGrid ────────────────────────────────────────────────────────────────
   function PostGrid({ items }: { items: AlbumPost[] }) {
     return (
       <div className="grid grid-cols-2 gap-0 md:grid-cols-3 md:gap-[2px]">
         {items.map((p) => {
-          const isHR = pinnedSet.has(String(p.id));
-          const place = p.places;
-
-          const name = place?.name ?? "Unknown";
-          const genre = genreLabel(place);
-          const score = toScore(p.recommend_score);
+          const isHR     = pinnedSet.has(String(p.id));
+          const place    = p.places;
+          const name     = place?.name ?? "Unknown";
+          const genre    = genreLabel(place);
+          const score    = toScore(p.recommend_score);
           const scoreText = score == null ? "おすすめ: -" : `おすすめ: ${score.toFixed(1)}`;
-
-          const thumb = getThumbUrl(p);
-          const mapUrl = buildMapUrl(p);
+          const thumb    = getThumbUrl(p);
+          const mapUrl   = buildMapUrl(p);
 
           return (
             <div
@@ -341,48 +406,45 @@ export default function AlbumBrowser({
               ].join(" ")}
               style={{ borderRadius: 0 }}
             >
-              <Link href={`/posts/${encodeURIComponent(String(p.id))}`} className="block">
+              {/* サムネイル → lightbox */}
+              <button
+                type="button"
+                className="block w-full text-left"
+                onClick={() => openLightbox(p)}
+              >
                 <div className={["relative aspect-square", isHR ? "bg-red-50" : "bg-orange-50", "overflow-hidden"].join(" ")}>
-                  {isHR ? (
+                  {isHR && (
                     <div className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full border border-red-200 bg-white/90 px-2 py-1 text-[11px] font-extrabold text-red-700 backdrop-blur">
                       <Sparkles size={12} />
                       My Special Picks
                     </div>
-                  ) : null}
-
+                  )}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : null}
-
-                  {isHR ? <div className="pointer-events-none absolute inset-0 ring-2 ring-red-300/60" /> : null}
+                  {thumb && <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
+                  {isHR && <div className="pointer-events-none absolute inset-0 ring-2 ring-red-300/60" />}
                 </div>
-              </Link>
+              </button>
 
               <div className="px-3 py-2">
                 <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
                 <div className="mt-0.5 truncate text-[12px] font-semibold text-slate-600">{genre || "未分類"}</div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-slate-500">
-                  <span className="shrink-0 font-semibold text-slate-700">{scoreText}</span>
-                </div>
+                <div className="mt-1 text-[12px] font-semibold text-slate-700">{scoreText}</div>
 
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  {mapUrl ? (
+                {/* 地図ボタンのみ（3点リーダー削除） */}
+                {mapUrl && (
+                  <div className="mt-2">
                     <a
                       href={mapUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                      title="Google Mapsで開く"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MapPin size={12} />
-                      Google Maps
+                      地図
                     </a>
-                  ) : (
-                    <span />
-                  )}
-
-                  <MoreMenu post={p} isHR={isHR} mapUrl={mapUrl} />
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -391,11 +453,12 @@ export default function AlbumBrowser({
     );
   }
 
+  // ─── GenrePickCard ───────────────────────────────────────────────────────────
   function GenrePickCard({ pick }: { pick: AlbumPost }) {
-    const place = pick.places;
-    const name = place?.name ?? "Unknown";
-    const genre = genreLabel(place);
-    const thumb = getThumbUrl(pick);
+    const place  = pick.places;
+    const name   = place?.name ?? "Unknown";
+    const genre  = genreLabel(place);
+    const thumb  = getThumbUrl(pick);
     const mapUrl = buildMapUrl(pick);
 
     return (
@@ -406,14 +469,26 @@ export default function AlbumBrowser({
               <Sparkles size={14} />
               My Special Picks
             </div>
-            <MoreMenu post={pick} isHR={true} mapUrl={mapUrl} />
+            {mapUrl && (
+              <a
+                href={mapUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MapPin size={11} />
+                地図
+              </a>
+            )}
           </div>
 
-          <Link href={`/posts/${encodeURIComponent(String(pick.id))}`} className="block">
+          {/* サムネイル → lightbox */}
+          <button type="button" className="block w-full text-left" onClick={() => openLightbox(pick)}>
             <div className="flex gap-3 p-3">
               <div className="relative h-16 w-16 shrink-0 overflow-hidden bg-red-50" style={{ borderRadius: 0 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : null}
+                {thumb && <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
                 <div className="pointer-events-none absolute inset-0 ring-2 ring-red-300/60" />
               </div>
               <div className="min-w-0">
@@ -421,7 +496,7 @@ export default function AlbumBrowser({
                 <div className="mt-0.5 truncate text-xs font-semibold text-slate-600">{genre}</div>
               </div>
             </div>
-          </Link>
+          </button>
         </div>
       </div>
     );
@@ -434,14 +509,14 @@ export default function AlbumBrowser({
       className="rounded-full border border-orange-100 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-orange-200"
       aria-label="並び替え"
     >
-      <option value="score">おすすめ度順</option>
       <option value="created">投稿日時順</option>
+      <option value="score">おすすめ度順</option>
     </select>
   );
 
-  const chipBase = "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold";
+  const chipBase   = "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold";
   const chipActive = "border-orange-200 bg-orange-50 text-slate-900";
-  const chipIdle = "border-orange-100 bg-white text-slate-600 hover:bg-orange-50/40";
+  const chipIdle   = "border-orange-100 bg-white text-slate-600 hover:bg-orange-50/40";
 
   return (
     <section className="border border-orange-100 bg-white/95 px-0 py-4 shadow-sm backdrop-blur md:px-5 md:py-5">
@@ -492,19 +567,17 @@ export default function AlbumBrowser({
           </div>
         ) : view === "all" ? (
           <>
-            {hrPosts.length > 0 ? (
+            {hrPosts.length > 0 && (
               <section className="space-y-3">
-                <div className="px-4 md:px-0 flex items-center justify-between gap-2">
+                <div className="px-4 md:px-0 flex items-center gap-2">
                   <div className="inline-flex items-center gap-2 rounded-full border-2 border-red-200 bg-red-50 px-3 py-1 text-xs font-extrabold text-red-700">
                     <Sparkles size={14} />
                     My Special Picks
                   </div>
-
                 </div>
                 <PostGrid items={hrPosts} />
               </section>
-            ) : null}
-
+            )}
             <PostGrid items={restPosts} />
           </>
         ) : view === "area" ? (
@@ -520,31 +593,21 @@ export default function AlbumBrowser({
             </section>
           ))
         ) : (
-  genreBlocks.map((b) => (
-    <section key={b.key} className="space-y-3">
-      <div className="px-4 md:px-0 flex items-center gap-2">
-        <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
-          {b.key}
-        </div>
-        <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
+          genreBlocks.map((b) => (
+            <section key={b.key} className="space-y-3">
+              <div className="px-4 md:px-0 flex items-center gap-2">
+                <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
+                  {b.key}
+                </div>
+                <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
+              </div>
+              <PostGrid items={b.posts} />
+            </section>
+          ))
+        )}
       </div>
 
-      <PostGrid items={b.posts} />
-    </section>
-  ))
-)}
-
-      </div>
-
-      {/* 背景クリックで閉じる */}
-      {menuOpenFor ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-50 cursor-default bg-transparent"
-          onClick={() => setMenuOpenFor(null)}
-          aria-label="close menu overlay"
-        />
-      ) : null}
+      <Lightbox />
     </section>
   );
 }

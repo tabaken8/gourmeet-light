@@ -673,7 +673,10 @@ export default function NewPostPage() {
       recommendScore: Number(recommendScore.toFixed(1)),
       status: "saving",
     });
-    confetti({ particleCount: 60, spread: 80, origin: { y: 0.7 } });
+    // origin.y はビューポート基準で計算（ページ全体高さではなく表示画面内）
+    const viewportOriginY =
+      (window.scrollY + window.innerHeight * 0.7) / document.documentElement.scrollHeight;
+    confetti({ particleCount: 60, spread: 80, origin: { y: viewportOriginY } });
     router.push("/timeline");
     // ここ以降コンポーネントはアンマウントされる。setState は呼ばない。
 
