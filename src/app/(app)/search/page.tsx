@@ -205,8 +205,8 @@ export default function SearchPage() {
   const [detectedAuthor, setDetectedAuthor] = useState<{ username: string; displayName: string | null } | null>(null);
   const [mentionNotFound, setMentionNotFound] = useState(false);
 
-  // --- placeholder のメンション（フォロー中ユーザー）---
-  const [placeholderMention, setPlaceholderMention] = useState<string | null>(null);
+  // --- placeholder / ヒント用にフォロー中ユーザーを最大2人保持 ---
+  const [placeholderMentions, setPlaceholderMentions] = useState<[string | null, string | null]>([null, null]);
   const [isMobile, setIsMobile] = useState(false);
 
   // --- empty 時の遅延描画 ---
@@ -236,19 +236,22 @@ export default function SearchPage() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // ---- placeholder 用にフォロー中ユーザーを1件取得（1回だけ）----
+  // ---- placeholder / ヒント用にフォロー中ユーザーを最大2人取得（1回だけ）----
   useEffect(() => {
     let alive = true;
-    fetch("/api/follows/suggest?limit=5")
+    fetch("/api/follows/suggest?limit=10")
       .then((r) => r.json().catch(() => ({})))
       .then((payload) => {
         if (!alive) return;
         const users: { username: string | null }[] = Array.isArray(payload?.users) ? payload.users : [];
-        const withUsername = users.filter((u) => u.username);
-        if (!withUsername.length) return;
-        // ランダムに1人選ぶ
-        const pick = withUsername[Math.floor(Math.random() * withUsername.length)];
-        setPlaceholderMention(pick.username);
+        const pool = users.filter((u) => u.username);
+        if (!pool.length) return;
+        // シャッフルして先頭2人を取る
+        const shuffled = [...pool].sort(() => Math.random() - 0.5);
+        setPlaceholderMentions([
+          shuffled[0]?.username ?? null,
+          shuffled[1]?.username ?? null,
+        ]);
       })
       .catch(() => {});
     return () => { alive = false; };
@@ -577,10 +580,10 @@ export default function SearchPage() {
 
   // -------- 検索 placeholder --------
   const searchPlaceholder = useMemo(() => {
-    const mention = placeholderMention ? `@${placeholderMention}` : "@友達";
-    if (isMobile) return `渋谷でランチ、記念日フレンチ、${mention} のラーメン…`;
-    return `なんでも。渋谷で軽くランチ、記念日向きの雰囲気のいいフレンチ、${mention} のおすすめラーメン…`;
-  }, [placeholderMention, isMobile]);
+    const m = placeholderMentions[0] ? `@${placeholderMentions[0]}` : "@友達";
+    if (isMobile) return `渋谷でランチ、${m} のラーメン…`;
+    return `なんでも。渋谷で軽くランチ、記念日向きの雰囲気のいいフレンチ、${m} のおすすめラーメン…`;
+  }, [placeholderMentions, isMobile]);
 
   // -------- Title --------
   const titleText = useMemo(() => {
@@ -695,8 +698,8 @@ export default function SearchPage() {
                 <ul className="space-y-1.5 text-slate-600">
                   <li><span className="font-medium text-slate-800">渋谷で軽くランチ</span> — 地名 + 気分で検索</li>
                   <li><span className="font-medium text-slate-800">記念日向きの雰囲気のいいフレンチ</span> — 自然な言葉でOK</li>
-                  <li><span className="font-medium text-slate-800">{placeholderMention ? `@${placeholderMention}` : "@友達"} のおすすめラーメン</span> — フォロー中の人の投稿に絞れる</li>
-                  <li><span className="font-medium text-slate-800">{placeholderMention ? `@${placeholderMention}` : "@友達"} の東京駅近くのカフェ</span> — 地名 + ユーザー指定の組み合わせも可</li>
+                  <li><span className="font-medium text-slate-800">{placeholderMentions[0] ? `@${placeholderMentions[0]}` : "@友達"} のおすすめラーメン</span> — フォロー中の人の投稿に絞れる</li>
+                  <li><span className="font-medium text-slate-800">{placeholderMentions[1] ?? placeholderMentions[0] ? `@${placeholderMentions[1] ?? placeholderMentions[0]}` : "@知り合い"} の東京駅近くのカフェ</span> — 地名 + ユーザー指定の組み合わせも可</li>
                 </ul>
               </div>
             </motion.div>
