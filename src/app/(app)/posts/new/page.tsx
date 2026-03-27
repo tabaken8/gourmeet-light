@@ -662,129 +662,117 @@ export default function NewPostPage() {
     setBusy(true);
     setMsg(null);
 
-    try {
-      const CACHE = "31536000"; // 1年
-      const bucket = supabase.storage.from("post-images");
+    // ── Step 1: バリデーション通過直後にoptimisticを開始してすぐ遷移 ──────
+    // アップロード完了を待たず、ローカルのblob URLでプレビューを表示
+    optimisticPost.set({
+      tempId: `opt_${Date.now()}`,
+      coverSquareUrl: imgs[0]?.previewUrl ?? "",   // blob URL（アップロード前から存在）
+      placeName: selectedPlace?.name ?? "",
+      placeAddress: selectedPlace?.formatted_address ?? "",
+      content,
+      recommendScore: Number(recommendScore.toFixed(1)),
+      status: "saving",
+    });
+    confetti({ particleCount: 60, spread: 80, origin: { y: 0.7 } });
+    router.push("/timeline");
+    // ここ以降コンポーネントはアンマウントされる。setState は呼ばない。
 
-      // ensure と 画像アップロードを並列実行（従来は直列だった）
-      const [ensuredPlaceId, uploaded] = await Promise.all([
-        ensurePlaceWithLatLng(),
-        mapWithConcurrency(imgs, 2, async (img) => {
-        const base = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // ── Step 2: アップロード → insert → embedding をすべてバックグラウンドで実行 ──
+    ;(async () => {
+      try {
+        const CACHE = "31536000"; // 1年
+        const bucket = supabase.storage.from("post-images");
 
-        const pinExt = img.pin.name.split(".").pop() || "jpg";
-        const squareExt = img.square.name.split(".").pop() || "jpg";
-        const fullExt = img.full.name.split(".").pop() || "jpg";
+        // ensurePlace と全画像アップロードを並列実行
+        const [ensuredPlaceId, uploaded] = await Promise.all([
+          ensurePlaceWithLatLng(),
+          mapWithConcurrency(imgs, 2, async (img) => {
+            const base = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-        const pinPath = `${uid}/${base}_pin.${pinExt}`;
-        const squarePath = `${uid}/${base}_square.${squareExt}`;
-        const fullPath = `${uid}/${base}_full.${fullExt}`;
+            const pinExt    = img.pin.name.split(".").pop()    || "jpg";
+            const squareExt = img.square.name.split(".").pop() || "jpg";
+            const fullExt   = img.full.name.split(".").pop()   || "jpg";
 
-        const [upPin, upSquare, upFull] = await Promise.all([
-          bucket.upload(pinPath, img.pin, { cacheControl: CACHE, upsert: false, contentType: img.pin.type }),
-          bucket.upload(squarePath, img.square, { cacheControl: CACHE, upsert: false, contentType: img.square.type }),
-          bucket.upload(fullPath, img.full, { cacheControl: CACHE, upsert: false, contentType: img.full.type }),
+            const pinPath    = `${uid}/${base}_pin.${pinExt}`;
+            const squarePath = `${uid}/${base}_square.${squareExt}`;
+            const fullPath   = `${uid}/${base}_full.${fullExt}`;
+
+            const [upPin, upSquare, upFull] = await Promise.all([
+              bucket.upload(pinPath,    img.pin,    { cacheControl: CACHE, upsert: false, contentType: img.pin.type }),
+              bucket.upload(squarePath, img.square, { cacheControl: CACHE, upsert: false, contentType: img.square.type }),
+              bucket.upload(fullPath,   img.full,   { cacheControl: CACHE, upsert: false, contentType: img.full.type }),
+            ]);
+
+            if (upPin.error)    throw upPin.error;
+            if (upSquare.error) throw upSquare.error;
+            if (upFull.error)   throw upFull.error;
+
+            const { data: pubPin }    = bucket.getPublicUrl(pinPath);
+            const { data: pubSquare } = bucket.getPublicUrl(squarePath);
+            const { data: pubFull }   = bucket.getPublicUrl(fullPath);
+
+            return {
+              pin: pubPin.publicUrl,
+              square: pubSquare.publicUrl,
+              full: pubFull.publicUrl,
+              orig_w: img.origW,
+              orig_h: img.origH,
+            };
+          }),
         ]);
 
-        if (upPin.error) throw upPin.error;
-        if (upSquare.error) throw upSquare.error;
-        if (upFull.error) throw upFull.error;
+        const image_assets   = uploaded;
+        const image_variants = uploaded.map((x) => ({ thumb: x.square, full: x.full }));
+        const image_urls     = uploaded.map((x) => x.full);
 
-        const { data: pubPin } = bucket.getPublicUrl(pinPath);
-        const { data: pubSquare } = bucket.getPublicUrl(squarePath);
-        const { data: pubFull } = bucket.getPublicUrl(fullPath);
+        const cover_pin_url    = uploaded[0]?.pin    ?? null;
+        const cover_square_url = uploaded[0]?.square ?? null;
+        const cover_full_url   = uploaded[0]?.full   ?? null;
 
-        return {
-          pin: pubPin.publicUrl,
-          square: pubSquare.publicUrl,
-          full: pubFull.publicUrl,
-          orig_w: img.origW,
-          orig_h: img.origH,
-        };
-        }),
-      ]);
+        const price_yen   = priceMode === "exact"  ? priceYenValue : null;
+        const price_range = priceMode === "range"  ? priceRange    : null;
 
-      const image_assets = uploaded;
-      const image_variants = uploaded.map((x) => ({ thumb: x.square, full: x.full }));
-      const image_urls = uploaded.map((x) => x.full);
+        const place_id      = ensuredPlaceId;
+        const place_name    = selectedPlace?.name               ?? null;
+        const place_address = selectedPlace?.formatted_address  ?? null;
+        const visited_on    = visitedOn ?? null;
+        const tag_ids       = selectedTagIds;
+        const time_of_day: DbTimeOfDay = (timeOfDay ?? "unknown") as DbTimeOfDay;
 
-      const cover_pin_url = uploaded[0]?.pin ?? null;
-      const cover_square_url = uploaded[0]?.square ?? null;
-      const cover_full_url = uploaded[0]?.full ?? null;
+        const { data: inserted, error: insErr } = await Promise.resolve(
+          supabase.from("posts").insert({
+            user_id: uid,
+            content,
+            image_assets,
+            cover_pin_url,
+            cover_square_url,
+            cover_full_url,
+            image_variants,
+            image_urls,
+            place_id,
+            place_name,
+            place_address,
+            recommend_score: Number(recommendScore.toFixed(1)),
+            price_yen,
+            price_range,
+            visited_on,
+            time_of_day,
+            tag_ids,
+          }).select("id").single()
+        );
 
-      const price_yen = priceMode === "exact" ? priceYenValue : null;
-      const price_range = priceMode === "range" ? priceRange : null;
+        if (insErr) { optimisticPost.markError(); return; }
 
-      const place_id = ensuredPlaceId;
-      const place_name = selectedPlace?.name ?? null;
-      const place_address = selectedPlace?.formatted_address ?? null;
+        // embedding 生成（fire-and-forget）
+        if (inserted?.id) {
+          fetch(`/api/posts/${inserted.id}/embed`, { method: "POST" }).catch(() => {});
+        }
 
-      const visited_on = visitedOn ? visitedOn : null;
-
-      // DB columns
-      const tag_ids = selectedTagIds;
-      const time_of_day: DbTimeOfDay = (timeOfDay ?? "unknown") as DbTimeOfDay;
-
-      const postPayload = {
-        user_id: uid,
-        content,
-        image_assets,
-        cover_pin_url,
-        cover_square_url,
-        cover_full_url,
-        image_variants,
-        image_urls,
-        place_id,
-        place_name,
-        place_address,
-        recommend_score: Number(recommendScore.toFixed(1)),
-        price_yen,
-        price_range,
-        visited_on,
-        time_of_day,
-        tag_ids,
-      };
-
-      // 画像URLが揃った時点でoptimistic表示を開始 → すぐにタイムラインへ遷移
-      optimisticPost.set({
-        tempId: `opt_${Date.now()}`,
-        coverSquareUrl: cover_square_url ?? "",
-        placeName: place_name ?? "",
-        placeAddress: place_address ?? "",
-        content,
-        recommendScore: Number(recommendScore.toFixed(1)),
-        status: "saving",
-      });
-      confetti({ particleCount: 60, spread: 80, origin: { y: 0.7 } });
-      router.push("/timeline");
-      // ここ以降はコンポーネントがアンマウントされるため setState は呼ばない
-
-      // バックグラウンドでDB insert（ブラウザのfetchはアンマウント後も継続）
-      // SupabaseのPromiseLike は .catch() を持たないのでPromise.resolve でラップ
-      Promise.resolve(
-        supabase.from("posts").insert(postPayload).select("id").single()
-      )
-        .then(({ data: inserted, error: insErr }) => {
-          if (insErr) {
-            optimisticPost.markError();
-            return;
-          }
-          // 埋め込みベクトル生成（fire-and-forget）
-          if (inserted?.id) {
-            fetch(`/api/posts/${inserted.id}/embed`, { method: "POST" }).catch(() => {});
-          }
-          // ストア経由で完了通知（CustomEventと違い、マウント前完了でもロストしない）
-          optimisticPost.markDone();
-        })
-        .catch(() => {
-          optimisticPost.markError();
-        });
-
-    } catch (err: any) {
-      // 画像アップロード or ensure が失敗した場合（ナビゲート前）
-      setMsg(err?.message ?? "投稿に失敗しました");
-      setBusy(false);
-    }
+        optimisticPost.markDone();
+      } catch {
+        optimisticPost.markError();
+      }
+    })();
   };
 
   return (
