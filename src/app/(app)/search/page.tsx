@@ -207,6 +207,7 @@ export default function SearchPage() {
 
   // --- placeholder のメンション（フォロー中ユーザー）---
   const [placeholderMention, setPlaceholderMention] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   // --- empty 時の遅延描画 ---
   const [showDiscover, setShowDiscover] = useState(false);
@@ -225,6 +226,14 @@ export default function SearchPage() {
       .catch(() => { if (alive) setGenreCandidates([]); })
       .finally(() => { if (alive) setGenreCandidatesLoading(false); });
     return () => { alive = false; };
+  }, []);
+
+  // ---- モバイル判定（リサイズ追跡）----
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
   }, []);
 
   // ---- placeholder 用にフォロー中ユーザーを1件取得（1回だけ）----
@@ -569,8 +578,9 @@ export default function SearchPage() {
   // -------- 検索 placeholder --------
   const searchPlaceholder = useMemo(() => {
     const mention = placeholderMention ? `@${placeholderMention}` : "@友達";
+    if (isMobile) return `渋谷でランチ、記念日フレンチ、${mention} のラーメン…`;
     return `なんでも。渋谷で軽くランチ、記念日向きの雰囲気のいいフレンチ、${mention} のおすすめラーメン…`;
-  }, [placeholderMention]);
+  }, [placeholderMention, isMobile]);
 
   // -------- Title --------
   const titleText = useMemo(() => {
@@ -683,12 +693,11 @@ export default function SearchPage() {
                   <button type="button" onClick={() => setHintsOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
                 </div>
                 <ul className="space-y-1.5 text-slate-600">
-                  <li><span className="font-medium text-slate-800">渋谷でデートに使えるレストラン</span> — 地名 + 雰囲気で検索</li>
-                  <li><span className="font-medium text-slate-800">友達と行ける賑やかな居酒屋</span> — 自然な言葉でOK</li>
-                  <li><span className="font-medium text-slate-800">@alice のおすすめカフェ</span> — フォロー中のユーザーの投稿に絞れる</li>
-                  <li><span className="font-medium text-slate-800">@alice の東京駅近くのランチ</span> — 地名 + ユーザー指定の組み合わせも可</li>
+                  <li><span className="font-medium text-slate-800">渋谷で軽くランチ</span> — 地名 + 気分で検索</li>
+                  <li><span className="font-medium text-slate-800">記念日向きの雰囲気のいいフレンチ</span> — 自然な言葉でOK</li>
+                  <li><span className="font-medium text-slate-800">{placeholderMention ? `@${placeholderMention}` : "@友達"} のおすすめラーメン</span> — フォロー中の人の投稿に絞れる</li>
+                  <li><span className="font-medium text-slate-800">{placeholderMention ? `@${placeholderMention}` : "@友達"} の東京駅近くのカフェ</span> — 地名 + ユーザー指定の組み合わせも可</li>
                 </ul>
-                <div className="mt-2 text-[11px] text-slate-400">※ ソート順や「僕と合いそう」などの指示には現在対応していません</div>
               </div>
             </motion.div>
           )}
