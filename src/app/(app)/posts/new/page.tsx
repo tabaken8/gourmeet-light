@@ -14,6 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { optimisticPost } from "@/lib/optimisticPost";
 
 import {
   POST_TAGS,
@@ -662,12 +663,13 @@ export default function NewPostPage() {
     setMsg(null);
 
     try {
-      const ensuredPlaceId = await ensurePlaceWithLatLng();
-
       const CACHE = "31536000"; // 1年
       const bucket = supabase.storage.from("post-images");
 
-      const uploaded = await mapWithConcurrency(imgs, 2, async (img) => {
+      // ensure と 画像アップロードを並列実行（従来は直列だった）
+      const [ensuredPlaceId, uploaded] = await Promise.all([
+        ensurePlaceWithLatLng(),
+        mapWithConcurrency(imgs, 2, async (img) => {
         const base = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
         const pinExt = img.pin.name.split(".").pop() || "jpg";
@@ -699,7 +701,8 @@ export default function NewPostPage() {
           orig_w: img.origW,
           orig_h: img.origH,
         };
-      });
+        }),
+      ]);
 
       const image_assets = uploaded;
       const image_variants = uploaded.map((x) => ({ thumb: x.square, full: x.full }));
@@ -722,45 +725,64 @@ export default function NewPostPage() {
       const tag_ids = selectedTagIds;
       const time_of_day: DbTimeOfDay = (timeOfDay ?? "unknown") as DbTimeOfDay;
 
-      const { data: inserted, error: insErr } = await supabase.from("posts").insert({
+      const postPayload = {
         user_id: uid,
         content,
-
         image_assets,
         cover_pin_url,
         cover_square_url,
         cover_full_url,
-
         image_variants,
         image_urls,
-
         place_id,
         place_name,
         place_address,
-
         recommend_score: Number(recommendScore.toFixed(1)),
         price_yen,
         price_range,
-
         visited_on,
         time_of_day,
-
         tag_ids,
-      }).select("id").single();
+      };
 
-      if (insErr) throw insErr;
-
-      // 埋め込みベクトル生成（非同期・fire-and-forget）
-      if (inserted?.id) {
-        fetch(`/api/posts/${inserted.id}/embed`, { method: "POST" }).catch(() => {});
-      }
-
+      // 画像URLが揃った時点でoptimistic表示を開始 → すぐにタイムラインへ遷移
+      optimisticPost.set({
+        tempId: `opt_${Date.now()}`,
+        coverSquareUrl: cover_square_url ?? "",
+        placeName: place_name ?? "",
+        placeAddress: place_address ?? "",
+        content,
+        recommendScore: Number(recommendScore.toFixed(1)),
+        status: "saving",
+      });
       confetti({ particleCount: 60, spread: 80, origin: { y: 0.7 } });
       router.push("/timeline");
-      router.refresh();
+      // ここ以降はコンポーネントがアンマウントされるため setState は呼ばない
+
+      // バックグラウンドでDB insert（ブラウザのfetchはアンマウント後も継続）
+      // SupabaseのPromiseLike は .catch() を持たないのでPromise.resolve でラップ
+      Promise.resolve(
+        supabase.from("posts").insert(postPayload).select("id").single()
+      )
+        .then(({ data: inserted, error: insErr }) => {
+          if (insErr) {
+            optimisticPost.markError();
+            return;
+          }
+          // 埋め込みベクトル生成（fire-and-forget）
+          if (inserted?.id) {
+            fetch(`/api/posts/${inserted.id}/embed`, { method: "POST" }).catch(() => {});
+          }
+          // ストア経由で完了通知（CustomEventと違い、マウント前完了でもロストしない）
+          optimisticPost.markDone();
+        })
+        .catch(() => {
+          optimisticPost.markError();
+        });
+
     } catch (err: any) {
+      // 画像アップロード or ensure が失敗した場合（ナビゲート前）
       setMsg(err?.message ?? "投稿に失敗しました");
-    } finally {
       setBusy(false);
     }
   };
@@ -1034,6 +1056,12 @@ export default function NewPostPage() {
                                 setSelectedPlace(p);
                                 setPlaceQuery("");
                                 setPlaceResults([]);
+                                // 選択と同時にensureを先行実行（submit時のレイテンシ短縮）
+                                fetch("/api/places/ensure", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ placeId: p.place_id }),
+                                }).catch(() => {});
                               }}
                             >
                               <div className="flex items-start gap-2">

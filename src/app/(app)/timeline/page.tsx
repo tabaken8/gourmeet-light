@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import FriendsTimelineServer from "@/components/timeline/FriendsTimelineServer";
 import DiscoverTimelineClient from "@/components/timeline/DiscoverTimelineClient";
+import OptimisticPostCard from "@/components/timeline/OptimisticPostCard";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +73,11 @@ export default async function TimelinePage({
           </div>
 
           {activeTab === "friends" ? (
-            <FriendsTimelineServer meId={user?.id ?? null} />
+            <>
+              {/* 投稿者本人にだけ: DBへの保存が完了するまで仮表示 */}
+              <OptimisticPostCard />
+              <FriendsTimelineServer meId={user?.id ?? null} />
+            </>
           ) : (
             <DiscoverTimelineClient meId={user?.id ?? null} />
           )}
