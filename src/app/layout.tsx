@@ -26,8 +26,12 @@ export const metadata: Metadata = {
     images: ["/ogp.png"],
   },
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico" },                        // fallback for legacy browsers
+    ],
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
   },
 };
 
@@ -40,8 +44,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {/* PC用ヘッダー（モバイルでは非表示） */}
           <header className="hidden md:block border-b border-black/[.06] bg-white/90 backdrop-blur">
             <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-              <Link href="/" className="font-semibold tracking-wide">
-                Gourmeet
+              <Link href="/" className="flex items-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo.svg" alt="Gourmeet" className="h-8 w-auto" />
               </Link>
               <ClientAuthNav />
             </div>
