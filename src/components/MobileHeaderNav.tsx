@@ -187,23 +187,21 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
         {/* 1段目 */}
         <div className="flex h-12 items-center justify-between px-3">
           <Link href={gate(homeHref)} className="flex items-center" aria-label="Gourmeet">
-            <svg viewBox="0 0 440 100" height="34" style={{ width: "auto" }} aria-hidden>
-              <defs>
-                <linearGradient id="mob-logo-tg" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%"   stopColor="#1DB9A0"/>
-                  <stop offset="35%"  stopColor="#6BAA44"/>
-                  <stop offset="65%"  stopColor="#C8882A"/>
-                  <stop offset="100%" stopColor="#D06A28"/>
-                </linearGradient>
-              </defs>
-              <text x="6" y="78"
-                fontFamily="'Pacifico', 'Dancing Script', cursive"
-                fontSize="72"
-                fill="url(#mob-logo-tg)"
-                letterSpacing="1">
-                Gourmeet
-              </text>
-            </svg>
+            <span
+              style={{
+                fontFamily: "'Pacifico', 'Dancing Script', cursive",
+                fontSize: "22px",
+                lineHeight: 1,
+                background: "linear-gradient(to right, #1DB9A0 0%, #6BAA44 35%, #C8882A 70%, #D06A28 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                display: "inline-block",
+                paddingBottom: "2px",
+              }}
+            >
+              Gourmeet
+            </span>
           </Link>
 
           <div className="flex items-center gap-1">
