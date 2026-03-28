@@ -248,6 +248,11 @@ export default function AlbumBrowser({
     if (!lightboxPost) return null;
 
     const images   = getAllFullUrls(lightboxPost);
+    // thumb URLs (already cached from grid) → instant placeholder while full loads
+    const thumbUrls = (lightboxPost.image_variants as any[] ?? [])
+      .map((x: any) => x?.thumb ?? x?.full ?? null)
+      .filter(Boolean) as string[];
+    const currentThumb = thumbUrls[lightboxImgIdx] ?? getThumbUrl(lightboxPost);
     const place    = lightboxPost.places;
     const name     = place?.name ?? "Unknown";
     const genre    = genreLabel(place);
@@ -279,12 +284,27 @@ export default function AlbumBrowser({
           {/* ─ Image area：高さを明示してロード前に潰れないようにする ─ */}
           <div className="relative flex h-[50vh] shrink-0 items-center justify-center bg-slate-900 md:h-auto md:w-[60%]">
             {images.length > 0 ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={images[lightboxImgIdx]}
-                alt=""
-                className="h-full w-full object-contain md:max-h-[90vh]"
-              />
+              <>
+                {/* thumb: キャッシュ済みで即時表示 → full が読み込まれるまでの placeholder */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {currentThumb && (
+                  <img
+                    key={`thumb-${currentThumb}`}
+                    src={currentThumb}
+                    alt=""
+                    aria-hidden
+                    className="absolute inset-0 h-full w-full object-contain"
+                  />
+                )}
+                {/* full: 読み込み完了後に thumb の上に重なる */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  key={images[lightboxImgIdx]}
+                  src={images[lightboxImgIdx]}
+                  alt=""
+                  className="relative z-10 h-full w-full object-contain md:max-h-[90vh]"
+                />
+              </>
             ) : (
               <div className="h-full w-full bg-slate-200" />
             )}
