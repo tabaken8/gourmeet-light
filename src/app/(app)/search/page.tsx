@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { HelpCircle, Search, Sparkles, TrainFront, X } from "lucide-react";
+import dynamic from "next/dynamic";
+import { HelpCircle, MapPin as MapPinIcon, Search, Sparkles, TrainFront, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,6 +17,9 @@ import SearchPostList, { PostRow, SearchMode } from "@/components/search/SearchP
 import SearchZeroResultsNudge from "@/components/SearchZeroResultsNudge";
 import LocationFilter from "@/components/search/LocationFilter";
 import GenreFilter from "@/components/search/GenreFilter";
+import type { MapBounds } from "@/components/search/SearchMap";
+
+const SearchMap = dynamic(() => import("@/components/search/SearchMap"), { ssr: false });
 
 // ---------- types ----------
 type UserHit = {
@@ -213,6 +217,12 @@ export default function SearchPage() {
 
   // --- empty 時の遅延描画 ---
   const [showDiscover, setShowDiscover] = useState(false);
+
+  // --- map ---
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [geoMode, setGeoMode] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   // ---- ジャンル候補を DB から取得（1回だけ）----
   useEffect(() => {
@@ -472,6 +482,7 @@ export default function SearchPage() {
     setCommittedStationName(next.sname ?? null);
     setSearchedStationName(mm === "station" ? (next.sname ?? null) : null);
 
+    setGeoMode(false);
     setUsers([]);
     setPosts([]);
     setCursor(null);
@@ -501,6 +512,60 @@ export default function SearchPage() {
       loadMoreWith({ mode: mm, stationId: next.sid ?? null, stationName: next.sname ?? null, follow: next.follow, q: nq, genre: ng }, true);
     }
   };
+
+  // -------- 現在地から探す (Plan C) --------
+  const handleSearchFromLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGeoError("\u4F4D\u7F6E\u60C5\u5831\u304C\u5229\u7528\u3067\u304D\u307E\u305B\u3093");
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setUserLocation(loc);
+        setGeoMode(true);
+        setGeoLoading(false);
+      },
+      (err) => {
+        setGeoLoading(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setGeoError("\u4F4D\u7F6E\u60C5\u5831\u306E\u8A31\u53EF\u304C\u5FC5\u8981\u3067\u3059\u3002\u8A2D\u5B9A\u304B\u3089\u8A31\u53EF\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+        } else {
+          setGeoError("\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }, []);
+
+  // -------- bbox検索 (このエリアで検索) --------
+  const handleSearchThisArea = useCallback(async (bounds: MapBounds) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        bbox_north: String(bounds.north),
+        bbox_south: String(bounds.south),
+        bbox_east: String(bounds.east),
+        bbox_west: String(bounds.west),
+        limit: "50",
+      });
+      if (q.trim()) params.set("q", q.trim());
+      const res = await fetch(`/api/search?${params}`);
+      const payload = await res.json().catch(() => ({}));
+      if (payload?.posts && Array.isArray(payload.posts)) {
+        setPosts(payload.posts);
+        setResultMode(q.trim() ? "ai" : "keyword");
+        setSemanticPosts(q.trim() ? payload.posts : []);
+      }
+    } catch {
+      setError("\u691C\u7D22\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
+    } finally {
+      setLoading(false);
+    }
+  }, [q]);
 
   // -------- @mention サジェスト --------
   const fetchMentionSuggestions = useCallback((partial: string) => {
@@ -741,27 +806,52 @@ export default function SearchPage() {
       {/* ===== Body ===== */}
       {isEmpty ? (
         <div className="space-y-3">
-          <AnimatePresence mode="wait">
-            {!showDiscover ? (
-              <motion.div key="empty-splash" {...fadeUp} className="px-3 py-4">
-                <div className="text-sm font-semibold text-slate-900">すぐ検索できます</div>
-                <div className="mt-2 text-xs text-slate-500">
-                  キーワード入力・駅選択・ジャンル選択で投稿を探せます
-                </div>
-                <div className="mt-4">
-                  <Skeleton height={10} width={220} />
-                  <div className="mt-2"><Skeleton height={10} width={160} /></div>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div key="discover" {...fadeUp}>
-                <TimelineFeed activeTab="discover" meId={meId} />
-              </motion.div>
+          {/* 現在地から探すボタン */}
+          <div className="px-3 pt-2">
+            <button
+              type="button"
+              onClick={handleSearchFromLocation}
+              disabled={geoLoading}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-[0.97] transition disabled:opacity-50"
+            >
+              <MapPinIcon size={15} className="text-blue-500" />
+              {geoLoading ? "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u4E2D\u2026" : "\u73FE\u5728\u5730\u304B\u3089\u63A2\u3059"}
+            </button>
+            {geoError && (
+              <p className="mt-2 text-xs text-red-500">{geoError}</p>
             )}
-          </AnimatePresence>
+          </div>
+
+          {/* geoMode: 現在地マップ（検索前） */}
+          {geoMode && (
+            <div className="px-2">
+              <SearchMap
+                posts={posts}
+                userLocation={userLocation}
+                onSearchThisArea={handleSearchThisArea}
+                showSearchButton={true}
+              />
+            </div>
+          )}
+
+          {!geoMode && (
+            <AnimatePresence mode="wait">
+              {!showDiscover ? (
+                <motion.div key="empty-splash" {...fadeUp} className="px-3 py-2">
+                  <div className="text-xs text-slate-500">
+                    {"\u30AD\u30FC\u30EF\u30FC\u30C9\u5165\u529B\u30FB\u99C5\u9078\u629E\u30FB\u30B8\u30E3\u30F3\u30EB\u9078\u629E\u3067\u3082\u691C\u7D22\u3067\u304D\u307E\u3059"}
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div key="discover" {...fadeUp}>
+                  <TimelineFeed activeTab="discover" meId={meId} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-0">
           {/* Users */}
           {usersLoading ? (
             <UsersSkeleton />
@@ -770,7 +860,7 @@ export default function SearchPage() {
               <div className="mb-2 text-[11px] font-medium text-slate-400">Users</div>
               <motion.div className="flex flex-col gap-1.5" variants={listStagger} initial="initial" animate="animate">
                 {users.map((u) => {
-                  const name = u.display_name ?? u.username ?? "ユーザー";
+                  const name = u.display_name ?? u.username ?? "\u30E6\u30FC\u30B6\u30FC";
                   const handle = u.username ? `@${u.username}` : "";
                   const initial = (name || "U").slice(0, 1).toUpperCase();
                   return (
@@ -789,7 +879,7 @@ export default function SearchPage() {
                           </div>
                           {u.bio && <div className="truncate text-xs text-slate-600">{u.bio}</div>}
                         </div>
-                        <div className="text-xs font-semibold text-orange-600">見る</div>
+                        <div className="text-xs font-semibold text-orange-600">{"\u898B\u308B"}</div>
                       </Link>
                     </motion.div>
                   );
@@ -797,6 +887,19 @@ export default function SearchPage() {
               </motion.div>
             </motion.section>
           ) : null}
+
+          {/* ===== 地図（常にトップ表示） ===== */}
+          {((resultMode === "ai" && semanticPosts.length > 0) ||
+            (resultMode === "keyword" && posts.length > 0)) && (
+            <div className="px-2 pb-3">
+              <SearchMap
+                posts={resultMode === "ai" ? semanticPosts : posts}
+                userLocation={userLocation}
+                onSearchThisArea={handleSearchThisArea}
+                showSearchButton={true}
+              />
+            </div>
+          )}
 
           {/* ===== AI 検索結果 ===== */}
           {resultMode === "ai" && (
@@ -859,8 +962,8 @@ export default function SearchPage() {
               {!semanticLoading && !semanticError && semanticPosts.length === 0 && (
                 <motion.div {...fadeUp} className="py-6 text-center text-xs text-slate-500">
                   {mentionNotFound
-                    ? `@${committedQ.match(/@([\w]+)/)?.[1] ?? "..."} というユーザーが見つかりませんでした。`
-                    : "該当する投稿が見つかりませんでした。"}
+                    ? `@${committedQ.match(/@([\w]+)/)?.[1] ?? "..."} \u3068\u3044\u3046\u30E6\u30FC\u30B6\u30FC\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002`
+                    : "\u8A72\u5F53\u3059\u308B\u6295\u7A3F\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002"}
                 </motion.div>
               )}
             </>
@@ -881,7 +984,7 @@ export default function SearchPage() {
 
               {loading && posts.length > 0 && (
                 <motion.div {...fadeUp} className="pb-8">
-                  <div className="text-center text-xs text-slate-500">読み込み中...</div>
+                  <div className="text-center text-xs text-slate-500">{"\u8AAD\u307F\u8FBC\u307F\u4E2D..."}</div>
                   <div className="mt-3">
                     <Skeleton height={10} />
                     <div className="mt-2"><Skeleton height={10} /></div>
@@ -894,7 +997,7 @@ export default function SearchPage() {
               )}
 
               {done && posts.length > 0 && (
-                <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400">これ以上ありません</motion.div>
+                <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400">{"\u3053\u308C\u4EE5\u4E0A\u3042\u308A\u307E\u305B\u3093"}</motion.div>
               )}
 
               {/* 0件 */}
@@ -908,7 +1011,7 @@ export default function SearchPage() {
                       }
                     />
                   )}
-                  <div className="py-6 text-center text-xs text-slate-500">該当する投稿がありません。</div>
+                  <div className="py-6 text-center text-xs text-slate-500">{"\u8A72\u5F53\u3059\u308B\u6295\u7A3F\u304C\u3042\u308A\u307E\u305B\u3093\u3002"}</div>
                 </motion.div>
               )}
             </>

@@ -275,6 +275,55 @@ async function attachLikesToPosts(params: { supabase: any; posts: any[]; meId: s
 }
 
 // -----------------------------
+// ✅ posts に lat/lng を付与
+// -----------------------------
+async function attachLatLngToPosts(params: { supabase: any; posts: any[] }) {
+  const { supabase } = params;
+  const posts = Array.isArray(params.posts) ? params.posts : [];
+  if (posts.length === 0) return posts;
+
+  const placeIds = Array.from(
+    new Set(posts.map((p: any) => p?.place_id).filter(Boolean).map((x: any) => String(x)))
+  );
+
+  if (placeIds.length === 0) {
+    return posts.map((p: any) => ({ ...p, place_lat: null, place_lng: null }));
+  }
+
+  let rows: any[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("places")
+      .select("place_id, lat, lng")
+      .in("place_id", placeIds);
+
+    if (!error && Array.isArray(data)) rows = data;
+  } catch {
+    rows = [];
+  }
+
+  const map = new Map<string, { lat: number | null; lng: number | null }>();
+  for (const r of rows) {
+    const pid = r?.place_id ? String(r.place_id) : null;
+    if (!pid) continue;
+    map.set(pid, {
+      lat: typeof r?.lat === "number" ? r.lat : null,
+      lng: typeof r?.lng === "number" ? r.lng : null,
+    });
+  }
+
+  return posts.map((p: any) => {
+    const pid = p?.place_id ? String(p.place_id) : "";
+    const hit = pid ? map.get(pid) : null;
+    return {
+      ...p,
+      place_lat: hit?.lat ?? null,
+      place_lng: hit?.lng ?? null,
+    };
+  });
+}
+
+// -----------------------------
 // ✅ 駅 -> placeIds (強制フィルタ用)
 // -----------------------------
 async function getPlaceIdsForStation(params: {
@@ -380,12 +429,19 @@ export async function GET(req: Request) {
   const station_name = (searchParams.get("station_name") ?? "").trim();
   const radius_m = clamp(toInt(searchParams.get("radius_m"), 3000), 100, 20000);
 
+  const bbox_north = searchParams.get("bbox_north") ? Number(searchParams.get("bbox_north")) : null;
+  const bbox_south = searchParams.get("bbox_south") ? Number(searchParams.get("bbox_south")) : null;
+  const bbox_east = searchParams.get("bbox_east") ? Number(searchParams.get("bbox_east")) : null;
+  const bbox_west = searchParams.get("bbox_west") ? Number(searchParams.get("bbox_west")) : null;
+  const isBbox = bbox_north != null && bbox_south != null && bbox_east != null && bbox_west != null
+    && Number.isFinite(bbox_north) && Number.isFinite(bbox_south) && Number.isFinite(bbox_east) && Number.isFinite(bbox_west);
+
   const { data: auth } = await supabase.auth.getUser();
   const me = auth.user?.id ?? null;
 
   const isStation = !!station_place_id;
 
-  if (!isStation && !q) {
+  if (!isStation && !q && !isBbox) {
     return NextResponse.json({ ok: true, mode: "geo", posts: [], nextCursor: null });
   }
 
@@ -439,6 +495,31 @@ export async function GET(req: Request) {
     }
   }
 
+  // bbox: placeIds from bounding box
+  if (isBbox && !isStation) {
+    const { data: bboxPlaces, error: bboxErr } = await supabase
+      .from("places")
+      .select("place_id")
+      .gte("lat", bbox_south)
+      .lte("lat", bbox_north)
+      .gte("lng", bbox_west)
+      .lte("lng", bbox_east)
+      .limit(5000);
+
+    if (!bboxErr && Array.isArray(bboxPlaces)) {
+      placeIds = Array.from(new Set(bboxPlaces.map((r: any) => r?.place_id).filter(Boolean).map(String)));
+    }
+
+    if (placeIds.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        mode: "bbox",
+        posts: [],
+        nextCursor: null,
+      });
+    }
+  }
+
   // -----------------------------
   // fetch posts (main)
   // -----------------------------
@@ -465,7 +546,7 @@ export async function GET(req: Request) {
 
     let rows = Array.isArray(v3data) ? v3data : [];
 
-    if (isStation) {
+    if (isStation || (isBbox && placeIds.length > 0)) {
       const set = new Set(placeIds);
       rows = rows.filter((p: any) => p?.place_id && set.has(String(p.place_id)));
     }
@@ -491,6 +572,7 @@ export async function GET(req: Request) {
     posts = await attachProfilesToPosts({ supabase, posts });
     posts = await attachNearestStationsToPosts({ supabase, posts });
     posts = await attachLikesToPosts({ supabase, posts, meId: me });
+    posts = await attachLatLngToPosts({ supabase, posts });
 
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   } else {
@@ -529,6 +611,7 @@ export async function GET(req: Request) {
     posts = await attachProfilesToPosts({ supabase, posts: rows });
     posts = await attachNearestStationsToPosts({ supabase, posts });
     posts = await attachLikesToPosts({ supabase, posts, meId: me });
+    posts = await attachLatLngToPosts({ supabase, posts });
 
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   }

@@ -371,17 +371,27 @@ export async function enrichCollectedPosts(posts: any[], supabase: any, meId?: s
 
   const placeIds = [...new Set(posts.map((p) => p.place_id).filter(Boolean))];
   const stationMap: Record<string, any> = {};
+  const geoMap: Record<string, { lat: number | null; lng: number | null }> = {};
   if (placeIds.length) {
-    const { data: links } = await supabase
-      .from("place_station_links")
-      .select("place_id, station_name, distance_m")
-      .in("place_id", placeIds)
-      .eq("rank", 1);
+    const [{ data: links }, { data: geoRows }] = await Promise.all([
+      supabase
+        .from("place_station_links")
+        .select("place_id, station_name, distance_m")
+        .in("place_id", placeIds)
+        .eq("rank", 1),
+      supabase
+        .from("places")
+        .select("place_id, lat, lng")
+        .in("place_id", placeIds),
+    ]);
     for (const l of links ?? []) {
       stationMap[l.place_id] = {
         nearest_station_name: l.station_name ?? null,
         nearest_station_distance_m: l.distance_m ?? null,
       };
+    }
+    for (const g of geoRows ?? []) {
+      geoMap[g.place_id] = { lat: g.lat ?? null, lng: g.lng ?? null };
     }
   }
 
@@ -432,12 +442,15 @@ export async function enrichCollectedPosts(posts: any[], supabase: any, meId?: s
   return posts.map((p) => {
     const profile = profileMap[p.user_id] ?? null;
     const station = stationMap[p.place_id] ?? null;
+    const geo = geoMap[p.place_id] ?? null;
     return {
       ...p,
       profile,
       user: profile,
       nearest_station_name: station?.nearest_station_name ?? null,
       nearest_station_distance_m: station?.nearest_station_distance_m ?? null,
+      place_lat: geo?.lat ?? null,
+      place_lng: geo?.lng ?? null,
       likeCount: likeCountMap[p.id] ?? 0,
       likedByMe: likedByMeSet.has(p.id),
       initialLikers: likersMap[p.id] ?? [],
