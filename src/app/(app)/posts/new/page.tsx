@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import {
@@ -15,6 +15,13 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { optimisticPost } from "@/lib/optimisticPost";
+import {
+  type Draft,
+  type DraftImage,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+} from "@/lib/draftStore";
 
 import {
   POST_TAGS,
@@ -334,51 +341,42 @@ function formatYen(n: number) {
   }
 }
 
-function ProgressPill({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <div
-      className={[
-        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold",
-        ok ? "border-orange-200 bg-orange-50 text-orange-700" : "border-slate-200 bg-white text-slate-500",
-      ].join(" ")}
-    >
-      {ok ? <Check className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5 rounded-full border border-slate-300" />}
-      <span>{label}</span>
-    </div>
-  );
-}
-
 function Section({
   title,
-  subtitle,
   required,
+  optional,
   children,
   right,
+  noPadding,
 }: {
-  title: string;
-  subtitle?: React.ReactNode;
+  title?: string;
   required?: boolean;
+  optional?: boolean;
   right?: React.ReactNode;
   children: React.ReactNode;
+  noPadding?: boolean;
 }) {
   return (
-    <section className="space-y-2">
-      <div className="flex items-end justify-between gap-3 px-3">
-        <div className="min-w-0">
+    <section>
+      {title && (
+        <div className="flex items-center justify-between gap-3 px-4 pt-5 pb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+            <h2 className="text-[13px] font-bold text-slate-900 tracking-wide">{title}</h2>
             {required && (
-              <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
-                必須
+              <span className="rounded bg-orange-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                {"\u5FC5\u9808"}
+              </span>
+            )}
+            {optional && (
+              <span className="text-[11px] text-slate-400 font-medium">
+                {"\u4EFB\u610F"}
               </span>
             )}
           </div>
-          {subtitle && <div className="mt-0.5 text-[12px] text-slate-500">{subtitle}</div>}
+          {right && <div className="shrink-0">{right}</div>}
         </div>
-        {right && <div className="shrink-0">{right}</div>}
-      </div>
-
-      <div className="border-t border-orange-100 bg-white p-3">{children}</div>
+      )}
+      <div className={noPadding ? "" : "px-4 pb-4"}>{children}</div>
     </section>
   );
 }
@@ -426,14 +424,144 @@ export default function NewPostPage() {
   const [tagCategory, setTagCategory] = useState<TagCategory>("all");
   const [tagQuery, setTagQuery] = useState("");
 
-  // show optional (tags section)
-  const [showDetails, setShowDetails] = useState(true);
+  // show optional (tags section) — default collapsed
+  const [showDetails, setShowDetails] = useState(false);
+
+  // draft
+  const [draftRestorePrompt, setDraftRestorePrompt] = useState<"loading" | "ask" | "none">("loading");
+  const pendingDraftRef = useRef<Draft | null>(null);
+  const submittedRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
   }, [supabase]);
+
+  // ---- draft: check on mount ----
+  useEffect(() => {
+    loadDraft().then((d) => {
+      if (d) {
+        pendingDraftRef.current = d;
+        setDraftRestorePrompt("ask");
+      } else {
+        setDraftRestorePrompt("none");
+      }
+    }).catch(() => setDraftRestorePrompt("none"));
+  }, []);
+
+  // ---- draft: restore handler ----
+  const restoreDraft = useCallback(async () => {
+    const d = pendingDraftRef.current;
+    if (!d) return;
+
+    setContent(d.content);
+    setSelectedPlace(d.selectedPlace);
+    setPriceMode(d.priceMode as PriceMode);
+    setPriceYenText(d.priceYenText);
+    setPriceRange(d.priceRange as any);
+    setRecommendSelected(d.recommendSelected);
+    setRecommendScore(d.recommendScore);
+    setVisitedOn(d.visitedOn);
+    setTimeOfDay(d.timeOfDay);
+    setTimeOfDayTouched(d.timeOfDayTouched);
+    setSelectedTagIds(d.selectedTagIds);
+
+    // 画像の blob -> PreparedImage に復元
+    const restored: PreparedImage[] = d.images.map((di) => ({
+      id: di.id,
+      pin: new File([di.pinBlob], `${di.id}_pin`, { type: di.pinBlob.type }),
+      square: new File([di.squareBlob], `${di.id}_square`, { type: di.squareBlob.type }),
+      full: new File([di.fullBlob], `${di.id}_full`, { type: di.fullBlob.type }),
+      previewUrl: URL.createObjectURL(di.previewBlob),
+      label: di.label,
+      origW: di.origW,
+      origH: di.origH,
+      exifDate: di.exifDate ? new Date(di.exifDate) : null,
+    }));
+    setImgs(restored);
+
+    pendingDraftRef.current = null;
+    setDraftRestorePrompt("none");
+    // 復元したら下書き削除（二重復元防止）
+    await clearDraft();
+  }, []);
+
+  // ---- form has content? ----
+  const formHasContent = useMemo(() => {
+    return content.trim().length > 0 || imgs.length > 0 || !!selectedPlace;
+  }, [content, imgs, selectedPlace]);
+
+  // ---- auto-save: ref で最新値を保持（イベントハンドラから参照） ----
+  const formSnapshotRef = useRef({
+    content, imgs, selectedPlace, priceMode, priceYenText, priceRange,
+    recommendSelected, recommendScore, visitedOn, timeOfDay, timeOfDayTouched, selectedTagIds,
+  });
+  useEffect(() => {
+    formSnapshotRef.current = {
+      content, imgs, selectedPlace, priceMode, priceYenText, priceRange,
+      recommendSelected, recommendScore, visitedOn, timeOfDay, timeOfDayTouched, selectedTagIds,
+    };
+  }, [content, imgs, selectedPlace, priceMode, priceYenText, priceRange, recommendSelected, recommendScore, visitedOn, timeOfDay, timeOfDayTouched, selectedTagIds]);
+
+  const formHasContentRef = useRef(formHasContent);
+  useEffect(() => { formHasContentRef.current = formHasContent; }, [formHasContent]);
+
+  // ---- auto-save: 共通の保存ロジック ----
+  const doSave = useCallback(() => {
+    if (submittedRef.current || !formHasContentRef.current) return;
+    const s = formSnapshotRef.current;
+
+    const draftImages: DraftImage[] = s.imgs.map((img) => ({
+      id: img.id,
+      pinBlob: img.pin,
+      squareBlob: img.square,
+      fullBlob: img.full,
+      previewBlob: img.square,
+      label: img.label,
+      origW: img.origW,
+      origH: img.origH,
+      exifDate: img.exifDate?.toISOString() ?? null,
+    }));
+
+    const draft: Draft = {
+      content: s.content,
+      images: draftImages,
+      selectedPlace: s.selectedPlace,
+      priceMode: s.priceMode,
+      priceYenText: s.priceYenText,
+      priceRange: s.priceRange,
+      recommendSelected: s.recommendSelected,
+      recommendScore: s.recommendScore,
+      visitedOn: s.visitedOn,
+      timeOfDay: s.timeOfDay,
+      timeOfDayTouched: s.timeOfDayTouched,
+      selectedTagIds: s.selectedTagIds,
+      savedAt: Date.now(),
+    };
+    saveDraft(draft).catch(() => {});
+  }, []);
+
+  // ---- auto-save: visibilitychange (タブ切替) + beforeunload (リフレッシュ/タブ閉じ) ----
+  useEffect(() => {
+    const onVisChange = () => {
+      if (document.visibilityState === "hidden") doSave();
+    };
+    const onBeforeUnload = () => doSave();
+
+    document.addEventListener("visibilitychange", onVisChange);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [doSave]);
+
+  // ---- auto-save: コンポーネント unmount 時（SPA 内遷移: router.back() やリンク等） ----
+  useEffect(() => {
+    return () => doSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- place search debounce ----
   useEffect(() => {
@@ -587,23 +715,8 @@ export default function NewPostPage() {
     return !!priceYenValue && priceYenValue > 0;
   }, [priceMode, priceYenValue]);
 
-  const isPhotoComplete = imgs.length > 0;
-  const isPlaceComplete = !!selectedPlace?.place_id;
-  const isPriceOk = isPriceComplete;
-  const isContentComplete = content.trim().length > 0;
-  const isRecommendComplete = recommendSelected;
-
-  const isAllRequiredComplete = isPhotoComplete && isPlaceComplete && isPriceOk && isContentComplete && isRecommendComplete;
-
-  const progressRow = (
-    <div className="flex flex-wrap gap-2">
-      <ProgressPill ok={isPhotoComplete} label="写真" />
-      <ProgressPill ok={isPlaceComplete} label="お店" />
-      <ProgressPill ok={isPriceOk} label="価格" />
-      <ProgressPill ok={isContentComplete} label="本文" />
-      <ProgressPill ok={isRecommendComplete} label="おすすめ度" />
-    </div>
-  );
+  const isAllRequiredComplete =
+    imgs.length > 0 && !!selectedPlace?.place_id && isPriceComplete && content.trim().length > 0 && recommendSelected;
 
   const priceModeSwitch = (
     <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
@@ -661,6 +774,10 @@ export default function NewPostPage() {
 
     setBusy(true);
     setMsg(null);
+
+    // 投稿成功フラグ → beforeunload を無効化 & 下書き削除
+    submittedRef.current = true;
+    clearDraft().catch(() => {});
 
     // ── Step 1: バリデーション通過直後にoptimisticを開始してすぐ遷移 ──────
     // アップロード完了を待たず、ローカルのblob URLでプレビューを表示
@@ -779,618 +896,350 @@ export default function NewPostPage() {
   };
 
   return (
-    <main className="min-h-screen bg-orange-50 text-slate-800">
-      <div className="w-full pb-32 pt-6">
-        <header className="border-b border-orange-100 bg-white/70 p-3 backdrop-blur">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
-            New Post
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            いまの “おいしい” を、写真と一緒にふわっと残す。
-          </p>
-          <div className="mt-3">{progressRow}</div>
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      <div className="w-full pb-24">
+        {/* ── header ── */}
+        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-lg">
+          <div className="flex h-12 items-center justify-between px-4">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="text-sm font-medium text-slate-500 hover:text-slate-700 transition"
+            >
+              {"\u30AD\u30E3\u30F3\u30BB\u30EB"}
+            </button>
+            <h1 className="text-sm font-bold text-slate-900">New Post</h1>
+            <div className="w-[60px]" />{/* spacer for centering */}
+          </div>
         </header>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-          className="bg-white"
-        >
-          {/* 写真 */}
-          <Section
-            title="写真"
-            required
-            subtitle={<span className="hidden sm:inline">ドラッグ＆ドロップ / Command+V で貼り付けもOK</span>}
-            right={
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-orange-100"
-              >
-                <ImageIcon className="h-4 w-4" />
-                追加
-              </button>
-            }
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,.heic,.heif"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
-
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onDrop={onDropZone}
-              onClick={() => fileInputRef.current?.click()}
-              role="button"
-              tabIndex={0}
-              className={[
-                "cursor-pointer rounded-2xl border-2 border-dashed p-4 transition",
-                imgs.length
-                  ? "border-orange-100 bg-orange-50/40 hover:bg-orange-50/60"
-                  : "border-orange-200 bg-orange-50/60 hover:bg-orange-50",
-              ].join(" ")}
-            >
-              <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-white shadow-sm">
-                  {processing ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
-                  ) : (
-                    <ImageIcon className="h-5 w-5 text-orange-600" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {imgs.length ? "写真を追加する" : "ここに写真を追加"}
-                  </div>
-                  <div className="mt-0.5 text-[12px] text-slate-500">
-                    {processing ? "変換 / 生成中…" : "タップして選択"}
-                  </div>
-                </div>
+        {/* draft restore */}
+        {draftRestorePrompt === "ask" && (
+          <div className="bg-amber-50 px-4 py-3 border-b border-amber-200">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-amber-900">{"\u4E0B\u66F8\u304D\u304C\u3042\u308A\u307E\u3059"}</p>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={restoreDraft}
+                  className="rounded-full bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700 transition">
+                  {"\u5FA9\u5143"}
+                </button>
+                <button type="button" onClick={async () => { setDraftRestorePrompt("none"); pendingDraftRef.current = null; await clearDraft(); }}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition">
+                  {"\u7834\u68C4"}
+                </button>
               </div>
             </div>
+          </div>
+        )}
 
-            {imgs.length > 0 && (
-              <div className="mt-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[12px] font-semibold text-slate-700">プレビュー（{imgs.length}/9）</div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      imgs.forEach((x) => URL.revokeObjectURL(x.previewUrl));
-                      setImgs([]);
-                    }}
-                    className="text-[12px] font-semibold text-slate-500 hover:text-slate-700"
-                  >
-                    全て削除
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="divide-y divide-slate-100 bg-white">
+
+          {/* ── 写真 ── */}
+          <Section title={"\u5199\u771F"} required right={
+            imgs.length > 0 ? (
+              <button type="button" onClick={() => fileInputRef.current?.click()}
+                className="text-xs font-bold text-orange-600 hover:text-orange-700 transition">
+                + {"\u8FFD\u52A0"}
+              </button>
+            ) : null
+          }>
+            <input ref={fileInputRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden"
+              onChange={(e) => handleFiles(e.target.files)} />
+
+            {imgs.length === 0 ? (
+              <button type="button"
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={onDropZone as any}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-50 py-10 transition hover:bg-slate-100 active:bg-slate-100"
+              >
+                {processing ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-slate-400" />
+                )}
+                <span className="text-sm font-semibold text-slate-500">
+                  {processing ? "\u51E6\u7406\u4E2D\u2026" : "\u30BF\u30C3\u30D7\u3057\u3066\u5199\u771F\u3092\u8FFD\u52A0"}
+                </span>
+              </button>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[12px] font-semibold text-slate-500">{imgs.length} / 9</span>
+                  <button type="button" onClick={() => { imgs.forEach((x) => URL.revokeObjectURL(x.previewUrl)); setImgs([]); }}
+                    className="text-[12px] font-medium text-slate-400 hover:text-red-500 transition">
+                    {"\u5168\u3066\u524A\u9664"}
                   </button>
                 </div>
-
-                <div className="mt-2 -mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
+                <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1"
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={onDropZone}
+                >
                   {imgs.map((img) => (
                     <div key={img.id} className="relative shrink-0">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.previewUrl}
-                        alt={img.label}
-                        className="h-24 w-24 rounded-2xl object-cover shadow-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(img.id)}
-                        className="absolute right-1 bottom-1 rounded-full bg-black/60 p-1 text-white shadow-sm hover:bg-black/70"
-                        aria-label="remove image"
-                      >
-                        <X size={14} />
-                      </button>
+                      <img src={img.previewUrl} alt={img.label} className="h-20 w-20 rounded-xl object-cover" />
+                      <button type="button" onClick={() => removeImage(img.id)}
+                        className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white shadow"
+                        aria-label="remove"><X size={12} /></button>
                     </div>
                   ))}
+                  {/* add more */}
+                  <button type="button" onClick={() => fileInputRef.current?.click()}
+                    className="grid h-20 w-20 shrink-0 place-items-center rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 transition">
+                    <ImageIcon className="h-5 w-5" />
+                  </button>
                 </div>
               </div>
             )}
           </Section>
 
-          {/* 来店日 */}
-          <Section title="来店日" subtitle={<span className="text-slate-500">任意</span>}>
-            <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 text-[12px] font-semibold text-slate-700">いつ行った？</div>
-
-                {visitedOn ? (
-                  <button
-                    type="button"
-                    onClick={() => setVisitedOn("")}
-                    className="shrink-0 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    クリア
-                  </button>
-                ) : (
-                  <div className="shrink-0 text-[11px] text-slate-400">任意</div>
-                )}
-              </div>
-
-              <div className="mt-2">
-                <input
-                  type="date"
-                  name="visited_on"
-                  value={visitedOn}
-                  onChange={(e) => setVisitedOn(e.target.value)}
-                  max={new Date().toISOString().slice(0, 10)}
-                  className="block w-full rounded-2xl border border-orange-100 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
-                  style={{ WebkitAppearance: "none" }}
-                  aria-label="来店日"
-                />
-              </div>
-            </div>
-          </Section>
-
-          {/* 昼 / 夜（任意） */}
-          <Section title="">
-            <div className="flex items-center justify-between gap-3">
-              <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
-                {[
-                  { v: "day" as const, label: "昼" },
-                  { v: "night" as const, label: "夜" },
-                ].map((x) => {
-                  const active = timeOfDay === x.v;
-                  return (
-                    <button
-                      key={x.v}
-                      type="button"
-                      onClick={() => {
-                        setTimeOfDayTouched(true);
-                        setTimeOfDay(x.v);
-                      }}
-                      className={[
-                        "h-9 rounded-full px-5 text-sm font-semibold transition",
-                        active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
-                      ].join(" ")}
-                      aria-pressed={active}
-                    >
-                      {x.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {timeOfDay !== null ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTimeOfDayTouched(true);
-                    setTimeOfDay(null);
-                  }}
-                  className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 border border-slate-200"
-                >
-                  未選択に戻す
-                </button>
-              ) : (
-                <div className="text-[12px] font-semibold text-slate-400">未選択</div>
-              )}
-            </div>
-          </Section>
-
-          {/* お店（必須） */}
-          <Section
-            title="お店"
-            required
-            subtitle={
-              selectedPlace ? (
-                <span className="text-slate-500">選択済み（変更するならクリア→再検索）</span>
-              ) : (
-                <span className="text-slate-500">店名やエリアで検索して、候補から選択</span>
-              )
-            }
-            right={
-              isSearchingPlace ? (
-                <div className="inline-flex items-center gap-2 text-xs font-semibold text-orange-600">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  検索中
-                </div>
-              ) : null
-            }
-          >
-            <div className="space-y-3">
-              {selectedPlace && (
-                <div className="flex items-center justify-between rounded-2xl border border-orange-100 bg-orange-50/60 px-3 py-2">
+          {/* ── お店 ── */}
+          <Section title={"\u304A\u5E97"} required right={
+            isSearchingPlace ? <Loader2 className="h-4 w-4 animate-spin text-orange-500" /> : null
+          }>
+            {selectedPlace ? (
+              <div className="flex items-center justify-between rounded-xl bg-orange-50 px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <MapPin className="h-4 w-4 shrink-0 text-orange-500" />
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-900">{selectedPlace.name}</div>
-                    <div className="truncate text-[12px] text-slate-500">{selectedPlace.formatted_address}</div>
+                    <div className="truncate text-sm font-bold text-slate-900">{selectedPlace.name}</div>
+                    <div className="truncate text-[11px] text-slate-500">{selectedPlace.formatted_address}</div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedPlace(null);
-                      setPlaceQuery("");
-                      setPlaceResults([]);
-                    }}
-                    className="ml-3 inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-1 text-[12px] font-semibold text-slate-600 hover:bg-white"
-                    aria-label="clear place"
-                  >
-                    <X className="h-4 w-4" />
-                    クリア
-                  </button>
                 </div>
-              )}
-
-              <div className="relative">
-                <div className="flex items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/40 px-3 py-2 focus-within:border-orange-300 focus-within:bg-white">
-                  <MapPin className="h-4 w-4 text-orange-600" />
-                  <input
-                    type="text"
-                    value={placeQuery}
-                    onChange={(e) => setPlaceQuery(e.target.value)}
-                    placeholder="例: 渋谷 カフェ / 焼肉"
-                    className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
-                    aria-label="店舗検索"
-                  />
-                </div>
-
-                {placeQuery.trim().length >= 2 && (
-                  <div className="absolute left-0 right-0 top-full z-20 mt-2">
-                    {placeResults.length > 0 ? (
-                      <div className="overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-lg">
-                        <ul className="max-h-64 overflow-y-auto py-1">
+                <button type="button" onClick={() => { setSelectedPlace(null); setPlaceQuery(""); setPlaceResults([]); }}
+                  className="ml-2 shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-orange-100 hover:text-slate-600"><X className="h-4 w-4" /></button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 transition">
+                    <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
+                    <input type="text" value={placeQuery} onChange={(e) => setPlaceQuery(e.target.value)}
+                      placeholder={"\u4F8B: \u6E0B\u8C37 \u30AB\u30D5\u30A7 / \u713C\u8089"}
+                      className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400" aria-label="store search" />
+                  </div>
+                  {placeQuery.trim().length >= 2 && (
+                    <div className="absolute left-0 right-0 top-full z-20 mt-1">
+                      {placeResults.length > 0 ? (
+                        <ul className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
                           {placeResults.map((p) => (
-                            <li
-                              key={p.place_id}
-                              className="cursor-pointer px-3 py-2 transition hover:bg-orange-50"
-                              onClick={() => {
-                                setSelectedPlace(p);
-                                setPlaceQuery("");
-                                setPlaceResults([]);
-                                // 選択と同時にensureを先行実行（submit時のレイテンシ短縮）
-                                fetch("/api/places/ensure", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ placeId: p.place_id }),
-                                }).catch(() => {});
-                              }}
-                            >
-                              <div className="flex items-start gap-2">
-                                <MapPin className="mt-1 h-4 w-4 text-orange-600" />
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
-                                  <div className="truncate text-[12px] text-slate-500">{p.formatted_address}</div>
-                                </div>
-                              </div>
+                            <li key={p.place_id} className="cursor-pointer px-3 py-2.5 transition hover:bg-orange-50"
+                              onClick={() => { setSelectedPlace(p); setPlaceQuery(""); setPlaceResults([]);
+                                fetch("/api/places/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ placeId: p.place_id }) }).catch(() => {}); }}>
+                              <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
+                              <div className="truncate text-[11px] text-slate-500">{p.formatted_address}</div>
                             </li>
                           ))}
                         </ul>
-                      </div>
-                    ) : (
-                      !isSearchingPlace && (
-                        <div className="rounded-2xl border border-orange-100 bg-white px-3 py-2 text-[12px] text-slate-500 shadow-sm">
-                          候補が見つかりませんでした。
+                      ) : !isSearchingPlace && (
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-500 shadow-sm">
+                          {"\u5019\u88DC\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002"}
                         </div>
-                      )
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {attempted && (
+                  <p className="text-[12px] font-semibold text-red-500">{"\u5019\u88DC\u304B\u3089\u304A\u5E97\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044\u3002"}</p>
                 )}
               </div>
-
-              {attempted && !selectedPlace && (
-                <div className="text-[12px] font-semibold text-red-600">候補からお店を1つ選んでください。</div>
-              )}
-            </div>
-          </Section>
-
-          {/* 価格 */}
-          <Section title="1人あたりの料金" required right={priceModeSwitch}>
-            <div className="space-y-3">
-              {priceMode === "exact" && (
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-1 items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/40 px-3 py-2">
-                    <span className="text-xs font-semibold text-slate-500">¥</span>
-                    <input
-                      inputMode="numeric"
-                      value={priceYenText}
-                      onChange={(e) => setPriceYenText(onlyDigits(e.target.value))}
-                      placeholder="例: 3500"
-                      className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
-                      aria-label="価格（実額）"
-                    />
-                  </div>
-                  <div className="min-w-[90px] text-right text-[12px] text-slate-500">
-                    {priceYenValue ? `¥${formatYen(priceYenValue)}` : ""}
-                  </div>
-                </div>
-              )}
-
-              {priceMode === "range" && (
-                <div className="rounded-2xl border border-orange-100 bg-orange-50/40 px-3 py-2">
-                  <select
-                    value={priceRange}
-                    onChange={(e) => setPriceRange(e.target.value as any)}
-                    className="w-full bg-transparent text-sm font-semibold text-slate-900 outline-none"
-                    aria-label="価格（レンジ）"
-                  >
-                    {PRICE_RANGES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {attempted && priceMode === "exact" && !isPriceComplete && (
-                <div className="text-[12px] text-red-600 font-semibold">実額を入力してください。</div>
-              )}
-            </div>
-          </Section>
-
-          {/* 本文 */}
-          <Section title="本文" required>
-            <textarea
-              className="h-28 w-full resize-none rounded-2xl border border-orange-100 bg-orange-50/40 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-300 focus:bg-white md:h-36"
-              placeholder="いま何食べてる？"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-              aria-label="本文"
-            />
-            {attempted && !content.trim() && (
-              <div className="mt-2 text-[12px] text-red-600 font-semibold">本文を入力してください。</div>
             )}
           </Section>
 
-          {/* おすすめ度（必須） */}
-          <Section
-            title="おすすめ度"
-            required
-            subtitle={
-              recommendSelected ? (
-                <span>
-                  <span className="font-semibold text-orange-600">{recommendScore.toFixed(1)}</span>
-                  <span className="text-slate-400"> / 10.0</span>
-                </span>
-              ) : (
-                <span className="text-slate-400">未選択</span>
-              )
-            }
-            right={
-              recommendSelected ? (
-                <button
-                  type="button"
-                  onClick={() => setRecommendSelected(false)}
-                  className="rounded-full bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  クリア
-                </button>
-              ) : null
-            }
-          >
-            <div className="space-y-3">
+          {/* ── 本文 ── */}
+          <Section title={"\u672C\u6587"} required>
+            <textarea
+              className="h-28 w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition md:h-36"
+              placeholder={"\u3044\u307E\u4F55\u98DF\u3079\u3066\u308B\uFF1F"}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); submit(); } }}
+              aria-label="content"
+            />
+            {attempted && !content.trim() && (
+              <p className="mt-1 text-[12px] font-semibold text-red-500">{"\u672C\u6587\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002"}</p>
+            )}
+          </Section>
+
+          {/* ── おすすめ度 ── */}
+          <Section title={"\u304A\u3059\u3059\u3081\u5EA6"} required right={
+            recommendSelected ? (
+              <span className="text-sm font-bold text-orange-600">{recommendScore.toFixed(1)}<span className="text-slate-400 font-normal"> / 10</span></span>
+            ) : null
+          }>
+            <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  step={0.1}
-                  value={recommendScore}
+                <input type="range" min={0} max={10} step={0.1} value={recommendScore}
+                  onChange={(e) => { setRecommendSelected(true); setRecommendScore(Number(e.target.value)); }}
+                  className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-300"].join(" ")}
+                  aria-label="recommend" />
+                <input type="number" min={0} max={10} step={0.1} inputMode="decimal"
+                  value={recommendSelected ? recommendScore.toFixed(1) : ""} placeholder="0.0"
                   onChange={(e) => {
-                    setRecommendSelected(true);
-                    setRecommendScore(Number(e.target.value));
+                    const v = e.target.value;
+                    if (v === "") { setRecommendSelected(false); return; }
+                    const n = Number(v); if (!Number.isFinite(n)) return;
+                    setRecommendSelected(true); setRecommendScore(Math.round(Math.min(10, Math.max(0, n)) * 10) / 10);
                   }}
-                  className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-400"].join(" ")}
-                  aria-label="おすすめ度"
-                />
-
-                <div className="w-[92px]">
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.1}
-                    inputMode="decimal"
-                    value={recommendSelected ? recommendScore.toFixed(1) : ""}
-                    placeholder="0.0"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "") {
-                        setRecommendSelected(false);
-                        return;
-                      }
-                      const n = Number(v);
-                      if (!Number.isFinite(n)) return;
-                      const clamped = Math.min(10, Math.max(0, n));
-                      const rounded = Math.round(clamped * 10) / 10;
-                      setRecommendSelected(true);
-                      setRecommendScore(rounded);
-                    }}
-                    className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-orange-300"
-                    aria-label="おすすめ度（数値入力）"
-                  />
-                </div>
+                  className="w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm font-bold text-slate-900 outline-none focus:border-orange-400"
+                  aria-label="recommend number" />
               </div>
-
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>0.0</span>
-                <span>10.0</span>
-              </div>
-
+              <div className="flex justify-between text-[11px] text-slate-400"><span>0</span><span>10</span></div>
               {attempted && !recommendSelected && (
-                <div className="text-[12px] text-red-600 font-semibold">おすすめ度を選んでください。</div>
+                <p className="text-[12px] font-semibold text-red-500">{"\u304A\u3059\u3059\u3081\u5EA6\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044\u3002"}</p>
               )}
             </div>
           </Section>
 
-          {/* タグ（任意） */}
-          <section className="space-y-2">
-            <div className="flex items-end justify-between gap-3 px-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-slate-900">タグ</h2>
-                  <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                    任意
-                  </span>
+          {/* ── 料金 ── */}
+          <Section title={"\u6599\u91D1"} required right={priceModeSwitch}>
+            <div className="space-y-2">
+              {priceMode === "exact" ? (
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 transition">
+                  <span className="text-sm font-medium text-slate-400">&yen;</span>
+                  <input inputMode="numeric" value={priceYenText} onChange={(e) => setPriceYenText(onlyDigits(e.target.value))}
+                    placeholder={"\u4F8B: 3500"} className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400" aria-label="price" />
+                  {priceYenValue ? <span className="shrink-0 text-[12px] text-slate-400">&yen;{formatYen(priceYenValue)}</span> : null}
                 </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowDetails((v) => !v)}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                {showDetails ? (
-                  <>
-                    <ChevronUp className="h-4 w-4" />
-                    閉じる
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4" />
-                    開く
-                  </>
-                )}
-              </button>
+              ) : (
+                <select value={priceRange} onChange={(e) => setPriceRange(e.target.value as any)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-orange-400" aria-label="price range">
+                  {PRICE_RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              )}
+              {attempted && priceMode === "exact" && !isPriceComplete && (
+                <p className="text-[12px] font-semibold text-red-500">{"\u5B9F\u984D\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002"}</p>
+              )}
             </div>
+          </Section>
+
+          {/* ── 来店日 + 昼/夜（1行にまとめる） ── */}
+          <Section title={"\u6765\u5E97\u65E5"} optional>
+            <div className="flex items-center gap-3">
+              <input type="date" name="visited_on" value={visitedOn} onChange={(e) => setVisitedOn(e.target.value)}
+                max={new Date().toISOString().slice(0, 10)}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-orange-400 transition"
+                style={{ WebkitAppearance: "none" } as any} aria-label="visited date" />
+              <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
+                {([{ v: "day" as const, l: "\u663C" }, { v: "night" as const, l: "\u591C" }]).map((x) => (
+                  <button key={x.v} type="button"
+                    onClick={() => { setTimeOfDayTouched(true); setTimeOfDay(timeOfDay === x.v ? null : x.v); }}
+                    className={["rounded-md px-3 py-1.5 text-xs font-semibold transition",
+                      timeOfDay === x.v ? "bg-orange-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    ].join(" ")} aria-pressed={timeOfDay === x.v}>
+                    {x.l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Section>
+
+          {/* ── タグ ── */}
+          <section>
+            <button type="button" onClick={() => setShowDetails((v) => !v)}
+              className="flex w-full items-center justify-between px-4 pt-5 pb-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] font-bold text-slate-900 tracking-wide">{"\u30BF\u30B0"}</h2>
+                <span className="text-[11px] text-slate-400 font-medium">{"\u4EFB\u610F"}</span>
+                {selectedTagIds.length > 0 && (
+                  <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white">
+                    {selectedTagIds.length}
+                  </span>
+                )}
+              </div>
+              {showDetails ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </button>
+
+            {/* selected chips (always visible) */}
+            {selectedTagIds.length > 0 && !showDetails && (
+              <div className="flex flex-wrap gap-1.5 px-4 pb-3">
+                {selectedTagIds.map((id) => {
+                  const t = findTagById(id); if (!t) return null;
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-700">
+                      {t.label}
+                      <button type="button" onClick={() => removeTag(id)} className="text-orange-400 hover:text-orange-600"><X size={10} /></button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
 
             {showDetails && (
-              <div className="border-t border-orange-100 bg-white p-3 space-y-3">
-                {/* 選択済みタグ */}
+              <div className="px-4 pb-4 space-y-3">
+                {/* selected */}
                 {selectedTagIds.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {selectedTagIds.map((id) => {
-                      const t = findTagById(id);
-                      if (!t) return null;
+                      const t = findTagById(id); if (!t) return null;
                       return (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => removeTag(id)}
-                          className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:bg-orange-100"
-                          aria-label={`remove tag ${t.label}`}
-                          title="タップで外す"
-                        >
-                          <span>{t.label}</span>
-                          <X className="h-3.5 w-3.5" />
+                        <button key={id} type="button" onClick={() => removeTag(id)}
+                          className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-200 transition">
+                          {t.label}<X size={10} />
                         </button>
                       );
                     })}
                   </div>
                 )}
 
-                {/* 絞り込み UI */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-[12px] font-semibold text-slate-600 shrink-0">絞り込み:</div>
+                {/* filter + search */}
+                <div className="flex items-center gap-2">
                   <div className="flex-1 overflow-x-auto">
-                    <div className="flex gap-2 pb-1">
+                    <div className="flex gap-1 pb-0.5">
                       {TAG_CATEGORIES.map((c) => {
                         const active = tagCategory === c.id;
                         return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => setTagCategory(c.id)}
-                            className={[
-                              "shrink-0 px-2 py-1 text-[12px] font-semibold transition",
-                              active
-                                ? "text-orange-700 border-b-2 border-orange-600"
-                                : "text-slate-500 hover:text-slate-700 border-b-2 border-transparent",
-                            ].join(" ")}
-                            aria-label={`filter ${c.label}`}
-                          >
-                            {c.label}
-                          </button>
+                          <button key={c.id} type="button" onClick={() => setTagCategory(c.id)}
+                            className={["shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
+                              active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                            ].join(" ")}>{c.label}</button>
                         );
                       })}
                     </div>
                   </div>
-
-                  {/* 検索 */}
-                  <div className="relative w-[160px] shrink-0">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                    <input
-                      value={tagQuery}
-                      onChange={(e) => setTagQuery(e.target.value)}
-                      placeholder="タグ検索"
-                      className="w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 py-2 text-[12px] font-semibold text-slate-800 outline-none focus:border-orange-300"
-                      aria-label="tag search"
-                    />
+                  <div className="relative w-28 shrink-0">
+                    <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-slate-400" />
+                    <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={"\u691C\u7D22"}
+                      className="w-full rounded-full border border-slate-200 bg-white py-1 pl-7 pr-2 text-[11px] text-slate-800 outline-none focus:border-orange-400" aria-label="tag search" />
                   </div>
                 </div>
 
-                {/* タグ一覧 */}
-                <div className="flex flex-wrap gap-2">
+                {/* tag list */}
+                <div className="flex flex-wrap gap-1.5">
                   {visibleTags.map((t) => {
                     const on = selectedTagIdSet.has(t.id);
                     return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => toggleTag(t.id)}
-                        className={[
-                          "rounded-full border px-3 py-1.5 text-[12px] font-semibold transition",
-                          on
-                            ? "border-orange-200 bg-orange-50 text-orange-700"
-                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800",
-                        ].join(" ")}
-                        aria-pressed={on}
-                        aria-label={`tag ${t.label}`}
-                        title={t.id}
-                      >
-                        {t.label}
-                      </button>
+                      <button key={t.id} type="button" onClick={() => toggleTag(t.id)}
+                        className={["rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
+                          on ? "bg-orange-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        ].join(" ")} aria-pressed={on}>{t.label}</button>
                     );
                   })}
+                  {visibleTags.length === 0 && (
+                    <p className="text-[11px] text-slate-400">{"\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002"}</p>
+                  )}
                 </div>
-
-                {visibleTags.length === 0 && (
-                  <div className="text-[12px] text-slate-500">
-                    見つかりませんでした。検索語を変えるか、絞り込みを「すべて」に戻してみてください。
-                  </div>
-                )}
               </div>
             )}
           </section>
 
-          {msg && <div className="px-3 pb-3 text-sm font-semibold text-red-600">{msg}</div>}
+          {msg && <div className="px-4 py-3 text-sm font-semibold text-red-600">{msg}</div>}
         </form>
       </div>
 
-      {/* 画面下 fixed CTA */}
+      {/* ── bottom CTA ── */}
       <div className="fixed inset-x-0 bottom-0 z-40">
-        <div
-          className="border-t border-orange-100 bg-white/95 p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur"
-          style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom))" }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-700">
-                {isAllRequiredComplete ? "準備OK" : "必須項目を埋める"}
-              </div>
-              <div className="mt-1">{progressRow}</div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => submit()}
-              disabled={busy || processing || !isAllRequiredComplete}
-              className={[
-                "inline-flex h-11 shrink-0 items-center justify-center rounded-full px-6 text-sm font-bold shadow-sm transition",
-                busy || processing || !isAllRequiredComplete
-                  ? "bg-orange-200 text-white opacity-80"
-                  : "bg-orange-600 text-white hover:bg-orange-700",
-              ].join(" ")}
-            >
-              {processing ? "画像生成中…" : busy ? "投稿中…" : "投稿する"}
-            </button>
-          </div>
+        <div className="border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
+          style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom))" }}>
+          <button type="button" onClick={() => submit()} disabled={busy || processing || !isAllRequiredComplete}
+            className={["flex h-12 w-full items-center justify-center rounded-2xl text-[15px] font-bold transition",
+              busy || processing || !isAllRequiredComplete
+                ? "bg-slate-100 text-slate-400"
+                : "bg-orange-600 text-white shadow-lg shadow-orange-600/25 hover:bg-orange-700 active:scale-[0.98]"
+            ].join(" ")}>
+            {processing ? "\u753B\u50CF\u51E6\u7406\u4E2D\u2026" : busy ? "\u6295\u7A3F\u4E2D\u2026" : "\u6295\u7A3F\u3059\u308B"}
+          </button>
         </div>
       </div>
     </main>
