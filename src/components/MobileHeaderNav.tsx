@@ -56,7 +56,7 @@ function IconButton({
       href={href}
       aria-label={ariaLabel}
       className={`
-        relative inline-flex h-11 w-11 items-center justify-center rounded-full
+        relative inline-flex h-9 w-9 items-center justify-center rounded-full
         transition-colors
         ${active ? activeClassName ?? "bg-black/[.06]" : "hover:bg-black/[.04]"}
         ${className ?? ""}
@@ -185,12 +185,12 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
         "
       >
         {/* 1段目 */}
-        <div className="flex h-12 items-center justify-between px-3">
+        <div className="flex h-10 items-center justify-between px-2">
           <Link href={gate(homeHref)} className="flex items-center" aria-label="Gourmeet">
             <span
               style={{
                 fontFamily: "'Pacifico', 'Dancing Script', cursive",
-                fontSize: "22px",
+                fontSize: "20px",
                 lineHeight: 1,
                 background: "linear-gradient(to right, #1DB9A0 0%, #6BAA44 35%, #C8882A 70%, #D06A28 100%)",
                 WebkitBackgroundClip: "text",
@@ -210,9 +210,9 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               href={gate("/points")}
               active={isActive("/points")}
               ariaLabel="ポイント"
-              activeClassName="bg-amber-100/70"
+              activeClassName="bg-slate-100"
             >
-              <CircleDollarSign size={20} className="text-amber-600" />
+              <CircleDollarSign size={18} className="text-slate-500" />
             </IconButton>
 
             {/* 通知（バッジをアイコン基準に） */}
@@ -220,10 +220,10 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               href={gate("/notifications")}
               active={isActive("/notifications")}
               ariaLabel="通知"
-              activeClassName="bg-violet-100/70"
+              activeClassName="bg-slate-100"
             >
               <span className="relative inline-flex">
-                <Bell size={20} className="text-violet-600" />
+                <Bell size={18} className="text-slate-500" />
                 <Badge count={notifCount} />
               </span>
             </IconButton>
@@ -233,10 +233,10 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               href={gate("/follow-requests")}
               active={isActive("/follow-requests")}
               ariaLabel="フォローリクエスト"
-              activeClassName="bg-sky-100/70"
+              activeClassName="bg-slate-100"
             >
               <span className="relative inline-flex">
-                <UserPlus size={20} className="text-sky-600" />
+                <UserPlus size={18} className="text-slate-500" />
                 <Badge count={followReqCount} />
               </span>
             </IconButton>
@@ -248,38 +248,38 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               ariaLabel="設定"
               activeClassName="bg-slate-100"
             >
-              <Settings size={20} className="text-slate-700" />
+              <Settings size={18} className="text-slate-500" />
             </IconButton>
 
 {/* 投稿（白地のシンプル＋） */}
 <Link
   href={gate("/posts/new")}
   className={[
-    "relative inline-flex h-10 w-10 items-center justify-center rounded-full",
+    "relative inline-flex h-8 w-8 items-center justify-center rounded-full",
     "bg-white border border-black/10",
     "hover:bg-black/[.03] active:scale-[0.99] transition",
   ].join(" ")}
   aria-label="投稿"
 >
-  <Plus size={20} className="text-slate-900" />
+  <Plus size={16} className="text-slate-700" />
 </Link>
 
           </div>
         </div>
 
 {/* 2段目：メイン列 3ボタン（Home / Search / Profile） */}
-<div className="px-4 pb-2">
+<div className="px-2 pb-1.5">
   <div className="mx-auto max-w-[420px]">
-    <div className="grid grid-cols-3 items-center rounded-2xl bg-black/[.03] px-3 py-1">
+    <div className="grid grid-cols-3 items-center rounded-xl bg-black/[.03] px-2 py-0.5">
       {/* Home（左） */}
       <div className="justify-self-start">
         <IconButton
           href={gate(homeHref)}
           active={isActive("/timeline")}
           ariaLabel="ホーム"
-          activeClassName="bg-blue-100/70"
+          activeClassName="bg-slate-200/70"
         >
-          <Home size={20} className="text-blue-600" />
+          <Home size={18} className={isActive("/timeline") ? "text-slate-800" : "text-slate-500"} />
           <Dot on={timelineDot} />
         </IconButton>
       </div>
@@ -290,9 +290,9 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           href={gate("/search", true)}
           active={isActive("/search")}
           ariaLabel="検索"
-          activeClassName="bg-orange-100/80"
+          activeClassName="bg-slate-200/70"
         >
-          <Search size={20} className="text-orange-700" />
+          <Search size={18} className={isActive("/search") ? "text-slate-800" : "text-slate-500"} />
         </IconButton>
       </div>
 
@@ -301,9 +301,9 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
         <Link
           href={gate("/profile")}
           className={`
-            relative inline-flex h-11 w-11 items-center justify-center rounded-full
+            relative inline-flex h-9 w-9 items-center justify-center rounded-full
             transition-colors
-            ${isActive("/profile") ? "bg-slate-100" : "hover:bg-black/[.04]"}
+            ${isActive("/profile") ? "bg-slate-200/70" : "hover:bg-black/[.04]"}
           `}
           aria-label={displayNameSafe || "プロフィール"}
         >
@@ -312,11 +312,11 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
             <img
               src={avatarUrl}
               alt={displayNameSafe || "profile"}
-              className="h-8 w-8 rounded-full object-cover bg-slate-200"
+              className="h-7 w-7 rounded-full object-cover bg-slate-200"
               referrerPolicy="no-referrer"
             />
           ) : (
-            <span className="text-xs font-semibold text-slate-700">
+            <span className="text-[10px] font-semibold text-slate-600">
               {(displayNameSafe || "U").slice(0, 1).toUpperCase()}
             </span>
           )}

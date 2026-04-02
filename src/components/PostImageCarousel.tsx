@@ -376,10 +376,10 @@ export default function PostImageCarousel({
                 prev();
               }}
               disabled={pendingIndex != null}
-              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 disabled:opacity-50"
+              className="absolute left-0 top-1/2 z-20 -translate-y-1/2 flex items-center justify-center w-10 h-16 text-white/70 hover:text-white transition disabled:opacity-30"
               aria-label="Previous image"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={18} strokeWidth={2.5} />
             </button>
           )}
 
@@ -391,10 +391,10 @@ export default function PostImageCarousel({
                 next();
               }}
               disabled={pendingIndex != null}
-              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 disabled:opacity-50"
+              className="absolute right-0 top-1/2 z-20 -translate-y-1/2 flex items-center justify-center w-10 h-16 text-white/70 hover:text-white transition disabled:opacity-30"
               aria-label="Next image"
             >
-              <ChevronRight size={20} />
+              <ChevronRight size={18} strokeWidth={2.5} />
             </button>
           )}
 

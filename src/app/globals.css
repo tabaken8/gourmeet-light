@@ -142,6 +142,22 @@ html.dark {
     box-shadow: 0 6px 22px rgba(0,0,0,0.05);
   }
 
+  /* フィード区切り線（ブランドグラデーション） */
+  .gm-feed-divider {
+    border-bottom: 1.5px solid transparent;
+    border-image: linear-gradient(to right, rgba(29,185,160,0.18), rgba(107,170,68,0.22), rgba(200,136,42,0.18)) 1;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+  }
+
+  /* ブランドアクセントライン */
+  .gm-brand-line {
+    height: 2px;
+    background: linear-gradient(to right, #1DB9A0, #6BAA44, #C8882A, #D06A28);
+    opacity: 0.35;
+    border-radius: 1px;
+  }
+
   /* 押した感（統一） */
   .gm-press {
     transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;

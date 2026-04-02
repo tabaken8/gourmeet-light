@@ -1,9 +1,11 @@
 // src/app/(app)/timeline/page.tsx
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import FriendsTimelineServer from "@/components/timeline/FriendsTimelineServer";
 import DiscoverTimelineClient from "@/components/timeline/DiscoverTimelineClient";
 import OptimisticPostCard from "@/components/timeline/OptimisticPostCard";
+import PostsSkeleton from "@/components/PostsSkeleton";
 
 export const dynamic = "force-dynamic";
 
@@ -25,61 +27,47 @@ export default async function TimelinePage({
   const isLoggedIn = !!user;
 
   return (
-    <main className="min-h-screen bg-white text-slate-800">
-      <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8">
-        <header className="mb-4">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
-            Timeline
-          </h1>
-          <p className="mt-1 text-sm text-slate-600"></p>
-        </header>
-
+    <main className="min-h-screen text-slate-800 bg-white">
+      <div className="mx-auto w-full max-w-6xl px-2 py-3 md:px-6 md:py-6">
         <section className="rounded-2xl bg-white">
-          <div className="px-1 pb-3">
-            <div className="inline-flex w-full gap-1 rounded-full bg-slate-50 p-1 text-xs font-medium text-slate-600">
+          <div className="flex border-b border-slate-100">
               <Link
                 href="?tab=friends"
                 className={[
-                  "flex-1 rounded-full px-3 py-2 text-center transition",
+                  "flex-1 py-2 text-center text-[13px] font-medium transition relative",
                   activeTab === "friends"
-                    ? "bg-white text-orange-600 shadow-sm"
-                    : "text-slate-500 hover:text-orange-500",
+                    ? "text-slate-900"
+                    : "text-slate-400 hover:text-slate-600",
                 ].join(" ")}
               >
-                最新
+                {"\u6700\u65B0"}
+                {activeTab === "friends" && <span className="absolute bottom-0 left-1/4 right-1/4 h-[2px] rounded-full gm-brand-line" />}
               </Link>
 
               <Link
                 href="?tab=discover"
                 className={[
-                  "flex-1 rounded-full px-3 py-2 text-center transition",
+                  "flex-1 py-2 text-center text-[13px] font-medium transition relative",
                   activeTab === "discover"
-                    ? "bg-white text-orange-600 shadow-sm"
-                    : "text-slate-500 hover:text-orange-500",
+                    ? "text-slate-900"
+                    : "text-slate-400 hover:text-slate-600",
                 ].join(" ")}
               >
-                発見
+                {"\u767A\u898B"}
+                {activeTab === "discover" && <span className="absolute bottom-0 left-1/4 right-1/4 h-[2px] rounded-full gm-brand-line" />}
               </Link>
-            </div>
-
-            {/* ✅ 未ログインでも discover は説明を出す / friends の「おすすめ投稿」はログイン時のみ */}
-            {(isLoggedIn || activeTab === "discover") ? (
-              <p className="mt-2 text-[11px] text-slate-500">
-                {activeTab === "friends"
-                  ? "おすすめ投稿"
-                  : "気になる人を見つけられます。"}
-              </p>
-            ) : null}
           </div>
 
           {activeTab === "friends" ? (
-            <>
+            <Suspense fallback={<PostsSkeleton />}>
               {/* 投稿者本人にだけ: DBへの保存が完了するまで仮表示 */}
               <OptimisticPostCard />
               <FriendsTimelineServer meId={user?.id ?? null} />
-            </>
+            </Suspense>
           ) : (
-            <DiscoverTimelineClient meId={user?.id ?? null} />
+            <Suspense fallback={<PostsSkeleton />}>
+              <DiscoverTimelineClient meId={user?.id ?? null} />
+            </Suspense>
           )}
         </section>
       </div>

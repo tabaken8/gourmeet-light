@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X, Check } from "lucide-react";
+import { Bookmark, X, Check } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Collection = { id: string; name: string };
@@ -410,12 +410,12 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
         type="button"
         onClick={() => setOpen(true)}
         className={[
-          "flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm hover:bg-orange-600 transition-colors",
+          "flex h-8 w-8 items-center justify-center text-slate-400 hover:text-slate-600 transition-colors",
           className ?? "",
         ].join(" ")}
         aria-label="コレクションに追加"
       >
-        <Plus className="h-5 w-5" />
+        <Bookmark className="h-5 w-5" />
       </button>
 
       {mounted &&

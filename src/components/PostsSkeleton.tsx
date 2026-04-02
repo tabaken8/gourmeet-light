@@ -1,95 +1,64 @@
 // src/components/PostsSkeleton.tsx
 import React from "react";
 
-function SkeletonLine({
-  wClass = "w-full",
-  hClass = "h-3",
-}: {
-  wClass?: string;
-  hClass?: string;
-}) {
-  return (
-    <div
-      className={[
-        "rounded-full bg-slate-200/80",
-        "animate-pulse",
-        wClass,
-        hClass,
-      ].join(" ")}
-    />
-  );
+function Pulse({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse bg-slate-100 ${className}`} />;
 }
 
-function SkeletonBlock({
-  className = "",
-}: {
-  className?: string;
-}) {
-  return (
-    <div
-      className={[
-        "rounded-xl bg-slate-200/80",
-        "animate-pulse",
-        className,
-      ].join(" ")}
-    />
-  );
-}
-
+/** 新フィードレイアウトに対応したスケルトン 1 件分 */
 function PostCardSkeleton() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      {/* header: avatar + name + meta */}
-      <div className="flex items-center gap-3">
-        <SkeletonBlock className="h-10 w-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <SkeletonLine wClass="w-32" hClass="h-3.5" />
-          <SkeletonLine wClass="w-44" hClass="h-3" />
+    <div className="gm-feed-divider">
+      {/* header: avatar + name + time + location */}
+      <div className="flex items-center gap-2.5 px-3 pt-3 pb-1.5">
+        <Pulse className="h-8 w-8 shrink-0 rounded-full" />
+        <div className="flex-1 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Pulse className="h-3 w-24 rounded-full" />
+            <Pulse className="h-2.5 w-10 rounded-full" />
+          </div>
+          <div className="flex items-center gap-1">
+            <Pulse className="h-2.5 w-2.5 rounded-full" />
+            <Pulse className="h-2.5 w-20 rounded-full" />
+          </div>
         </div>
-        <SkeletonBlock className="h-8 w-8 rounded-lg" />
       </div>
 
-      {/* content */}
-      <div className="mt-4 space-y-2">
-        <SkeletonLine wClass="w-full" />
-        <SkeletonLine wClass="w-11/12" />
-        <SkeletonLine wClass="w-2/3" />
-      </div>
-
-      {/* place row */}
-      <div className="mt-4 flex items-center gap-2">
-        <SkeletonBlock className="h-4 w-4 rounded-md" />
-        <SkeletonLine wClass="w-56" hClass="h-3" />
-      </div>
-
-      {/* images: 2x2 */}
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <SkeletonBlock className="aspect-square w-full rounded-xl" />
-        <SkeletonBlock className="aspect-square w-full rounded-xl" />
-        <SkeletonBlock className="aspect-square w-full rounded-xl" />
-        <SkeletonBlock className="aspect-square w-full rounded-xl" />
-      </div>
+      {/* image placeholder — full width */}
+      <Pulse className="w-full aspect-square" />
 
       {/* actions row */}
-      <div className="mt-4 flex items-center justify-between">
+      <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <div className="flex items-center gap-3">
-          <SkeletonBlock className="h-8 w-16 rounded-full" />
-          <SkeletonBlock className="h-8 w-16 rounded-full" />
-          <SkeletonBlock className="h-8 w-16 rounded-full" />
+          <Pulse className="h-5 w-5 rounded-full" />
+          <Pulse className="h-3 w-24 rounded-full" />
         </div>
-        <SkeletonBlock className="h-8 w-20 rounded-full" />
+        <Pulse className="h-5 w-5 rounded" />
+      </div>
+
+      {/* meta: score + price */}
+      <div className="flex items-center gap-2 px-3 pt-0.5">
+        <Pulse className="h-2.5 w-20 rounded-full" />
+        <Pulse className="h-2.5 w-12 rounded-full" />
+      </div>
+
+      {/* body text */}
+      <div className="space-y-1.5 px-3 pt-1 pb-2">
+        <Pulse className="h-3 w-full rounded-full" />
+        <Pulse className="h-3 w-11/12 rounded-full" />
+        <Pulse className="h-3 w-2/3 rounded-full" />
       </div>
     </div>
   );
 }
 
 export default function PostsSkeleton({
-  count = 6,
+  count = 3,
 }: {
   count?: number;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col items-stretch">
       {Array.from({ length: count }).map((_, i) => (
         <PostCardSkeleton key={i} />
       ))}

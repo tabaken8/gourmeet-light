@@ -92,8 +92,8 @@ const listStagger = {
 // ---------- skeleton ----------
 function UsersSkeleton() {
   return (
-    <div className="gm-card px-4 py-3">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Users</div>
+    <div className="px-3 py-2">
+      <div className="mb-2 text-[11px] font-medium text-slate-400">Users</div>
       <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2">
@@ -114,7 +114,7 @@ function PostsSkeleton() {
   return (
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="gm-card px-4 py-4">
+        <div key={i} className="border-b border-slate-100 px-3 py-3">
           <div className="flex items-center gap-3">
             <Skeleton circle width={36} height={36} />
             <div className="flex-1">
@@ -602,23 +602,21 @@ export default function SearchPage() {
   return (
     <div className="space-y-4">
       {/* ===== Search Card ===== */}
-      <motion.div className="gm-card px-4 py-3" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.div className="px-2 py-2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
 
         {/* タイトル */}
-        <div className="mb-3 min-h-[20px]">
-          {!isEmpty && (
-            <div className="flex items-center gap-2">
-              {committedMode === "station" && <TrainFront size={16} className="shrink-0 text-slate-600" />}
-              <p className="text-sm font-semibold text-slate-900">{titleText}</p>
-            </div>
-          )}
-        </div>
+        {!isEmpty && (
+          <div className="flex items-center gap-2 mb-2 px-1">
+            {committedMode === "station" && <TrainFront size={14} className="shrink-0 text-slate-500" />}
+            <p className="text-[13px] font-medium text-slate-700">{titleText}</p>
+          </div>
+        )}
 
         {/* 検索入力 */}
         <div className="relative w-full">
           <Sparkles
-            size={17}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-orange-400"
+            size={15}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
           />
           <input
             value={q}
@@ -629,7 +627,7 @@ export default function SearchPage() {
             }}
             onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
             placeholder={searchPlaceholder}
-            className="w-full rounded-full border border-black/[.08] bg-white py-2.5 pl-10 pr-20 text-base font-medium outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-18 text-[16px] font-normal outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100 leading-tight"
             inputMode="search"
             enterKeyHint="search"
           />
@@ -690,7 +688,7 @@ export default function SearchPage() {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              <div className="mt-3 rounded-2xl bg-orange-50 px-4 py-3 text-xs text-slate-700">
+              <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2.5 text-[11px] text-slate-600">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-semibold text-orange-700">✨ こんな検索ができます</span>
                   <button type="button" onClick={() => setHintsOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
@@ -739,7 +737,7 @@ export default function SearchPage() {
         <div className="space-y-3">
           <AnimatePresence mode="wait">
             {!showDiscover ? (
-              <motion.div key="empty-splash" {...fadeUp} className="gm-card px-4 py-6">
+              <motion.div key="empty-splash" {...fadeUp} className="px-3 py-4">
                 <div className="text-sm font-semibold text-slate-900">すぐ検索できます</div>
                 <div className="mt-2 text-xs text-slate-500">
                   キーワード入力・駅選択・ジャンル選択で投稿を探せます
@@ -762,17 +760,17 @@ export default function SearchPage() {
           {usersLoading ? (
             <UsersSkeleton />
           ) : users.length > 0 ? (
-            <motion.section className="gm-card px-4 py-3" {...fadeUp}>
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Users</div>
-              <motion.div className="flex flex-col gap-2" variants={listStagger} initial="initial" animate="animate">
+            <motion.section className="px-3 py-2" {...fadeUp}>
+              <div className="mb-2 text-[11px] font-medium text-slate-400">Users</div>
+              <motion.div className="flex flex-col gap-1.5" variants={listStagger} initial="initial" animate="animate">
                 {users.map((u) => {
                   const name = u.display_name ?? u.username ?? "ユーザー";
                   const handle = u.username ? `@${u.username}` : "";
                   const initial = (name || "U").slice(0, 1).toUpperCase();
                   return (
                     <motion.div key={u.id} variants={fadeUp}>
-                      <Link href={`/u/${u.id}`} className="gm-press flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2">
-                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
+                      <Link href={`/u/${u.id}`} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-slate-50">
+                        <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600">
                           {u.avatar_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={u.avatar_url} alt="" className="h-10 w-10 object-cover" />
