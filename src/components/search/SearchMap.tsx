@@ -7,9 +7,8 @@ import {
   useJsApiLoader,
   OverlayViewF,
   OverlayView,
-  CircleF,
 } from "@react-google-maps/api";
-import { MapPin, Navigation, Utensils } from "lucide-react";
+import { MapPin, Navigation, Utensils, Loader2 } from "lucide-react";
 import type { PostRow } from "./SearchPostList";
 
 // ── types ──
@@ -20,7 +19,7 @@ export type MapBounds = {
   west: number;
 };
 
-type MapPost = PostRow & { place_lat: number; place_lng: number };
+export type MapPost = PostRow & { place_lat: number; place_lng: number };
 
 // ── map options ──
 const MAP_OPTIONS: google.maps.MapOptions = {
@@ -42,34 +41,6 @@ const MAP_CONTAINER: React.CSSProperties = {
   borderRadius: 12,
 };
 
-// ── helpers ──
-function getSquareImageUrl(p: PostRow): string | null {
-  if (p.cover_square_url) return p.cover_square_url;
-  if (p.image_assets?.[0]?.square) return p.image_assets[0].square;
-  if (p.image_variants?.[0]?.thumb) return p.image_variants[0].thumb;
-  return null;
-}
-
-function formatPrice(p: PostRow): string | null {
-  if (typeof p.price_yen === "number" && Number.isFinite(p.price_yen)) {
-    return `\u00A5${new Intl.NumberFormat("ja-JP").format(Math.max(0, Math.floor(p.price_yen)))}`;
-  }
-  if (p.price_range) {
-    const m: Record<string, string> = {
-      "~999": "\u301C\u00A5999",
-      "1000-1999": "\u00A51,000\u301C\u00A51,999",
-      "2000-2999": "\u00A52,000\u301C\u00A52,999",
-      "3000-3999": "\u00A53,000\u301C\u00A53,999",
-      "4000-4999": "\u00A54,000\u301C\u00A54,999",
-      "5000-6999": "\u00A55,000\u301C\u00A56,999",
-      "7000-9999": "\u00A57,000\u301C\u00A59,999",
-      "10000+": "\u00A510,000\u301C",
-    };
-    return m[p.price_range] ?? p.price_range;
-  }
-  return null;
-}
-
 // ── Custom pin component ──
 function CustomPin({
   selected,
@@ -88,7 +59,6 @@ function CustomPin({
         ...(selected ? { transform: "translate(-50%, -100%) scale(1.2)", zIndex: 100 } : {}),
       }}
     >
-      {/* Pin body */}
       <div
         style={{
           width: 32,
@@ -122,130 +92,23 @@ function CustomPin({
   );
 }
 
-// ── Bottom card for selected post ──
-function BottomCard({
-  post,
-  onClose,
-}: {
-  post: MapPost;
-  onClose: () => void;
-}) {
-  const img = getSquareImageUrl(post);
-  const prof = post.profile;
-  const name = prof?.display_name ?? "\u30E6\u30FC\u30B6\u30FC";
-  const avatar = prof?.avatar_url ?? null;
-  const initial = (name || "U").slice(0, 1).toUpperCase();
-  const score = typeof post.recommend_score === "number" ? post.recommend_score : null;
-  const price = formatPrice(post);
-  const genre = post.place_genre ?? null;
-  const nearestStation = post.nearest_station_name ?? null;
-  const nearestMin = typeof post.nearest_station_distance_m === "number"
-    ? Math.max(1, Math.ceil(post.nearest_station_distance_m / 80))
-    : null;
-
-  return (
-    <div
-      className="absolute bottom-0 left-0 right-0 z-[1000] animate-in slide-in-from-bottom-4 duration-200"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <a
-        href={`/posts/${post.id}`}
-        className="block mx-2 mb-2 rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden no-underline"
-        style={{ color: "inherit", textDecoration: "none" }}
-      >
-        <div className="flex gap-0">
-          {/* Square image */}
-          {img ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={img}
-              alt=""
-              className="w-[100px] h-[100px] object-cover shrink-0"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-[100px] h-[100px] bg-slate-100 shrink-0 flex items-center justify-center">
-              <Utensils size={20} className="text-slate-300" />
-            </div>
-          )}
-
-          {/* Info */}
-          <div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between">
-            <div>
-              {/* Place name */}
-              <div className="font-bold text-[14px] text-slate-900 leading-tight truncate">
-                {post.place_name ?? "\u304A\u5E97"}
-              </div>
-              {/* Genre + station */}
-              <div className="flex items-center gap-1 mt-0.5 text-[11px] text-slate-500 truncate">
-                {genre && <span>{genre}</span>}
-                {genre && nearestStation && <span className="text-slate-300">{"\u00B7"}</span>}
-                {nearestStation && nearestMin && (
-                  <span>{nearestStation} {"\u5F92\u6B69"}{nearestMin}{"\u5206"}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between mt-1.5">
-              {/* Score + price */}
-              <div className="flex items-center gap-2">
-                {score !== null && (
-                  <span
-                    className="inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[12px] font-bold"
-                    style={{
-                      background: score >= 8 ? "#fff7ed" : "#f8fafc",
-                      color: score >= 8 ? "#ea580c" : "#64748b",
-                    }}
-                  >
-                    {score}{" / 10"}
-                  </span>
-                )}
-                {price && (
-                  <span className="text-[11px] text-slate-500">{price}</span>
-                )}
-              </div>
-
-              {/* User avatar */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[11px] text-slate-400 truncate max-w-[60px]">{name}</span>
-                <div className="h-6 w-6 rounded-full overflow-hidden bg-orange-100 flex items-center justify-center text-[9px] font-semibold text-orange-700 shrink-0">
-                  {avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatar} alt="" className="h-6 w-6 object-cover" loading="lazy" />
-                  ) : (
-                    initial
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </a>
-
-      {/* Close tap area */}
-      <button
-        type="button"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
-        className="absolute top-1 right-3 w-6 h-6 rounded-full bg-white/80 backdrop-blur flex items-center justify-center text-slate-400 hover:text-slate-600 shadow-sm border border-slate-100"
-        aria-label="close"
-      >
-        <span className="text-[14px] leading-none">{"\u00D7"}</span>
-      </button>
-    </div>
-  );
-}
-
 // ── main component ──
 export default function SearchMap({
   posts,
   userLocation,
   onSearchThisArea,
   showSearchButton,
+  onSelectPost,
+  selectedPostId: externalSelectedId,
+  loading: areaSearchLoading,
 }: {
   posts: PostRow[];
   userLocation?: [number, number] | null;
   onSearchThisArea?: (bounds: MapBounds) => void;
   showSearchButton?: boolean;
+  onSelectPost?: (post: MapPost | null) => void;
+  selectedPostId?: string | null;
+  loading?: boolean;
 }) {
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
@@ -254,11 +117,14 @@ export default function SearchMap({
 
   const [mapMoved, setMapMoved] = useState(false);
   const [currentBounds, setCurrentBounds] = useState<MapBounds | null>(null);
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const moveCountRef = useRef(0);
   const settledBoundsRef = useRef<string>("");
   const mapRef = useRef<google.maps.Map | null>(null);
   const prevPostsKeyRef = useRef<string>("");
+
+  // Use external selectedPostId if provided, else internal
+  const selectedId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
 
   // filter to posts with valid coordinates
   const mappablePosts = useMemo(
@@ -273,34 +139,35 @@ export default function SearchMap({
     [posts]
   );
 
-  const selectedPost = useMemo(
-    () => mappablePosts.find((p) => p.id === selectedPostId) ?? null,
-    [mappablePosts, selectedPostId]
-  );
-
   const center = useMemo(() => {
     if (userLocation) return { lat: userLocation[0], lng: userLocation[1] };
     return { lat: 35.681236, lng: 139.767125 };
   }, [userLocation]);
 
-  // Fit bounds to markers when posts change (including new search results)
+  // Fit bounds to markers when posts change (include userLocation so it stays visible)
   const fitToMarkers = useCallback((postsToFit: MapPost[]) => {
     if (!mapRef.current || postsToFit.length === 0) return;
     const bounds = new google.maps.LatLngBounds();
     postsToFit.forEach((p) => bounds.extend({ lat: p.place_lat, lng: p.place_lng }));
+    if (userLocation) bounds.extend({ lat: userLocation[0], lng: userLocation[1] });
     mapRef.current.fitBounds(bounds, { top: 40, bottom: 60, left: 30, right: 30 });
+    // Prevent excessive zoom-out: cap at zoom 16 minimum
+    const listener = google.maps.event.addListenerOnce(mapRef.current, "idle", () => {
+      if (mapRef.current) {
+        const z = mapRef.current.getZoom();
+        if (z !== undefined && z > 17) mapRef.current.setZoom(17);
+      }
+    });
     moveCountRef.current = 0;
     settledBoundsRef.current = "";
     setMapMoved(false);
-    setSelectedPostId(null);
-  }, []);
+  }, [userLocation]);
 
   useEffect(() => {
     if (mappablePosts.length === 0) return;
     const key = mappablePosts.map((p) => p.id).sort().join(",");
     if (key === prevPostsKeyRef.current) return;
     prevPostsKeyRef.current = key;
-    // Small delay to ensure map is ready after initial render
     const t = setTimeout(() => fitToMarkers(mappablePosts), 100);
     return () => clearTimeout(t);
   }, [mappablePosts, fitToMarkers]);
@@ -339,14 +206,26 @@ export default function SearchMap({
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
-    // Fit to markers that might already be loaded
     if (mappablePosts.length > 0) {
       setTimeout(() => fitToMarkers(mappablePosts), 200);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitToMarkers]);
 
-  const showBtn = showSearchButton && mapMoved && onSearchThisArea;
+  const handlePinClick = useCallback((post: MapPost) => {
+    const newId = selectedId === post.id ? null : post.id;
+    setInternalSelectedId(newId);
+    if (onSelectPost) {
+      onSelectPost(newId ? post : null);
+    }
+  }, [selectedId, onSelectPost]);
+
+  const handleMapClick = useCallback(() => {
+    setInternalSelectedId(null);
+    if (onSelectPost) onSelectPost(null);
+  }, [onSelectPost]);
+
+  const showBtn = showSearchButton && mapMoved && onSearchThisArea && !areaSearchLoading;
 
   if (!isLoaded) {
     return (
@@ -361,29 +240,52 @@ export default function SearchMap({
       <GoogleMap
         mapContainerStyle={MAP_CONTAINER}
         center={center}
-        zoom={userLocation ? 14 : 13}
+        zoom={userLocation ? 15 : 13}
         options={MAP_OPTIONS}
         onLoad={onMapLoad}
         onIdle={handleBoundsChanged}
-        onClick={() => setSelectedPostId(null)}
+        onClick={handleMapClick}
       >
-        {/* User location blue dot */}
         {userLocation && (
-          <CircleF
-            center={{ lat: userLocation[0], lng: userLocation[1] }}
-            radius={12}
-            options={{
-              fillColor: "#3b82f6",
-              fillOpacity: 1,
-              strokeColor: "#ffffff",
-              strokeWeight: 3,
-              clickable: false,
-              zIndex: 999,
-            }}
-          />
+          <OverlayViewF
+            position={{ lat: userLocation[0], lng: userLocation[1] }}
+            mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+          >
+            <div
+              style={{
+                transform: "translate(-50%, -50%)",
+                position: "relative",
+                width: 18,
+                height: 18,
+                pointerEvents: "none",
+              }}
+            >
+              {/* Pulse ring */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: -6,
+                  borderRadius: "50%",
+                  backgroundColor: "rgba(59,130,246,0.2)",
+                  animation: "gm-pulse 2s ease-out infinite",
+                }}
+              />
+              {/* Core dot */}
+              <div
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: "50%",
+                  backgroundColor: "#3b82f6",
+                  border: "3px solid #ffffff",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+                }}
+              />
+              <style>{`@keyframes gm-pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(2.8);opacity:0}}`}</style>
+            </div>
+          </OverlayViewF>
         )}
 
-        {/* Custom pin markers */}
         {mappablePosts.map((p) => (
           <OverlayViewF
             key={p.id}
@@ -391,33 +293,38 @@ export default function SearchMap({
             mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
           >
             <CustomPin
-              selected={selectedPostId === p.id}
-              onClick={() => setSelectedPostId(selectedPostId === p.id ? null : p.id)}
+              selected={selectedId === p.id}
+              onClick={() => handlePinClick(p)}
             />
           </OverlayViewF>
         ))}
       </GoogleMap>
 
-      {/* "Search this area" floating button */}
-      {showBtn && (
+      {/* "Search this area" / loading button */}
+      {(showBtn || areaSearchLoading) && (
         <button
           type="button"
-          onClick={handleSearchThisArea}
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-slate-800 shadow-lg border border-slate-200 hover:bg-slate-50 active:scale-[0.97] transition"
+          onClick={areaSearchLoading ? undefined : handleSearchThisArea}
+          disabled={areaSearchLoading}
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-slate-800 shadow-lg border border-slate-200 hover:bg-slate-50 active:scale-[0.97] transition disabled:opacity-70"
         >
-          <Navigation size={13} className="text-slate-500" />
-          {"\u3053\u306E\u30A8\u30EA\u30A2\u3067\u691C\u7D22"}
+          {areaSearchLoading ? (
+            <>
+              <Loader2 size={13} className="text-slate-500 animate-spin" />
+              {"\u691C\u7D22\u4E2D\u2026"}
+            </>
+          ) : (
+            <>
+              <Navigation size={13} className="text-slate-500" />
+              {"\u3053\u306E\u30A8\u30EA\u30A2\u3067\u691C\u7D22"}
+            </>
+          )}
         </button>
       )}
 
-      {/* Post count badge — move up when bottom card is open */}
+      {/* Post count badge */}
       {mappablePosts.length > 0 && (
-        <div
-          className={[
-            "absolute left-3 z-[1000] inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow border border-slate-100 transition-all duration-200",
-            selectedPost ? "bottom-[116px]" : "bottom-3",
-          ].join(" ")}
-        >
+        <div className="absolute bottom-3 left-3 z-[1000] inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow border border-slate-100">
           <MapPin size={11} />
           {mappablePosts.length}{"\u4EF6\u8868\u793A\u4E2D"}
           {mappablePosts.length < posts.length && (
@@ -426,11 +333,6 @@ export default function SearchMap({
             </span>
           )}
         </div>
-      )}
-
-      {/* Bottom card */}
-      {selectedPost && (
-        <BottomCard post={selectedPost} onClose={() => setSelectedPostId(null)} />
       )}
     </div>
   );

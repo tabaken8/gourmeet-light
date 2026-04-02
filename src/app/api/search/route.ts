@@ -97,6 +97,7 @@ function normalizePostRow(p: any, prof: ProfileLite | null) {
   // TimelinePostList/Rowが「トップレベル参照」でも落ちないように両方付ける
   return {
     ...p,
+    profile: mergedProf,
     user: mergedProf,
     username: p?.username ?? mergedProf?.username ?? null,
     display_name: p?.display_name ?? mergedProf?.display_name ?? null,
@@ -436,6 +437,8 @@ export async function GET(req: Request) {
   const isBbox = bbox_north != null && bbox_south != null && bbox_east != null && bbox_west != null
     && Number.isFinite(bbox_north) && Number.isFinite(bbox_south) && Number.isFinite(bbox_east) && Number.isFinite(bbox_west);
 
+  const isQuick = searchParams.get("quick") === "1";
+
   const { data: auth } = await supabase.auth.getUser();
   const me = auth.user?.id ?? null;
 
@@ -443,6 +446,49 @@ export async function GET(req: Request) {
 
   if (!isStation && !q && !isBbox) {
     return NextResponse.json({ ok: true, mode: "geo", posts: [], nextCursor: null });
+  }
+
+  // ── Quick index search (fast path) ──
+  // Returns posts matching place_address, nearest_station_name, or place_name ILIKE
+  if (isQuick && q && !isStation && !isBbox) {
+    const likeQ = `%${q}%`;
+    const { data: quickPlaces } = await supabase
+      .from("places")
+      .select("place_id")
+      .or(`address.ilike.${likeQ},name.ilike.${likeQ},nearest_station_name.ilike.${likeQ}`)
+      .limit(200);
+
+    const qPlaceIds = Array.from(new Set(
+      (quickPlaces ?? []).map((r: any) => r?.place_id).filter(Boolean).map(String)
+    ));
+
+    if (qPlaceIds.length === 0) {
+      return NextResponse.json({ ok: true, mode: "quick", posts: [], nextCursor: null });
+    }
+
+    // Fetch posts for these places
+    const chunkSize = 200;
+    const chunks = [];
+    for (let i = 0; i < qPlaceIds.length; i += chunkSize) {
+      chunks.push(qPlaceIds.slice(i, i + chunkSize));
+    }
+    let quickPosts: any[] = [];
+    for (const chunk of chunks) {
+      const { data } = await supabase
+        .from("posts")
+        .select("*, profile:profiles!user_id(id, display_name, avatar_url, is_public)")
+        .in("place_id", chunk)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (data) quickPosts.push(...data);
+    }
+
+    quickPosts = quickPosts.slice(0, limit);
+    quickPosts = await attachNearestStationsToPosts({ supabase, posts: quickPosts });
+    quickPosts = await attachLikesToPosts({ supabase, posts: quickPosts, meId: me });
+    quickPosts = await attachLatLngToPosts({ supabase, posts: quickPosts });
+
+    return NextResponse.json({ ok: true, mode: "quick", posts: quickPosts, nextCursor: null });
   }
 
   // -----------------------------

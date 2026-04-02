@@ -17,7 +17,8 @@ import SearchPostList, { PostRow, SearchMode } from "@/components/search/SearchP
 import SearchZeroResultsNudge from "@/components/SearchZeroResultsNudge";
 import LocationFilter from "@/components/search/LocationFilter";
 import GenreFilter from "@/components/search/GenreFilter";
-import type { MapBounds } from "@/components/search/SearchMap";
+import MapPostCard from "@/components/search/MapPostCard";
+import type { MapBounds, MapPost } from "@/components/search/SearchMap";
 
 const SearchMap = dynamic(() => import("@/components/search/SearchMap"), { ssr: false });
 
@@ -223,6 +224,10 @@ export default function SearchPage() {
   const [geoMode, setGeoMode] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const [selectedMapPost, setSelectedMapPost] = useState<MapPost | null>(null);
+  const [areaSearchLoading, setAreaSearchLoading] = useState(false);
+  const [quickPosts, setQuickPosts] = useState<PostRow[]>([]);
+  const [quickLoading, setQuickLoading] = useState(false);
 
   // ---- ジャンル候補を DB から取得（1回だけ）----
   useEffect(() => {
@@ -356,6 +361,7 @@ export default function SearchPage() {
       if (!res.ok) throw new Error(payload?.error ?? `Error ${res.status}`);
 
       setSemanticPosts(Array.isArray(payload?.posts) ? payload.posts : []);
+      setQuickPosts([]); // AI results replace quick results
       if (payload?.message) setAiMessage(payload.message);
       if (Array.isArray(payload?.detectedStations)) setDetectedStations(payload.detectedStations);
       if (payload?.detectedAuthor) setDetectedAuthor(payload.detectedAuthor);
@@ -483,6 +489,7 @@ export default function SearchPage() {
     setSearchedStationName(mm === "station" ? (next.sname ?? null) : null);
 
     setGeoMode(false);
+    setSelectedMapPost(null);
     setUsers([]);
     setPosts([]);
     setCursor(null);
@@ -492,6 +499,8 @@ export default function SearchPage() {
     setSemanticPosts([]);
     setSemanticLoading(false);
     setSemanticError(null);
+    setQuickPosts([]);
+    setQuickLoading(false);
     setAiMessage(null);
     setParsedIntent(null);
     setDetectedStations([]);
@@ -505,6 +514,21 @@ export default function SearchPage() {
     if (nq || ng) {
       setResultMode("ai");
       if (nq) loadUsers(nq);
+
+      // Quick pre-search: fire fast index search in parallel with AI
+      const combined = [ng, nq].filter(Boolean).join(" ");
+      if (combined) {
+        setQuickLoading(true);
+        fetch(`/api/search?quick=1&q=${encodeURIComponent(combined)}&limit=20`)
+          .then((r) => r.json().catch(() => ({})))
+          .then((payload) => {
+            const qp: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
+            setQuickPosts(qp);
+          })
+          .catch(() => setQuickPosts([]))
+          .finally(() => setQuickLoading(false));
+      }
+
       loadAiChat({ q: nq, genre: ng, follow: next.follow, stationId: next.sid ?? null, stationName: next.sname ?? null });
     } else {
       // 駅のみ → キーワードブラウズ
@@ -514,35 +538,56 @@ export default function SearchPage() {
   };
 
   // -------- 現在地から探す (Plan C) --------
+  const geoRetryRef = useRef(0);
   const handleSearchFromLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setGeoError("\u4F4D\u7F6E\u60C5\u5831\u304C\u5229\u7528\u3067\u304D\u307E\u305B\u3093");
+      setGeoError("\u3053\u306E\u30D6\u30E9\u30A6\u30B6\u3067\u306F\u4F4D\u7F6E\u60C5\u5831\u304C\u5229\u7528\u3067\u304D\u307E\u305B\u3093");
       return;
     }
     setGeoLoading(true);
     setGeoError(null);
+
+    // 1回目は高精度、リトライ時は低精度（GPSなしでもWi-Fi/基地局で取得）
+    const isRetry = geoRetryRef.current > 0;
+    const opts: PositionOptions = isRetry
+      ? { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+      : { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 };
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setUserLocation(loc);
         setGeoMode(true);
         setGeoLoading(false);
+        geoRetryRef.current = 0;
       },
       (err) => {
         setGeoLoading(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          setGeoError("\u4F4D\u7F6E\u60C5\u5831\u306E\u8A31\u53EF\u304C\u5FC5\u8981\u3067\u3059\u3002\u8A2D\u5B9A\u304B\u3089\u8A31\u53EF\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+        console.warn("[geo] error:", err.code, err.message);
+
+        if (err.code === 1 /* PERMISSION_DENIED */) {
+          setGeoError(
+            "\u4F4D\u7F6E\u60C5\u5831\u304C\u8A31\u53EF\u3055\u308C\u3066\u3044\u307E\u305B\u3093\u3002\n" +
+            "iPhone: \u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u2192 Safari\u3092\u8A31\u53EF"
+          );
+        } else if (err.code === 3 /* TIMEOUT */ && !isRetry) {
+          // タイムアウト → 低精度でリトライ
+          geoRetryRef.current += 1;
+          handleSearchFromLocation();
         } else {
-          setGeoError("\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F");
+          setGeoError(
+            "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\n" +
+            "\u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u304C\u30AA\u30F3\u304B\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044"
+          );
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      opts
     );
   }, []);
 
   // -------- bbox検索 (このエリアで検索) --------
   const handleSearchThisArea = useCallback(async (bounds: MapBounds) => {
-    setLoading(true);
+    setAreaSearchLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({
@@ -563,7 +608,7 @@ export default function SearchPage() {
     } catch {
       setError("\u691C\u7D22\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
     } finally {
-      setLoading(false);
+      setAreaSearchLoading(false);
     }
   }, [q]);
 
@@ -818,19 +863,35 @@ export default function SearchPage() {
               {geoLoading ? "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u4E2D\u2026" : "\u73FE\u5728\u5730\u304B\u3089\u63A2\u3059"}
             </button>
             {geoError && (
-              <p className="mt-2 text-xs text-red-500">{geoError}</p>
+              <p className="mt-2 text-xs text-red-500 whitespace-pre-line">{geoError}</p>
             )}
           </div>
 
-          {/* geoMode: 現在地マップ（検索前） */}
+          {/* geoMode: 現在地マップ */}
           {geoMode && (
-            <div className="px-2">
-              <SearchMap
-                posts={posts}
-                userLocation={userLocation}
-                onSearchThisArea={handleSearchThisArea}
-                showSearchButton={true}
-              />
+            <div className="space-y-0">
+              <div className="px-2 pb-1">
+                <SearchMap
+                  posts={posts}
+                  userLocation={userLocation}
+                  onSearchThisArea={handleSearchThisArea}
+                  showSearchButton={true}
+                  onSelectPost={(p) => setSelectedMapPost(p)}
+                  selectedPostId={selectedMapPost?.id ?? null}
+                  loading={areaSearchLoading}
+                />
+              </div>
+              {selectedMapPost && (
+                <MapPostCard
+                  post={selectedMapPost}
+                  onClose={() => setSelectedMapPost(null)}
+                />
+              )}
+              {posts.length > 0 && (
+                <motion.div {...fadeUp}>
+                  <SearchPostList posts={posts} meId={meId} mode="geo" searchedStationName={null} revealImages={true} />
+                </motion.div>
+              )}
             </div>
           )}
 
@@ -889,42 +950,70 @@ export default function SearchPage() {
           ) : null}
 
           {/* ===== 地図（常にトップ表示） ===== */}
-          {((resultMode === "ai" && semanticPosts.length > 0) ||
+          {((resultMode === "ai" && (semanticPosts.length > 0 || quickPosts.length > 0)) ||
             (resultMode === "keyword" && posts.length > 0)) && (
-            <div className="px-2 pb-3">
+            <div className="px-2 pb-1">
               <SearchMap
-                posts={resultMode === "ai" ? semanticPosts : posts}
+                posts={resultMode === "ai" ? (semanticPosts.length > 0 ? semanticPosts : quickPosts) : posts}
                 userLocation={userLocation}
                 onSearchThisArea={handleSearchThisArea}
                 showSearchButton={true}
+                onSelectPost={(p) => setSelectedMapPost(p)}
+                selectedPostId={selectedMapPost?.id ?? null}
+                loading={areaSearchLoading}
               />
             </div>
+          )}
+
+          {/* ===== 選択中の投稿カード（地図とリストの間） ===== */}
+          {selectedMapPost && (
+            <MapPostCard
+              post={selectedMapPost}
+              onClose={() => setSelectedMapPost(null)}
+            />
           )}
 
           {/* ===== AI 検索結果 ===== */}
           {resultMode === "ai" && (
             <>
               {semanticLoading && (
-                <motion.div
-                  key="ai-thinking"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-3 py-20"
-                >
-                  <div className="flex items-center gap-3 text-2xl">
-                    {["\uD83C\uDF5C", "\uD83C\uDF63", "\uD83C\uDF5B", "\uD83C\uDF70", "\uD83C\uDF54"].map((emoji, i) => (
-                      <motion.span
-                        key={i}
-                        animate={{ y: [0, -8, 0] }}
-                        transition={{ duration: 0.6, delay: i * 0.12, repeat: Infinity, repeatDelay: 1.8 }}
-                      >
-                        {emoji}
-                      </motion.span>
-                    ))}
-                  </div>
-                  <p className="text-[13px] text-slate-400">{"\u304A\u3044\u3057\u3044\u6295\u7A3F\u3092\u63A2\u3057\u3066\u3044\u307E\u3059\u2026"}</p>
-                </motion.div>
+                <>
+                  {/* Quick results shown while AI is thinking */}
+                  {quickPosts.length > 0 && (
+                    <motion.div {...fadeUp}>
+                      <div className="px-2 py-1.5 text-[11px] text-slate-400 flex items-center gap-1.5">
+                        <span>{"\u30AF\u30A4\u30C3\u30AF\u7D50\u679C"}</span>
+                        <span className="text-slate-300">{"\u00B7"}</span>
+                        <span>{quickPosts.length}{"\u4EF6"}</span>
+                        <span className="text-slate-300">{"\u00B7"}</span>
+                        <span className="text-orange-400">{"\u2728 AI\u691C\u7D22\u4E2D\u2026"}</span>
+                      </div>
+                      <SearchPostList posts={quickPosts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} />
+                    </motion.div>
+                  )}
+                  {quickPosts.length === 0 && (
+                    <motion.div
+                      key="ai-thinking"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="flex flex-col items-center gap-3 py-20"
+                    >
+                      <div className="flex items-center gap-3 text-2xl">
+                        {["\uD83C\uDF5C", "\uD83C\uDF63", "\uD83C\uDF5B", "\uD83C\uDF70", "\uD83C\uDF54"].map((emoji, i) => (
+                          <motion.span
+                            key={i}
+                            animate={{ y: [0, -8, 0] }}
+                            transition={{ duration: 0.6, delay: i * 0.12, repeat: Infinity, repeatDelay: 1.8 }}
+                          >
+                            {emoji}
+                          </motion.span>
+                        ))}
+                      </div>
+                      <p className="text-[13px] text-slate-400">{"\u304A\u3044\u3057\u3044\u6295\u7A3F\u3092\u63A2\u3057\u3066\u3044\u307E\u3059\u2026"}</p>
+                    </motion.div>
+                  )}
+                </>
               )}
               {!semanticLoading && semanticError && (
                 <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600">
