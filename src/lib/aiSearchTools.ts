@@ -137,6 +137,8 @@ export type ToolContext = {
   // UIフィードバック用（複数駅対応）
   detectedStations: { name: string; placeId: string }[];
   detectedAuthor: { username: string; displayName: string | null } | null;
+  // search_posts に渡された検索意図テキスト（UIバナー表示用）
+  searchIntent: string | null;
 };
 
 // ============================================================
@@ -281,7 +283,12 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
     queryEmbedding = ctx.tasteEmbedding;
   } else {
     const intentText = [genre, query].filter(Boolean).join(" ");
-    queryEmbedding = await generateEmbedding(intentText || "おすすめの飲食店");
+    queryEmbedding = await generateEmbedding(intentText || "\u304A\u3059\u3059\u3081\u306E\u98F2\u98DF\u5E97");
+  }
+
+  // UIバナー表示用に検索意図を記録
+  if (query && typeof query === "string" && query.trim()) {
+    ctx.searchIntent = query.trim();
   }
 
   const { data: rawPosts, error } = await ctx.supabase.rpc("search_posts_semantic", {
@@ -349,7 +356,7 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
 // 後処理: プロフィール + 最寄り駅を posts に付与
 // ============================================================
 
-export async function enrichCollectedPosts(posts: any[], supabase: any): Promise<any[]> {
+export async function enrichCollectedPosts(posts: any[], supabase: any, meId?: string | null): Promise<any[]> {
   if (!posts.length) return [];
 
   const userIds = [...new Set(posts.map((p) => p.user_id).filter(Boolean))];
@@ -378,6 +385,50 @@ export async function enrichCollectedPosts(posts: any[], supabase: any): Promise
     }
   }
 
+  // いいねデータ
+  const postIds = posts.map((p) => p.id).filter(Boolean);
+  const likeCountMap: Record<string, number> = {};
+  const likedByMeSet = new Set<string>();
+  const likersMap: Record<string, { id: string; display_name: string | null; avatar_url: string | null }[]> = {};
+
+  if (postIds.length) {
+    try {
+      const { data: likeCounts } = await supabase
+        .from("post_likes").select("post_id").in("post_id", postIds);
+      if (likeCounts) {
+        for (const row of likeCounts as any[]) {
+          likeCountMap[row.post_id] = (likeCountMap[row.post_id] ?? 0) + 1;
+        }
+      }
+      if (meId) {
+        const { data: myLikes } = await supabase
+          .from("post_likes").select("post_id").in("post_id", postIds).eq("user_id", meId);
+        if (myLikes) {
+          for (const row of myLikes as any[]) likedByMeSet.add(row.post_id);
+        }
+      }
+      const { data: likerRows } = await supabase
+        .from("post_likes")
+        .select("post_id, user_id, profiles:user_id(id, display_name, avatar_url)")
+        .in("post_id", postIds)
+        .order("created_at", { ascending: false })
+        .limit(postIds.length * 3);
+      if (likerRows) {
+        for (const row of likerRows as any[]) {
+          const pid = row.post_id;
+          if (!likersMap[pid]) likersMap[pid] = [];
+          if (likersMap[pid].length < 3 && row.profiles) {
+            likersMap[pid].push({
+              id: (row.profiles as any).id,
+              display_name: (row.profiles as any).display_name,
+              avatar_url: (row.profiles as any).avatar_url,
+            });
+          }
+        }
+      }
+    } catch { /* likes are non-critical */ }
+  }
+
   return posts.map((p) => {
     const profile = profileMap[p.user_id] ?? null;
     const station = stationMap[p.place_id] ?? null;
@@ -387,6 +438,9 @@ export async function enrichCollectedPosts(posts: any[], supabase: any): Promise
       user: profile,
       nearest_station_name: station?.nearest_station_name ?? null,
       nearest_station_distance_m: station?.nearest_station_distance_m ?? null,
+      likeCount: likeCountMap[p.id] ?? 0,
+      likedByMe: likedByMeSet.has(p.id),
+      initialLikers: likersMap[p.id] ?? [],
       _similarity: p.similarity,
     };
   });

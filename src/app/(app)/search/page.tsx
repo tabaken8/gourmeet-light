@@ -199,6 +199,8 @@ export default function SearchPage() {
   const [semanticError, setSemanticError] = useState<string | null>(null);
   // LLM の返答テキスト
   const [aiMessage, setAiMessage] = useState<string | null>(null);
+  // 検索クエリ解析結果（意図・地名・メンション）
+  const [parsedIntent, setParsedIntent] = useState<string | null>(null);
   // クエリから自動検出された駅情報（複数対応）
   const [detectedStations, setDetectedStations] = useState<{ name: string; placeId: string }[]>([]);
   // クエリから自動検出されたユーザー情報
@@ -319,6 +321,7 @@ export default function SearchPage() {
     setSemanticError(null);
     setSemanticPosts([]);
     setAiMessage(null);
+    setParsedIntent(null);
     setDetectedStations([]);
     setDetectedAuthor(null);
     setMentionNotFound(false);
@@ -346,6 +349,8 @@ export default function SearchPage() {
       if (payload?.message) setAiMessage(payload.message);
       if (Array.isArray(payload?.detectedStations)) setDetectedStations(payload.detectedStations);
       if (payload?.detectedAuthor) setDetectedAuthor(payload.detectedAuthor);
+      if (payload?.parsedQuery?.intent) setParsedIntent(payload.parsedQuery.intent);
+      else setParsedIntent(null);
     } catch (e: any) {
       setSemanticError(e?.message ?? "AI検索に失敗しました");
     } finally {
@@ -477,6 +482,7 @@ export default function SearchPage() {
     setSemanticLoading(false);
     setSemanticError(null);
     setAiMessage(null);
+    setParsedIntent(null);
     setDetectedStations([]);
     setDetectedAuthor(null);
     setMentionNotFound(false);
@@ -801,21 +807,20 @@ export default function SearchPage() {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-4 py-16"
+                  className="flex flex-col items-center gap-3 py-20"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">✨</span>
-                    <div className="flex gap-1.5">
-                      {[0, 150, 300].map((delay) => (
-                        <span
-                          key={delay}
-                          className="block h-2 w-2 rounded-full bg-orange-400 animate-bounce"
-                          style={{ animationDelay: `${delay}ms` }}
-                        />
-                      ))}
-                    </div>
+                  <div className="flex items-center gap-3 text-2xl">
+                    {["\uD83C\uDF5C", "\uD83C\uDF63", "\uD83C\uDF5B", "\uD83C\uDF70", "\uD83C\uDF54"].map((emoji, i) => (
+                      <motion.span
+                        key={i}
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, delay: i * 0.12, repeat: Infinity, repeatDelay: 1.8 }}
+                      >
+                        {emoji}
+                      </motion.span>
+                    ))}
                   </div>
-                  <p className="text-sm text-slate-500">Gourmeet AI が分析中…</p>
+                  <p className="text-[13px] text-slate-400">{"\u304A\u3044\u3057\u3044\u6295\u7A3F\u3092\u63A2\u3057\u3066\u3044\u307E\u3059\u2026"}</p>
                 </motion.div>
               )}
               {!semanticLoading && semanticError && (
@@ -825,35 +830,29 @@ export default function SearchPage() {
               )}
               {!semanticLoading && semanticPosts.length > 0 && (
                 <motion.div {...fadeUp}>
-                  {/* LLM の返答テキスト */}
-                  {aiMessage && (
-                    <div className="mb-3 rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 px-4 py-3 text-sm text-slate-700 leading-relaxed border border-orange-100">
-                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-orange-600">
-                        <Sparkles size={11} />
-                        <span>Gourmeet AI</span>
-                      </div>
-                      {aiMessage}
+                  {/* 検索理解バナー: 駅 + 意図 + @mention を1行で */}
+                  {(detectedStations.length > 0 || parsedIntent || detectedAuthor) && (
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2 py-1.5 text-[11px] text-slate-500">
+                      {detectedStations.length > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                          <TrainFront size={10} className="shrink-0" />
+                          {detectedStations.map((s) => s.name.endsWith("\u99C5") ? s.name : `${s.name}\u99C5`).join("\u30FB")}{"\u5468\u8FBA"}
+                        </span>
+                      )}
+                      {detectedAuthor && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                          @{detectedAuthor.username}{detectedAuthor.displayName ? `\uFF08${detectedAuthor.displayName}\uFF09` : ""}
+                        </span>
+                      )}
+                      {parsedIntent && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                          {"\u300C"}{parsedIntent}{"\u300D"}{"\u3067\u691C\u7D22"}
+                        </span>
+                      )}
+                      <span className="text-slate-400">{"\u00B7"}</span>
+                      <span className="text-slate-400">{semanticPosts.length}{"\u4EF6"}</span>
                     </div>
                   )}
-                  {/* 地名自動検出バナー（複数駅対応） */}
-                  {detectedStations.length > 0 && (
-                    <div className="mb-2 flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-[11px] text-sky-700 w-fit">
-                      <TrainFront size={11} className="shrink-0" />
-                      <span>
-                        {detectedStations.map((s) => `${s.name}駅`).join("・")}周辺に絞って検索しました
-                      </span>
-                    </div>
-                  )}
-                  {/* @mention 自動検出バナー */}
-                  {detectedAuthor && (
-                    <div className="mb-2 flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 text-[11px] text-violet-700 w-fit">
-                      <span>@{detectedAuthor.username}{detectedAuthor.displayName ? `（${detectedAuthor.displayName}）` : ""}の投稿に絞って検索しました</span>
-                    </div>
-                  )}
-                  <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] text-orange-600">
-                    <Sparkles size={11} />
-                    <span>類似度の高い順に表示しています</span>
-                  </div>
                   <SearchPostList posts={semanticPosts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} showRanks={true} />
                 </motion.div>
               )}

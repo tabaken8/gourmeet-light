@@ -143,6 +143,56 @@ export async function GET(req: Request) {
       }
     }
 
+    // いいねデータを一括取得
+    const postIds = posts.map((p) => p.id).filter(Boolean);
+    const likeCountMap: Record<string, number> = {};
+    const likedByMeSet = new Set<string>();
+    const likersMap: Record<string, { id: string; display_name: string | null; avatar_url: string | null }[]> = {};
+
+    if (postIds.length) {
+      // いいね数
+      const { data: likeCounts } = await supabase
+        .from("post_likes")
+        .select("post_id")
+        .in("post_id", postIds);
+      if (likeCounts) {
+        for (const row of likeCounts) {
+          likeCountMap[row.post_id] = (likeCountMap[row.post_id] ?? 0) + 1;
+        }
+      }
+
+      // 自分がいいねしたか
+      const { data: myLikes } = await supabase
+        .from("post_likes")
+        .select("post_id")
+        .in("post_id", postIds)
+        .eq("user_id", user.id);
+      if (myLikes) {
+        for (const row of myLikes) likedByMeSet.add(row.post_id);
+      }
+
+      // 先頭3人のliker情報
+      const { data: likerRows } = await supabase
+        .from("post_likes")
+        .select("post_id, user_id, profiles:user_id(id, display_name, avatar_url)")
+        .in("post_id", postIds)
+        .order("created_at", { ascending: false })
+        .limit(postIds.length * 3);
+      if (likerRows) {
+        for (const row of likerRows as any[]) {
+          const pid = row.post_id;
+          if (!likersMap[pid]) likersMap[pid] = [];
+          if (likersMap[pid].length < 3 && row.profiles) {
+            likersMap[pid].push({
+              id: row.profiles.id,
+              display_name: row.profiles.display_name,
+              avatar_url: row.profiles.avatar_url,
+            });
+          }
+        }
+      }
+    }
+
     // 結果を SearchPostList が受け取れる形に整形
     const enriched = posts.map((p) => {
       const profile = profileMap[p.user_id] ?? null;
@@ -153,6 +203,9 @@ export async function GET(req: Request) {
         user: profile,
         nearest_station_name: station?.nearest_station_name ?? null,
         nearest_station_distance_m: station?.nearest_station_distance_m ?? null,
+        likeCount: likeCountMap[p.id] ?? 0,
+        likedByMe: likedByMeSet.has(p.id),
+        initialLikers: likersMap[p.id] ?? [],
         _similarity: p.similarity,
       };
     });

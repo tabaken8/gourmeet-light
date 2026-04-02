@@ -79,6 +79,7 @@ export async function POST(req: Request) {
       collectedPosts: [],
       detectedStations: [],
       detectedAuthor: null,
+      searchIntent: null,
     };
 
     // ---- tool calling ループ ----
@@ -151,7 +152,7 @@ export async function POST(req: Request) {
     }
 
     // ---- 後処理: プロフィール + 最寄り駅を付与 ----
-    const enrichedPosts = await enrichCollectedPosts(ctx.collectedPosts, supabase);
+    const enrichedPosts = await enrichCollectedPosts(ctx.collectedPosts, supabase, user.id);
 
     return NextResponse.json({
       ok: true,
@@ -159,6 +160,7 @@ export async function POST(req: Request) {
       posts: enrichedPosts,
       detectedStations: ctx.detectedStations,
       detectedAuthor: ctx.detectedAuthor,
+      parsedQuery: { intent: ctx.searchIntent },
     });
   } catch (e: any) {
     console.error("[ai-chat] unhandled:", e);

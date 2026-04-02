@@ -204,6 +204,77 @@ async function attachNearestStationsToPosts(params: { supabase: any; posts: any[
 }
 
 // -----------------------------
+// ✅ posts にいいねデータを付与
+// -----------------------------
+async function attachLikesToPosts(params: { supabase: any; posts: any[]; meId: string | null }) {
+  const { supabase, meId } = params;
+  const posts = Array.isArray(params.posts) ? params.posts : [];
+  if (posts.length === 0) return posts;
+
+  const postIds = posts.map((p: any) => p?.id).filter(Boolean).map(String);
+  if (postIds.length === 0) return posts;
+
+  const likeCountMap: Record<string, number> = {};
+  const likedByMeSet = new Set<string>();
+  const likersMap: Record<string, { id: string; display_name: string | null; avatar_url: string | null }[]> = {};
+
+  try {
+    // いいね数
+    const { data: likeCounts } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .in("post_id", postIds);
+    if (likeCounts) {
+      for (const row of likeCounts as any[]) {
+        likeCountMap[row.post_id] = (likeCountMap[row.post_id] ?? 0) + 1;
+      }
+    }
+
+    // 自分がいいねしたか
+    if (meId) {
+      const { data: myLikes } = await supabase
+        .from("post_likes")
+        .select("post_id")
+        .in("post_id", postIds)
+        .eq("user_id", meId);
+      if (myLikes) {
+        for (const row of myLikes as any[]) likedByMeSet.add(row.post_id);
+      }
+    }
+
+    // 先頭3人のliker情報
+    const { data: likerRows } = await supabase
+      .from("post_likes")
+      .select("post_id, user_id, profiles:user_id(id, display_name, avatar_url)")
+      .in("post_id", postIds)
+      .order("created_at", { ascending: false })
+      .limit(postIds.length * 3);
+    if (likerRows) {
+      for (const row of likerRows as any[]) {
+        const pid = row.post_id;
+        if (!likersMap[pid]) likersMap[pid] = [];
+        if (likersMap[pid].length < 3 && row.profiles) {
+          likersMap[pid].push({
+            id: (row.profiles as any).id,
+            display_name: (row.profiles as any).display_name,
+            avatar_url: (row.profiles as any).avatar_url,
+          });
+        }
+      }
+    }
+  } catch {
+    // fail silently - likes are non-critical
+  }
+
+  return posts.map((p: any) => ({
+    ...p,
+    likeCount: likeCountMap[p.id] ?? 0,
+    likedByMe: likedByMeSet.has(p.id),
+    initialLikers: likersMap[p.id] ?? [],
+  }));
+}
+
+// -----------------------------
 // ✅ 駅 -> placeIds (強制フィルタ用)
 // -----------------------------
 async function getPlaceIdsForStation(params: {
@@ -416,9 +487,10 @@ export async function GET(req: Request) {
       posts = rows;
     }
 
-    // ✅ API側整形（プロフィール + nearest補完）
+    // ✅ API側整形（プロフィール + nearest補完 + いいね）
     posts = await attachProfilesToPosts({ supabase, posts });
     posts = await attachNearestStationsToPosts({ supabase, posts });
+    posts = await attachLikesToPosts({ supabase, posts, meId: me });
 
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   } else {
@@ -456,6 +528,7 @@ export async function GET(req: Request) {
 
     posts = await attachProfilesToPosts({ supabase, posts: rows });
     posts = await attachNearestStationsToPosts({ supabase, posts });
+    posts = await attachLikesToPosts({ supabase, posts, meId: me });
 
     nextCursor = posts.length === limit ? (posts[posts.length - 1]?.created_at ?? null) : null;
   }
