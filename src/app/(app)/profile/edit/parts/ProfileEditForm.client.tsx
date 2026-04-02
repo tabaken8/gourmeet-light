@@ -296,19 +296,6 @@ export default function ProfileEditForm({ initial }: Props) {
           />
         </FieldShell>
 
-        <FieldShell label="ユーザーID">
-          <AtInput
-            name="username"
-            value={username}
-            onChange={setUsername}
-            placeholder="gourmeet_user"
-            isBad={usernameBad}
-          />
-          {usernameBad ? (
-            <p className="text-xs text-red-600">ユーザーIDの形式が不正です。</p>
-          ) : null}
-        </FieldShell>
-
         <FieldShell label="自己紹介">
           <TextArea
             name="bio"
@@ -351,23 +338,9 @@ export default function ProfileEditForm({ initial }: Props) {
           </div>
         </div>
 
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-black/[.06] bg-white px-3 py-3 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-          <input
-            type="checkbox"
-            name="is_public"
-            checked={isPublic}
-            onChange={(e) => setIsPublic(e.target.checked)}
-            className="mt-1 h-4 w-4 rounded border border-slate-300"
-          />
-          <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-slate-900">
-              公開アカウント
-            </p>
-            <p className="mt-1 text-[12px] text-slate-500 leading-relaxed">
-              チェックを外すと非公開アカウントになります。
-            </p>
-          </div>
-        </label>
+        {/* hidden field to preserve is_public value */}
+        <input type="hidden" name="is_public" value={isPublic ? "true" : "false"} />
+        <input type="hidden" name="username" value={username} />
 
         <div className="pt-1">
           <button className="w-full rounded-2xl bg-black px-5 py-3 text-[15px] font-semibold text-white hover:opacity-90">

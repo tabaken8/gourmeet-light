@@ -38,8 +38,8 @@ export default async function ProfileEditPage() {
   const x = (profile as any)?.x_username ?? "";
 
   return (
-    <main className="min-h-screen bg-orange-50">
-      <div className="mx-auto max-w-2xl px-4 py-8 space-y-5">
+    <main className="min-h-screen">
+      <div className="mx-auto max-w-lg px-4 py-6 space-y-5">
         <div className="flex items-center justify-between">
           <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">
             プロフィールを編集

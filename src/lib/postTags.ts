@@ -51,6 +51,17 @@ export const TAG_CATEGORIES: { id: TagCategory; label: string }[] = [
 
 // いまの倍以上：カテゴリも多め＋予約系を厚く＋排他（昼/夜、静か/うるさい、予約ポリシー等）
 export const POST_TAGS: PostTag[] = [
+  // ---- visit_time ----
+  { id: "vt:first", label: "\u521D\u8A2A", category: "visit_time", keywords: ["\u521D\u3081\u3066", "\u521D\u8A2A\u554F"] },
+  { id: "vt:repeat", label: "\u30EA\u30D4\u30FC\u30C8", category: "visit_time", keywords: ["\u30EA\u30D4", "\u4F55\u5EA6\u3082", "\u5E38\u9023"] },
+  { id: "vt:regular", label: "\u5E38\u9023", category: "visit_time", keywords: ["\u5E38\u9023", "\u884C\u304D\u3064\u3051"] },
+  { id: "vt:lunch", label: "\u30E9\u30F3\u30C1", category: "visit_time", exclusiveGroup: "visit_meal", keywords: ["\u30E9\u30F3\u30C1", "\u663C"] },
+  { id: "vt:dinner", label: "\u30C7\u30A3\u30CA\u30FC", category: "visit_time", exclusiveGroup: "visit_meal", keywords: ["\u30C7\u30A3\u30CA\u30FC", "\u5915\u98DF", "\u591C"] },
+  { id: "vt:cafe", label: "\u30AB\u30D5\u30A7\u4F7F\u3044", category: "visit_time", keywords: ["\u30AB\u30D5\u30A7", "\u304A\u8336"] },
+  { id: "vt:latenight", label: "\u6DF1\u591C", category: "visit_time", keywords: ["\u6DF1\u591C", "\u591C\u4E2D", "\u7D42\u96FB\u5F8C"] },
+  { id: "vt:morning", label: "\u30E2\u30FC\u30CB\u30F3\u30B0", category: "visit_time", keywords: ["\u671D", "\u30E2\u30FC\u30CB\u30F3\u30B0", "\u65E9\u671D"] },
+  { id: "vt:takeout", label: "\u30C6\u30A4\u30AF\u30A2\u30A6\u30C8", category: "visit_time", keywords: ["\u30C6\u30A4\u30AF\u30A2\u30A6\u30C8", "\u6301\u3061\u5E30\u308A"] },
+
   // ---- scene ----
   { id: "scene:date", label: "デート向き", category: "scene", keywords: ["デート"] },
   { id: "scene:friends", label: "友達と", category: "scene", keywords: ["友達"] },

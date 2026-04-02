@@ -3,13 +3,10 @@ import Link from "next/link";
 import {
   ChevronRight,
   User,
-  Shield,
-  Gift,
   LogOut,
   FileText,
   Scale,
-  Settings2,
-  Bell, // ✅ 追加
+  Bell,
 } from "lucide-react";
 
 type Item = {
@@ -17,128 +14,91 @@ type Item = {
   desc?: string;
   href: string;
   icon: React.ReactNode;
+  danger?: boolean;
 };
 
-function ItemRow({ title, desc, href, icon }: Item) {
+function ItemRow({ title, desc, href, icon, danger }: Item) {
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 bg-white p-4 shadow-sm hover:bg-black/[.02]"
+      className="flex items-center justify-between gap-3 px-1 py-3 hover:bg-slate-50 -mx-1 rounded-lg transition"
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="mt-0.5 rounded-xl border border-black/10 bg-white p-2">
-          {icon}
-        </div>
+      <div className="flex items-center gap-3 min-w-0">
+        <span className={danger ? "text-red-500" : "text-slate-400"}>{icon}</span>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-gray-900">{title}</div>
-          {desc ? <div className="mt-0.5 text-xs text-gray-600">{desc}</div> : null}
+          <div className={`text-[14px] font-medium ${danger ? "text-red-600" : "text-slate-800"}`}>{title}</div>
+          {desc ? <div className="text-[12px] text-slate-400 mt-0.5">{desc}</div> : null}
         </div>
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
     </Link>
   );
 }
 
-export default function SettingsIndexPage() {
-  const account: Item[] = [
-    {
-      title: "アカウント",
-      desc: "プロフィールや基本情報",
-      href: "/settings/account",
-      icon: <User className="h-5 w-5 text-gray-700" />,
-    },
-    {
-      title: "通知設定", // ✅ 追加
-      desc: "メール通知・投稿通知（ベル）など",
-      href: "/settings/notifications",
-      icon: <Bell className="h-5 w-5 text-gray-700" />,
-    },
-    {
-      title: "アカウントのプライバシー",
-      desc: "公開範囲やブロック等（仮）",
-      href: "/settings/account/privacy",
-      icon: <Shield className="h-5 w-5 text-gray-700" />,
-    },
-  ];
-
-  const features: Item[] = [
-    {
-      title: "招待",
-      desc: "招待コードの適用 / 発行・共有",
-      href: "/settings/invites",
-      icon: <Gift className="h-5 w-5 text-gray-700" />,
-    },
-    {
-      title: "ポイント",
-      desc: "ポイントや特典（仮）",
-      href: "/points",
-      icon: <Gift className="h-5 w-5 text-gray-700" />,
-    },
-  ];
-
-  const legal: Item[] = [
-    {
-      title: "プライバシーポリシー",
-      href: "/legal/privacy",
-      icon: <FileText className="h-5 w-5 text-gray-700" />,
-    },
-    {
-      title: "利用規約",
-      href: "/legal/terms",
-      icon: <Scale className="h-5 w-5 text-gray-700" />,
-    },
-  ];
-
-  const danger: Item[] = [
-    {
-      title: "ログアウト",
-      desc: "この端末からサインアウトします",
-      href: "/settings/logout",
-      icon: <LogOut className="h-5 w-5 text-gray-700" />,
-    },
-  ];
-
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6 md:pb-10">
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">設定</h1>
-          <p className="mt-1 text-sm text-gray-600">アカウントやアプリの設定を管理します。</p>
-        </div>
-        <div className="mt-1 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
-          <Settings2 className="h-5 w-5 text-gray-700" />
-        </div>
+    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1 pb-1">
+      {children}
+    </div>
+  );
+}
+
+export default function SettingsIndexPage() {
+  return (
+    <main className="mx-auto w-full max-w-lg px-4 pb-24 pt-6 md:pb-10">
+      <h1 className="text-[17px] font-semibold tracking-tight text-slate-900 mb-6">
+        {"\u8A2D\u5B9A"}
+      </h1>
+
+      <div className="space-y-6">
+        {/* アカウント */}
+        <section>
+          <SectionLabel>{"\u30A2\u30AB\u30A6\u30F3\u30C8"}</SectionLabel>
+          <div className="divide-y divide-slate-100">
+            <ItemRow
+              title={"\u30A2\u30AB\u30A6\u30F3\u30C8"}
+              desc={"\u30E6\u30FC\u30B6\u30FCID\u30FB\u30E1\u30FC\u30EB\u30FB\u516C\u958B\u8A2D\u5B9A"}
+              href="/settings/account"
+              icon={<User size={18} />}
+            />
+            <ItemRow
+              title={"\u901A\u77E5\u8A2D\u5B9A"}
+              desc={"\u30E1\u30FC\u30EB\u901A\u77E5\u30FB\u30D9\u30EB\u901A\u77E5"}
+              href="/settings/notifications"
+              icon={<Bell size={18} />}
+            />
+          </div>
+        </section>
+
+        {/* 規約 */}
+        <section>
+          <SectionLabel>{"\u898F\u7D04\u30FB\u30DD\u30EA\u30B7\u30FC"}</SectionLabel>
+          <div className="divide-y divide-slate-100">
+            <ItemRow
+              title={"\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u30DD\u30EA\u30B7\u30FC"}
+              href="/legal/privacy"
+              icon={<FileText size={18} />}
+            />
+            <ItemRow
+              title={"\u5229\u7528\u898F\u7D04"}
+              href="/legal/terms"
+              icon={<Scale size={18} />}
+            />
+          </div>
+        </section>
+
+        {/* その他 */}
+        <section>
+          <div className="divide-y divide-slate-100">
+            <ItemRow
+              title={"\u30ED\u30B0\u30A2\u30A6\u30C8"}
+              href="/settings/logout"
+              icon={<LogOut size={18} />}
+              danger
+            />
+          </div>
+        </section>
       </div>
-
-      <section className="space-y-6">
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            アカウント
-          </div>
-          <div className="space-y-2">{account.map((it) => <ItemRow key={it.href} {...it} />)}</div>
-        </div>
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            機能
-          </div>
-          <div className="space-y-2">{features.map((it) => <ItemRow key={it.href} {...it} />)}</div>
-        </div>
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            規約・ポリシー
-          </div>
-          <div className="space-y-2">{legal.map((it) => <ItemRow key={it.href} {...it} />)}</div>
-        </div>
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            その他
-          </div>
-          <div className="space-y-2">{danger.map((it) => <ItemRow key={it.href} {...it} />)}</div>
-        </div>
-      </section>
     </main>
   );
 }

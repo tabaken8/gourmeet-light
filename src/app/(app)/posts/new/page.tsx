@@ -896,8 +896,8 @@ export default function NewPostPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-800">
-      <div className="w-full pb-24">
+    <main className="min-h-screen bg-white text-slate-800 -mb-6">
+      <div className="w-full">
         {/* ── header ── */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-lg">
           <div className="flex h-12 items-center justify-between px-4">
@@ -932,7 +932,7 @@ export default function NewPostPage() {
           </div>
         )}
 
-        <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="divide-y divide-slate-100 bg-white">
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="divide-y divide-slate-100 pb-40">
 
           {/* ── 写真 ── */}
           <Section title={"\u5199\u771F"} required right={
@@ -1151,18 +1151,24 @@ export default function NewPostPage() {
               {showDetails ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
             </button>
 
-            {/* selected chips (always visible) */}
-            {selectedTagIds.length > 0 && !showDetails && (
-              <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-                {selectedTagIds.map((id) => {
-                  const t = findTagById(id); if (!t) return null;
-                  return (
-                    <span key={id} className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-700">
-                      {t.label}
-                      <button type="button" onClick={() => removeTag(id)} className="text-orange-400 hover:text-orange-600"><X size={10} /></button>
-                    </span>
-                  );
-                })}
+            {/* collapsed state */}
+            {!showDetails && (
+              <div className="px-4 pb-4">
+                {selectedTagIds.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedTagIds.map((id) => {
+                      const t = findTagById(id); if (!t) return null;
+                      return (
+                        <span key={id} className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-700">
+                          {t.label}
+                          <button type="button" onClick={() => removeTag(id)} className="text-orange-400 hover:text-orange-600"><X size={10} /></button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-slate-400">{"\u30BF\u30C3\u30D7\u3057\u3066\u30BF\u30B0\u3092\u8FFD\u52A0"}</p>
+                )}
               </div>
             )}
 
@@ -1230,7 +1236,9 @@ export default function NewPostPage() {
 
       {/* ── bottom CTA ── */}
       <div className="fixed inset-x-0 bottom-0 z-40">
-        <div className="border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
+        {/* white fill to cover any layout background peeking above */}
+        <div className="absolute inset-x-0 -top-16 h-16 bg-white pointer-events-none" />
+        <div className="border-t border-slate-100 bg-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
           style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom))" }}>
           <button type="button" onClick={() => submit()} disabled={busy || processing || !isAllRequiredComplete}
             className={["flex h-12 w-full items-center justify-center rounded-2xl text-[15px] font-bold transition",

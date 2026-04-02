@@ -11,7 +11,6 @@ import {
   Bell,
   UserPlus,
   Plus,
-  CircleDollarSign,
   Settings,
 } from "lucide-react";
 import { useNavBadges } from "@/hooks/useNavBadges";
@@ -205,16 +204,6 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           </Link>
 
           <div className="flex items-center gap-1">
-            {/* Points */}
-            <IconButton
-              href={gate("/points")}
-              active={isActive("/points")}
-              ariaLabel="ポイント"
-              activeClassName="bg-slate-100"
-            >
-              <CircleDollarSign size={18} className="text-slate-500" />
-            </IconButton>
-
             {/* 通知（バッジをアイコン基準に） */}
             <IconButton
               href={gate("/notifications")}
