@@ -3,6 +3,7 @@
 
 import type OpenAI from "openai";
 import { generateEmbedding } from "@/lib/embedding";
+import { expandGenre, matchesGenre } from "@/lib/genre/genreGraph";
 
 // ============================================================
 // ツールスキーマ（OpenAI function calling 形式）
@@ -299,7 +300,7 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
       ? station_place_ids
       : null,
     p_radius_m: radius_m,
-    p_threshold: 0.15,
+    p_threshold: 0.25,
     p_limit: fetchLimit,
     p_author_id: author_id ?? null,
   });
@@ -307,6 +308,120 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
   if (error) return { count: 0, error: error.message, posts_summary: [] };
 
   let posts: any[] = rawPosts ?? [];
+
+  // RPC が place_genre を返さないため、place_id → places.primary_genre で補完
+  const genreFilter = (genre ?? "").trim();
+  if (posts.length > 0) {
+    const placeIds = [...new Set(posts.map((p: any) => p.place_id).filter(Boolean))];
+    if (placeIds.length > 0) {
+      const { data: placeRows } = await ctx.supabase
+        .from("places")
+        .select("place_id, primary_genre")
+        .in("place_id", placeIds);
+      if (placeRows) {
+        const genreMap: Record<string, string> = {};
+        for (const r of placeRows) if (r.place_id && r.primary_genre) genreMap[r.place_id] = r.primary_genre;
+        posts = posts.map((p: any) => ({ ...p, place_genre: genreMap[p.place_id] ?? null }));
+      }
+    }
+  }
+
+  // ジャンルフィルタ: genre が指定された場合、place_genre でフィルタリング
+  // (embedding similarity だけでは食べ物同士の区別が甘いため)
+  if (genreFilter && posts.length > 0) {
+    const filtered = posts.filter((p: any) => {
+      if (!p.place_genre) return false; // ジャンル不明は除外
+      return matchesGenre(genreFilter, p.place_genre);
+    });
+    posts = filtered;
+  }
+
+  // ── 補完クエリ: ジャンルグラフ展開で関連ジャンルの投稿を追加取得 ──
+  // semantic search だけでは「和食」→寿司 のような関連ジャンルが
+  // embedding 類似度の壁を越えられないため、DB から直接ジャンルで引く
+  if (genreFilter) {
+    const expanded = expandGenre(genreFilter);
+    // 展開先がある場合のみ（自分自身のみなら不要）
+    if (expanded.size > 1) {
+      const existingIds = new Set(posts.map((p: any) => p.id));
+      const expandedArr = [...expanded];
+
+      // places テーブルから該当ジャンルの place_id を取得
+      let placeQuery = ctx.supabase
+        .from("places")
+        .select("place_id, primary_genre")
+        .in("primary_genre", expandedArr);
+
+      const { data: genrePlaces } = await placeQuery;
+      if (genrePlaces && genrePlaces.length > 0) {
+        const genrePlaceIds = genrePlaces.map((gp: any) => gp.place_id);
+        const genrePlaceGenreMap: Record<string, string> = {};
+        for (const gp of genrePlaces) genrePlaceGenreMap[gp.place_id] = gp.primary_genre;
+
+        // その place_id に紐づく投稿を取得
+        let postQuery = ctx.supabase
+          .from("posts")
+          .select("id, user_id, content, created_at, visited_on, image_urls, image_variants, cover_square_url, place_id, place_name, place_address, recommend_score, price_yen, price_range")
+          .in("place_id", genrePlaceIds)
+          .order("created_at", { ascending: false })
+          .limit(fetchLimit);
+
+        // author_id フィルタ
+        if (author_id) {
+          postQuery = postQuery.eq("user_id", author_id);
+        }
+
+        // フォロー限定フィルタ — follow_only の場合はフォロー先のユーザーIDリストを取得して絞る
+        if (ctx.followOnly) {
+          const { data: followRows } = await ctx.supabase
+            .from("follows")
+            .select("followee_id")
+            .eq("follower_id", ctx.userId)
+            .eq("status", "accepted");
+          if (followRows && followRows.length > 0) {
+            const followeeIds = followRows.map((f: any) => f.followee_id);
+            postQuery = postQuery.in("user_id", followeeIds);
+          } else {
+            // フォロー中のユーザーがいない → ジャンル補完は空
+            postQuery = null as any;
+          }
+        }
+
+        if (postQuery) {
+          const { data: genrePosts } = await postQuery;
+          if (genrePosts) {
+            // 駅フィルタ: station_place_ids が指定されている場合、近い投稿のみ
+            let filteredGenrePosts = genrePosts;
+            if (Array.isArray(station_place_ids) && station_place_ids.length > 0) {
+              const gpPlaceIds = [...new Set(genrePosts.map((p: any) => p.place_id).filter(Boolean))];
+              if (gpPlaceIds.length > 0) {
+                const { data: stationLinks } = await ctx.supabase
+                  .from("place_station_links")
+                  .select("place_id, station_place_id, distance_m")
+                  .in("place_id", gpPlaceIds)
+                  .in("station_place_id", station_place_ids)
+                  .lte("distance_m", radius_m);
+                const nearbyPlaceIds = new Set((stationLinks ?? []).map((l: any) => l.place_id));
+                filteredGenrePosts = genrePosts.filter((p: any) => nearbyPlaceIds.has(p.place_id));
+              }
+            }
+
+            // 既存の semantic 結果に含まれない投稿を追加
+            for (const gp of filteredGenrePosts) {
+              if (!existingIds.has(gp.id)) {
+                existingIds.add(gp.id);
+                posts.push({
+                  ...gp,
+                  place_genre: genrePlaceGenreMap[gp.place_id] ?? null,
+                  similarity: 0.30, // ジャンル直接マッチなので最低限の similarity を付与
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 
   // アプリ側ソート
   if (sort_by === "recommend_score") {

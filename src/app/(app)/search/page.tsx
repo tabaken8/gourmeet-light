@@ -537,54 +537,6 @@ export default function SearchPage() {
     }
   };
 
-  // -------- 現在地から探す (Plan C) --------
-  const geoRetryRef = useRef(0);
-  const handleSearchFromLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      setGeoError("\u3053\u306E\u30D6\u30E9\u30A6\u30B6\u3067\u306F\u4F4D\u7F6E\u60C5\u5831\u304C\u5229\u7528\u3067\u304D\u307E\u305B\u3093");
-      return;
-    }
-    setGeoLoading(true);
-    setGeoError(null);
-
-    // 1回目は高精度、リトライ時は低精度（GPSなしでもWi-Fi/基地局で取得）
-    const isRetry = geoRetryRef.current > 0;
-    const opts: PositionOptions = isRetry
-      ? { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
-      : { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 };
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-        setUserLocation(loc);
-        setGeoMode(true);
-        setGeoLoading(false);
-        geoRetryRef.current = 0;
-      },
-      (err) => {
-        setGeoLoading(false);
-        console.warn("[geo] error:", err.code, err.message);
-
-        if (err.code === 1 /* PERMISSION_DENIED */) {
-          setGeoError(
-            "\u4F4D\u7F6E\u60C5\u5831\u304C\u8A31\u53EF\u3055\u308C\u3066\u3044\u307E\u305B\u3093\u3002\n" +
-            "iPhone: \u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u2192 Safari\u3092\u8A31\u53EF"
-          );
-        } else if (err.code === 3 /* TIMEOUT */ && !isRetry) {
-          // タイムアウト → 低精度でリトライ
-          geoRetryRef.current += 1;
-          handleSearchFromLocation();
-        } else {
-          setGeoError(
-            "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\n" +
-            "\u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u304C\u30AA\u30F3\u304B\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044"
-          );
-        }
-      },
-      opts
-    );
-  }, []);
-
   // -------- bbox検索 (このエリアで検索) --------
   const handleSearchThisArea = useCallback(async (bounds: MapBounds) => {
     setAreaSearchLoading(true);
@@ -611,6 +563,92 @@ export default function SearchPage() {
       setAreaSearchLoading(false);
     }
   }, [q]);
+
+  // -------- 現在地から探す (Plan C) --------
+  const geoRetryRef = useRef(0);
+  const handleSearchFromLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGeoError("\u3053\u306E\u30D6\u30E9\u30A6\u30B6\u3067\u306F\u4F4D\u7F6E\u60C5\u5831\u304C\u5229\u7528\u3067\u304D\u307E\u305B\u3093");
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError(null);
+
+    // 1回目は高精度、リトライ時は低精度（GPSなしでもWi-Fi/基地局で取得）
+    const isRetry = geoRetryRef.current > 0;
+    const opts: PositionOptions = isRetry
+      ? { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+      : { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 };
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setUserLocation(loc);
+        setGeoMode(true);
+        setGeoLoading(false);
+        geoRetryRef.current = 0;
+
+        // Auto-search area around user location (~1km box)
+        const delta = 0.008; // ~800m
+        const autoBounds: MapBounds = {
+          north: loc[0] + delta,
+          south: loc[0] - delta,
+          east: loc[1] + delta,
+          west: loc[1] - delta,
+        };
+        handleSearchThisArea(autoBounds);
+      },
+      (err) => {
+        setGeoLoading(false);
+        console.warn("[geo] error:", err.code, err.message);
+
+        if (err.code === 1 /* PERMISSION_DENIED */) {
+          setGeoError(
+            "\u4F4D\u7F6E\u60C5\u5831\u304C\u8A31\u53EF\u3055\u308C\u3066\u3044\u307E\u305B\u3093\u3002\n" +
+            "iPhone: \u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u2192 Safari\u3092\u8A31\u53EF"
+          );
+        } else if (err.code === 3 /* TIMEOUT */ && !isRetry) {
+          // タイムアウト → 低精度でリトライ
+          geoRetryRef.current += 1;
+          handleSearchFromLocation();
+        } else {
+          setGeoError(
+            "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\n" +
+            "\u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u304C\u30AA\u30F3\u304B\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044"
+          );
+        }
+      },
+      opts
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSearchThisArea]);
+
+  // -------- 地図スコープ内キーワード検索 --------
+  const handleScopedSearch = useCallback(async (keyword: string, bounds: MapBounds) => {
+    setAreaSearchLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        bbox_north: String(bounds.north),
+        bbox_south: String(bounds.south),
+        bbox_east: String(bounds.east),
+        bbox_west: String(bounds.west),
+        q: keyword,
+        limit: "50",
+      });
+      const res = await fetch(`/api/search?${params}`);
+      const payload = await res.json().catch(() => ({}));
+      if (payload?.posts && Array.isArray(payload.posts)) {
+        setPosts(payload.posts);
+        setResultMode("keyword");
+        setSemanticPosts([]);
+      }
+    } catch {
+      setError("\u691C\u7D22\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
+    } finally {
+      setAreaSearchLoading(false);
+    }
+  }, []);
 
   // -------- @mention サジェスト --------
   const fetchMentionSuggestions = useCallback((partial: string) => {
@@ -879,6 +917,7 @@ export default function SearchPage() {
                   onSelectPost={(p) => setSelectedMapPost(p)}
                   selectedPostId={selectedMapPost?.id ?? null}
                   loading={areaSearchLoading}
+                  onScopedSearch={handleScopedSearch}
                 />
               </div>
               {selectedMapPost && (
@@ -961,6 +1000,7 @@ export default function SearchPage() {
                 onSelectPost={(p) => setSelectedMapPost(p)}
                 selectedPostId={selectedMapPost?.id ?? null}
                 loading={areaSearchLoading}
+                onScopedSearch={handleScopedSearch}
               />
             </div>
           )}

@@ -8,7 +8,7 @@ import {
   OverlayViewF,
   OverlayView,
 } from "@react-google-maps/api";
-import { MapPin, Navigation, Utensils, Loader2 } from "lucide-react";
+import { MapPin, Navigation, Search, Utensils, Loader2 } from "lucide-react";
 import type { PostRow } from "./SearchPostList";
 
 // ── types ──
@@ -101,6 +101,7 @@ export default function SearchMap({
   onSelectPost,
   selectedPostId: externalSelectedId,
   loading: areaSearchLoading,
+  onScopedSearch,
 }: {
   posts: PostRow[];
   userLocation?: [number, number] | null;
@@ -109,6 +110,8 @@ export default function SearchMap({
   onSelectPost?: (post: MapPost | null) => void;
   selectedPostId?: string | null;
   loading?: boolean;
+  /** Keyword search within current map bounds */
+  onScopedSearch?: (keyword: string, bounds: MapBounds) => void;
 }) {
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
@@ -122,6 +125,9 @@ export default function SearchMap({
   const settledBoundsRef = useRef<string>("");
   const mapRef = useRef<google.maps.Map | null>(null);
   const prevPostsKeyRef = useRef<string>("");
+
+  // In-map scoped search keyword
+  const [scopedQ, setScopedQ] = useState("");
 
   // Use external selectedPostId if provided, else internal
   const selectedId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
@@ -197,12 +203,16 @@ export default function SearchMap({
   }, []);
 
   const handleSearchThisArea = useCallback(() => {
-    if (currentBounds && onSearchThisArea) {
+    if (!currentBounds) return;
+    // マップ内バーにキーワードがあればスコープ検索、なければエリア全体検索
+    if (scopedQ.trim() && onScopedSearch) {
+      onScopedSearch(scopedQ.trim(), currentBounds);
+    } else if (onSearchThisArea) {
       onSearchThisArea(currentBounds);
-      setMapMoved(false);
-      settledBoundsRef.current = `${currentBounds.north.toFixed(4)}_${currentBounds.south.toFixed(4)}_${currentBounds.east.toFixed(4)}_${currentBounds.west.toFixed(4)}`;
     }
-  }, [currentBounds, onSearchThisArea]);
+    setMapMoved(false);
+    settledBoundsRef.current = `${currentBounds.north.toFixed(4)}_${currentBounds.south.toFixed(4)}_${currentBounds.east.toFixed(4)}_${currentBounds.west.toFixed(4)}`;
+  }, [currentBounds, onSearchThisArea, onScopedSearch, scopedQ]);
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
@@ -225,7 +235,16 @@ export default function SearchMap({
     if (onSelectPost) onSelectPost(null);
   }, [onSelectPost]);
 
-  const showBtn = showSearchButton && mapMoved && onSearchThisArea && !areaSearchLoading;
+  const handleScopedSearch = useCallback(() => {
+    if (!scopedQ.trim() || !currentBounds || !onScopedSearch) return;
+    onScopedSearch(scopedQ.trim(), currentBounds);
+  }, [scopedQ, currentBounds, onScopedSearch]);
+
+  // Show "このエリアで検索" always, unless zoomed out too wide (> ~1.5° lat span ≈ Kanto)
+  const isTooWide = currentBounds
+    ? Math.abs(currentBounds.north - currentBounds.south) > 1.5
+    : false;
+  const showBtn = showSearchButton && onSearchThisArea && !areaSearchLoading && !isTooWide;
 
   if (!isLoaded) {
     return (
@@ -322,15 +341,27 @@ export default function SearchMap({
         </button>
       )}
 
-      {/* Post count badge */}
-      {mappablePosts.length > 0 && (
-        <div className="absolute bottom-3 left-3 z-[1000] inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow border border-slate-100">
-          <MapPin size={11} />
-          {mappablePosts.length}{"\u4EF6\u8868\u793A\u4E2D"}
-          {mappablePosts.length < posts.length && (
-            <span className="text-slate-400">
-              {" / "}{posts.length}{"\u4EF6\u4E2D"}
-            </span>
+      {/* In-map scoped keyword search bar */}
+      {onScopedSearch && currentBounds && !isTooWide && (
+        <div className="absolute bottom-3 left-3 right-3 z-[1000] flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={scopedQ}
+              onChange={(e) => setScopedQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleScopedSearch(); }}
+              placeholder={"\u3053\u306E\u30A8\u30EA\u30A2\u3067\u30E9\u30FC\u30E1\u30F3\u3001\u30AB\u30D5\u30A7\u2026"}
+              className="w-full rounded-full border border-slate-200 bg-white/95 backdrop-blur py-2 pl-8 pr-3 text-[13px] outline-none shadow-lg placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
+              inputMode="search"
+              enterKeyHint="search"
+            />
+          </div>
+          {/* Post count badge */}
+          {mappablePosts.length > 0 && (
+            <div className="shrink-0 inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-2 text-[11px] font-medium text-slate-600 shadow border border-slate-100">
+              <MapPin size={11} />
+              {mappablePosts.length}
+            </div>
           )}
         </div>
       )}
