@@ -151,14 +151,73 @@ export default function SearchMap({
   }, [userLocation]);
 
   // Fit bounds to markers when posts change (include userLocation so it stays visible)
+  // If posts are spread across very distant regions (e.g., Japan + USA),
+  // pick the densest cluster instead of showing the whole world.
   const fitToMarkers = useCallback((postsToFit: MapPost[]) => {
     if (!mapRef.current || postsToFit.length === 0) return;
+
+    let postsForBounds = postsToFit;
+
+    // Detect if posts span too wide (> 5° lat or > 10° lng ≈ continent scale)
+    if (postsToFit.length >= 2) {
+      const lats = postsToFit.map((p) => p.place_lat);
+      const lngs = postsToFit.map((p) => p.place_lng);
+      const latSpan = Math.max(...lats) - Math.min(...lats);
+      const lngSpan = Math.max(...lngs) - Math.min(...lngs);
+
+      if (latSpan > 2 || lngSpan > 3) {
+        // Simple grid-based clustering: divide into ~0.5° cells (~50km), pick the densest
+        const cellSize = 0.5; // degrees
+        const cells: Record<string, MapPost[]> = {};
+        for (const p of postsToFit) {
+          const key = `${Math.floor(p.place_lat / cellSize)}_${Math.floor(p.place_lng / cellSize)}`;
+          if (!cells[key]) cells[key] = [];
+          cells[key].push(p);
+        }
+        // Find densest cell cluster (cell + adjacent cells)
+        const cellKeys = Object.keys(cells);
+        let bestPosts = postsToFit;
+        let bestCount = 0;
+        for (const ck of cellKeys) {
+          const [cy, cx] = ck.split("_").map(Number);
+          const nearby: MapPost[] = [];
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nk = `${cy + dy}_${cx + dx}`;
+              if (cells[nk]) nearby.push(...cells[nk]);
+            }
+          }
+          if (nearby.length > bestCount) {
+            bestCount = nearby.length;
+            bestPosts = nearby;
+          }
+        }
+        // Only use cluster if it has meaningful density (at least 2, or the majority)
+        if (bestCount >= 2 || bestCount >= postsToFit.length * 0.5) {
+          postsForBounds = bestPosts;
+        }
+      }
+    }
+
     const bounds = new google.maps.LatLngBounds();
-    postsToFit.forEach((p) => bounds.extend({ lat: p.place_lat, lng: p.place_lng }));
-    if (userLocation) bounds.extend({ lat: userLocation[0], lng: userLocation[1] });
+    postsForBounds.forEach((p) => bounds.extend({ lat: p.place_lat, lng: p.place_lng }));
+    if (userLocation) {
+      // Only include user location if it's reasonably close to the cluster
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const clusterLatSpan = ne.lat() - sw.lat();
+      const userLat = userLocation[0];
+      const userLng = userLocation[1];
+      const isNearCluster =
+        Math.abs(userLat - (ne.lat() + sw.lat()) / 2) < Math.max(clusterLatSpan, 1) * 2 &&
+        Math.abs(userLng - (ne.lng() + sw.lng()) / 2) < Math.max(clusterLatSpan, 1) * 3;
+      if (isNearCluster) {
+        bounds.extend({ lat: userLat, lng: userLng });
+      }
+    }
     mapRef.current.fitBounds(bounds, { top: 40, bottom: 60, left: 30, right: 30 });
-    // Prevent excessive zoom-out: cap at zoom 16 minimum
-    const listener = google.maps.event.addListenerOnce(mapRef.current, "idle", () => {
+    // Prevent excessive zoom-in: cap at zoom 17
+    google.maps.event.addListenerOnce(mapRef.current, "idle", () => {
       if (mapRef.current) {
         const z = mapRef.current.getZoom();
         if (z !== undefined && z > 17) mapRef.current.setZoom(17);

@@ -17,7 +17,7 @@ import SearchPostList, { PostRow, SearchMode } from "@/components/search/SearchP
 import SearchZeroResultsNudge from "@/components/SearchZeroResultsNudge";
 import LocationFilter from "@/components/search/LocationFilter";
 import GenreFilter from "@/components/search/GenreFilter";
-import MapPostCard from "@/components/search/MapPostCard";
+import MapPostCardCarousel from "@/components/search/MapPostCard";
 import type { MapBounds, MapPost } from "@/components/search/SearchMap";
 
 const SearchMap = dynamic(() => import("@/components/search/SearchMap"), { ssr: false });
@@ -920,9 +920,11 @@ export default function SearchPage() {
                   onScopedSearch={handleScopedSearch}
                 />
               </div>
-              {selectedMapPost && (
-                <MapPostCard
-                  post={selectedMapPost}
+              {posts.length > 0 && (
+                <MapPostCardCarousel
+                  posts={posts}
+                  selectedPostId={selectedMapPost?.id ?? null}
+                  onSelect={(p) => setSelectedMapPost(p as MapPost)}
                   onClose={() => setSelectedMapPost(null)}
                 />
               )}
@@ -1005,10 +1007,13 @@ export default function SearchPage() {
             </div>
           )}
 
-          {/* ===== 選択中の投稿カード（地図とリストの間） ===== */}
-          {selectedMapPost && (
-            <MapPostCard
-              post={selectedMapPost}
+          {/* ===== 投稿カードカルーセル（地図とリストの間） ===== */}
+          {((resultMode === "ai" && (semanticPosts.length > 0 || quickPosts.length > 0)) ||
+            (resultMode === "keyword" && posts.length > 0)) && (
+            <MapPostCardCarousel
+              posts={resultMode === "ai" ? (semanticPosts.length > 0 ? semanticPosts : quickPosts) : posts}
+              selectedPostId={selectedMapPost?.id ?? null}
+              onSelect={(p) => setSelectedMapPost(p as MapPost)}
               onClose={() => setSelectedMapPost(null)}
             />
           )}
