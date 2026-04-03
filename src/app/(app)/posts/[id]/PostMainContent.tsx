@@ -229,12 +229,7 @@ export default function PostMainContent({
                   ) : null}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {showFollowButton ? (
-                  <FollowButton targetUserId={post.user_id} initiallyFollowing={false} initiallyRequested={false} label={followCtaLabel} />
-                ) : null}
-                <PostMoreMenu postId={post.id} isMine={isMine} />
-              </div>
+              <PostMoreMenu postId={post.id} isMine={isMine} />
             </div>
           </section>
 
@@ -249,12 +244,17 @@ export default function PostMainContent({
                   initial
                 )}
               </Link>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1 min-w-0">
-                  <Link href={`/u/${post.user_id}`} className="truncate text-sm font-semibold text-slate-900 hover:underline">
-                    {display}
-                  </Link>
-                  {!isPublic ? <span className="text-[11px] text-slate-400">🔒</span> : null}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <Link href={`/u/${post.user_id}`} className="truncate text-sm font-semibold text-slate-900 hover:underline">
+                      {display}
+                    </Link>
+                    {!isPublic ? <span className="text-[11px] text-slate-400">🔒</span> : null}
+                  </div>
+                  {showFollowButton ? (
+                    <FollowButton targetUserId={post.user_id} initiallyFollowing={false} initiallyRequested={false} label={followCtaLabel} />
+                  ) : null}
                 </div>
                 <div className="mt-0.5 text-[11px] text-slate-500">{formatJST(post.created_at)}</div>
                 {summaryLine ? <div className="mt-2 text-[12px] font-semibold text-slate-800 line-clamp-2">{summaryLine}</div> : null}
