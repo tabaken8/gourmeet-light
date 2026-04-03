@@ -38,6 +38,42 @@ type Station = {
   count_places?: number | null;
 };
 
+// ---------- sessionStorage cache ----------
+const SEARCH_CACHE_KEY = "gourmeet_search_cache";
+
+type SearchCache = {
+  url: string; // search param string for matching
+  semanticPosts: PostRow[];
+  posts: PostRow[];
+  users: UserHit[];
+  aiMessage: string | null;
+  parsedIntent: string | null;
+  detectedStations: { name: string; placeId: string }[];
+  detectedAuthor: { username: string; displayName: string | null } | null;
+  resultMode: "ai" | "keyword" | null;
+  ts: number;
+};
+
+function saveSearchCache(cache: SearchCache) {
+  try {
+    sessionStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(cache));
+  } catch { /* storage full – ignore */ }
+}
+
+function loadSearchCache(url: string): SearchCache | null {
+  try {
+    const raw = sessionStorage.getItem(SEARCH_CACHE_KEY);
+    if (!raw) return null;
+    const cache: SearchCache = JSON.parse(raw);
+    // Must match URL and be less than 10 minutes old
+    if (cache.url !== url) return null;
+    if (Date.now() - cache.ts > 10 * 60 * 1000) return null;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- URL helpers ----------
 function normalizeModeFromUrl(m: string | null): SearchMode {
   if (m === "station") return "station";
@@ -275,6 +311,7 @@ export default function SearchPage() {
   }, []);
 
   // ---- URL → state（mount 後に同期）----
+  const cacheRestoredRef = useRef(false);
   useEffect(() => {
     if (!mounted) return;
 
@@ -299,8 +336,71 @@ export default function SearchPage() {
     setCommittedStationName(stationNameFromUrl);
     setCommittedGenre(genreFromUrl);
     setSearchedStationName(modeFromUrl === "station" ? (stationNameFromUrl ?? null) : null);
+
+    // Restore cached results on back-navigation (first mount only)
+    if (!cacheRestoredRef.current) {
+      cacheRestoredRef.current = true;
+      const cacheUrl = sp.toString();
+      if (cacheUrl) {
+        const cached = loadSearchCache(cacheUrl);
+        if (cached) {
+          setSemanticPosts(cached.semanticPosts);
+          setPosts(cached.posts);
+          setUsers(cached.users);
+          setAiMessage(cached.aiMessage);
+          setParsedIntent(cached.parsedIntent);
+          setDetectedStations(cached.detectedStations);
+          setDetectedAuthor(cached.detectedAuthor);
+          setResultMode(cached.resultMode);
+          setDone(true);
+          return; // skip re-fetching
+        }
+        // No cache — re-trigger search if URL has search params
+        const hasSearch = qFromUrl || genreFromUrl || (modeFromUrl === "station" && stationIdFromUrl);
+        if (hasSearch) {
+          // Defer so state is committed first
+          setTimeout(() => {
+            commitSearch({
+              q: qFromUrl,
+              follow: followFromUrl,
+              mode: modeFromUrl,
+              sid: stationIdFromUrl,
+              sname: stationNameFromUrl,
+              genre: genreFromUrl,
+            });
+          }, 0);
+          return;
+        }
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, sp]);
+
+  // ---- 検索結果をsessionStorageにキャッシュ ----
+  useEffect(() => {
+    if (!mounted) return;
+    const url = sp.toString();
+    if (!url) return;
+    // Only cache when we have actual results and are not loading
+    const hasSemantic = semanticPosts.length > 0;
+    const hasKeyword = posts.length > 0;
+    if (!hasSemantic && !hasKeyword) return;
+    if (semanticLoading || loading) return;
+
+    saveSearchCache({
+      url,
+      semanticPosts,
+      posts,
+      users,
+      aiMessage,
+      parsedIntent,
+      detectedStations,
+      detectedAuthor,
+      resultMode,
+      ts: Date.now(),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, semanticPosts, posts, users, semanticLoading, loading]);
 
   // 検索条件が空かどうか
   const isEmpty =
