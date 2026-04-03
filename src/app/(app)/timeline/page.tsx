@@ -41,7 +41,7 @@ export default async function TimelinePage({
                 ].join(" ")}
               >
                 {"\u6700\u65B0"}
-                {activeTab === "friends" && <span className="absolute bottom-0 left-1/4 right-1/4 h-[2px] rounded-full gm-brand-line" />}
+                {activeTab === "friends" && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full gm-brand-line" />}
               </Link>
 
               <Link
@@ -54,7 +54,7 @@ export default async function TimelinePage({
                 ].join(" ")}
               >
                 {"\u767A\u898B"}
-                {activeTab === "discover" && <span className="absolute bottom-0 left-1/4 right-1/4 h-[2px] rounded-full gm-brand-line" />}
+                {activeTab === "discover" && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full gm-brand-line" />}
               </Link>
           </div>
 
