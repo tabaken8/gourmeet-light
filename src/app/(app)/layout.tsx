@@ -11,7 +11,7 @@ import TopLoaderProvider from "@/components/TopLoaderProvider";
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     // ✅ ページ全体の背景はここ（外側）に付ける
-    <div className="min-h-screen bg-[#fffaf5]">
+    <div className="min-h-screen bg-[#fffaf5] dark:bg-[#0b0c0f]">
       <TopLoaderProvider />
 
       <InviteReserveOnAuth />

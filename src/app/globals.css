@@ -2,6 +2,9 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+/* Class-based dark mode (Tailwind v4) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* =========================
    Theme variables
    ========================= */
@@ -125,6 +128,12 @@ html.dark {
       radial-gradient(1200px 600px at 20% 0%, rgba(0,0,0,0.045), transparent 60%),
       radial-gradient(900px 500px at 90% 20%, rgba(0,0,0,0.03), transparent 55%);
   }
+  html.dark .gm-bg {
+    background-color: #0b0c0f;
+    background-image:
+      radial-gradient(1200px 600px at 20% 0%, rgba(255,255,255,0.02), transparent 60%),
+      radial-gradient(900px 500px at 90% 20%, rgba(255,255,255,0.015), transparent 55%);
+  }
 
   /* 1枚の紙（surface） */
   .gm-surface {
@@ -132,6 +141,10 @@ html.dark {
     backdrop-filter: blur(10px);
     border: 1px solid rgba(0,0,0,0.06);
     border-radius: 18px;
+  }
+  html.dark .gm-surface {
+    background: rgba(22,24,30,0.86);
+    border-color: rgba(255,255,255,0.08);
   }
 
   /* カード（紙片） */
@@ -141,6 +154,11 @@ html.dark {
     border-radius: 18px;
     box-shadow: 0 6px 22px rgba(0,0,0,0.05);
   }
+  html.dark .gm-card {
+    background: rgba(22,24,30,0.92);
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: 0 6px 22px rgba(0,0,0,0.3);
+  }
 
   /* フィード区切り線（ブランドグラデーション） */
   .gm-feed-divider {
@@ -149,6 +167,9 @@ html.dark {
     padding-bottom: 6px;
     margin-bottom: 6px;
   }
+  html.dark .gm-feed-divider {
+    border-image: linear-gradient(to right, rgba(29,185,160,0.3), rgba(107,170,68,0.35), rgba(200,136,42,0.3)) 1;
+  }
 
   /* ブランドアクセントライン */
   .gm-brand-line {
@@ -156,6 +177,9 @@ html.dark {
     background: linear-gradient(to right, #1DB9A0, #6BAA44, #C8882A, #D06A28);
     opacity: 0.35;
     border-radius: 1px;
+  }
+  html.dark .gm-brand-line {
+    opacity: 0.55;
   }
 
   /* 押した感（統一） */
@@ -173,6 +197,10 @@ html.dark {
     background: rgba(255,255,255,0.75);
     backdrop-filter: blur(8px);
     border-radius: 999px;
+  }
+  html.dark .gm-chip {
+    border-color: rgba(255,255,255,0.1);
+    background: rgba(30,32,38,0.75);
   }
 }
 

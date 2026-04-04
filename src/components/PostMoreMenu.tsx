@@ -120,20 +120,20 @@ export default function PostMoreMenu({ postId, isMine, className, goTo, afterDel
         }}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="rounded-full p-1.5 hover:bg-black/5"
+        className="rounded-full p-1.5 hover:bg-black/5 dark:hover:bg-white/10"
       >
-        <MoreHorizontal size={22} />
+        <MoreHorizontal size={22} className="dark:text-gray-400" />
       </button>
 
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border bg-white shadow-lg"
+          className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#1e2026] shadow-lg"
           onClick={(e) => e.stopPropagation()}
         >
           <Link
             href={to}
-            className="flex items-center gap-2 px-4 py-3 text-sm hover:bg-black/5"
+            className="flex items-center gap-2 px-4 py-3 text-sm text-slate-800 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/[.06]"
             onClick={() => setOpen(false)}
           >
             <ExternalLink size={16} /> 投稿へ移動
@@ -142,7 +142,7 @@ export default function PostMoreMenu({ postId, isMine, className, goTo, afterDel
           {isMine && (
             <Link
               href={editTo}
-              className="flex items-center gap-2 px-4 py-3 text-sm hover:bg-black/5"
+              className="flex items-center gap-2 px-4 py-3 text-sm text-slate-800 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/[.06]"
               onClick={() => setOpen(false)}
             >
               <Pencil size={16} /> 編集する
@@ -152,7 +152,7 @@ export default function PostMoreMenu({ postId, isMine, className, goTo, afterDel
           {isMine && (
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50"
+              className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
               onClick={() => {
                 if (busy || pending) return;
 
@@ -178,11 +178,11 @@ export default function PostMoreMenu({ postId, isMine, className, goTo, afterDel
           aria-modal="true"
         >
           <div
-            className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-xl"
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#1e2026] p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-sm font-bold text-slate-900">削除しました</div>
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="text-sm font-bold text-slate-900 dark:text-gray-100">削除しました</div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-gray-400">
               {secondsLeft}秒以内なら取り消せます（時間切れで確定します）
             </div>
 
@@ -190,7 +190,7 @@ export default function PostMoreMenu({ postId, isMine, className, goTo, afterDel
               <button
                 type="button"
                 onClick={cancelPendingDelete}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-gray-200 hover:bg-slate-50 dark:hover:bg-white/15"
               >
                 取り消す
               </button>
@@ -207,7 +207,7 @@ export default function PostMoreMenu({ postId, isMine, className, goTo, afterDel
               </button>
             </div>
 
-            <div className="mt-3 text-[11px] text-slate-400">※背景クリックでも取り消せます</div>
+            <div className="mt-3 text-[11px] text-slate-400 dark:text-gray-500">※背景クリックでも取り消せます</div>
           </div>
         </div>
       )}

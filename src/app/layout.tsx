@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import ClientAuthNav from "../components/AuthNav";
 import QueryProvider from "@/components/providers/QueryProvider";
+import ThemeProvider from "@/components/providers/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "Gourmeet",
@@ -44,10 +45,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet" />
       </head>
       {/* min-h は globals.css の body { min-height: 100dvh } に任せる */}
-      <body className="bg-[#fffaf5] text-black/90">
+      <body className="bg-[#fffaf5] text-black/90 dark:bg-[#0b0c0f] dark:text-gray-200">
+        <ThemeProvider>
         <QueryProvider>
           {/* PC用ヘッダー（モバイルでは非表示） */}
-          <header className="hidden md:block border-b border-black/[.06] bg-white/90 backdrop-blur">
+          <header className="hidden md:block border-b border-black/[.06] dark:border-white/[.08] bg-white/90 dark:bg-[#12131a]/90 backdrop-blur">
             <div className="mx-auto flex h-20 max-w-5xl items-center justify-between px-4">
               <Link href="/" className="flex items-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -59,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           <main className="w-full">{children}</main>
 
-          <footer className="border-t border-black/[.06] bg-white/70 py-6 text-center text-xs text-black/60">
+          <footer className="border-t border-black/[.06] dark:border-white/[.08] bg-white/70 dark:bg-[#12131a]/70 py-6 text-center text-xs text-black/60 dark:text-gray-400">
             <div className="mb-2 flex items-center justify-center gap-4">
               <Link href="/privacy" className="underline underline-offset-2">
                 プライバシーポリシー
@@ -73,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div>© 2025 Gourmeet co.ltd. All rights reserved.</div>
           </footer>
         </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

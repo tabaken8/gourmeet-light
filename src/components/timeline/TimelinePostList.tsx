@@ -11,6 +11,7 @@ import PostActions, { LikerLite } from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
+import { Navigation } from "lucide-react";
 
 type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
 type ImageAsset = { pin?: string | null; square?: string | null; full?: string | null; [k: string]: any };
@@ -278,16 +279,23 @@ export default function TimelinePostList({
         }
         const locationLine = locationParts.join(" \u00B7 ");
 
+        // Google Maps link
+        const mapsUrl = p.place_id
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_name ?? "place")}&query_place_id=${encodeURIComponent(p.place_id)}`
+          : p.place_address
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
+          : null;
+
         return (
           <article key={key} className="gm-feed-divider">
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="md:border-r md:border-black/[.05]">
+              <div className="md:border-r md:border-black/[.05] dark:md:border-white/[.08]">
                 {/* Header */}
                 <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <Link
                       href={p.user_id ? `/u/${p.user_id}` : "#"}
-                      className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-[10px] font-semibold text-orange-700"
+                      className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-[10px] font-semibold text-orange-700 dark:text-orange-400"
                     >
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -307,18 +315,31 @@ export default function TimelinePostList({
                       <div className="flex items-center gap-1">
                         <Link
                           href={p.user_id ? `/u/${p.user_id}` : "#"}
-                          className="truncate text-[13px] font-semibold text-slate-900 hover:underline"
+                          className="truncate text-[13px] font-semibold text-slate-900 dark:text-gray-100 hover:underline"
                         >
                           {display}
                         </Link>
-                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-400" />}
-                        <span className="text-[11px] text-slate-400">{"\u00B7"}</span>
-                        <span className="text-[11px] text-slate-400">{formatRelativeTime(p.created_at)}</span>
+                        {!isPublic && <Lock size={12} className="shrink-0 text-slate-400 dark:text-gray-500" />}
+                        <span className="text-[11px] text-slate-400 dark:text-gray-500">{"\u00B7"}</span>
+                        <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatRelativeTime(p.created_at)}</span>
                       </div>
                       {locationLine && (
-                        <div className="flex items-center gap-1 text-[11px] text-slate-500 truncate">
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-gray-400 truncate">
                           <MapPin size={11} className="shrink-0 opacity-60" />
                           <span className="truncate">{locationLine}</span>
+                          {mapsUrl && (
+                            <a
+                              href={mapsUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="shrink-0 ml-0.5 inline-flex items-center justify-center rounded-full p-0.5 text-slate-400 dark:text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-500/10 transition-colors"
+                              aria-label="Google Mapsで開く"
+                              title="Google Mapsで開く"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Navigation size={10} />
+                            </a>
+                          )}
                         </div>
                       )}
                     </div>
@@ -331,7 +352,7 @@ export default function TimelinePostList({
 
                 {/* Media */}
                 {timelineImageUrls.length > 0 && (
-                  <div className="block w-[calc(100%+1.5rem)] -mx-3 md:w-full md:mx-0 aspect-square overflow-hidden bg-slate-100">
+                  <div className="block w-[calc(100%+1.5rem)] -mx-3 md:w-full md:mx-0 aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
                     <PostImageCarousel
                       postId={p.id}
                       imageUrls={timelineImageUrls}
@@ -371,17 +392,17 @@ export default function TimelinePostList({
                 {(score !== null || priceLabel) && (
                   <div className="flex items-center gap-1.5 px-3 pt-0.5 text-[11px]">
                     {score !== null && (
-                      <span className="font-medium text-slate-500">{"\u304A\u3059\u3059\u3081"} {score}/10</span>
+                      <span className="font-medium text-slate-500 dark:text-gray-400">{"\u304A\u3059\u3059\u3081"} {score}/10</span>
                     )}
-                    {score !== null && priceLabel && <span className="text-slate-300">{"\u00B7"}</span>}
-                    {priceLabel && <span className="text-slate-400">{priceLabel}</span>}
+                    {score !== null && priceLabel && <span className="text-slate-300 dark:text-gray-600">{"\u00B7"}</span>}
+                    {priceLabel && <span className="text-slate-400 dark:text-gray-500">{priceLabel}</span>}
                   </div>
                 )}
 
                 {/* Body */}
                 <div className="px-3 pt-0.5 pb-1.5">
                   {p.content && (
-                    <p className="whitespace-pre-wrap text-[13px] leading-snug text-slate-800">
+                    <p className="whitespace-pre-wrap text-[13px] leading-snug text-slate-800 dark:text-gray-200">
                       <Link href={`/posts/${p.id}`} className="hover:underline">
                         {p.content}
                       </Link>
@@ -400,7 +421,7 @@ export default function TimelinePostList({
                 {p.place_id ? (
                   <PlacePhotoGallery placeId={p.place_id} placeName={p.place_name} per={8} maxThumbs={8} />
                 ) : (
-                  <div className="text-xs text-slate-400">{"\u5199\u771F\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F"}</div>
+                  <div className="text-xs text-slate-400 dark:text-gray-500">{"\u5199\u771F\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F"}</div>
                 )}
               </aside>
             </div>

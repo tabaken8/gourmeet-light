@@ -2,7 +2,7 @@
 import React from "react";
 
 function Pulse({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse bg-slate-100 ${className}`} />;
+  return <div className={`animate-pulse bg-slate-100 dark:bg-white/[.06] ${className}`} />;
 }
 
 /** 新フィードレイアウトに対応したスケルトン 1 件分 */

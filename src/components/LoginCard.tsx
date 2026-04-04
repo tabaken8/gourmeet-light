@@ -225,7 +225,7 @@ export default function LoginCard({
 
           <Link
             href={emailLoginHref}
-            className="inline-flex h-11 w-full items-center justify-center rounded-full bg-orange-700 px-5 text-sm font-medium text-white hover:bg-orange-800"
+            className="inline-flex h-11 w-full items-center justify-center rounded-full bg-orange-700 px-5 text-sm font-medium !text-white hover:bg-orange-800"
           >
             メールでログイン
           </Link>

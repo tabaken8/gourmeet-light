@@ -13,7 +13,7 @@ import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
 import TimelineFeed from "@/components/TimelineFeed";
-import SearchPostList, { PostRow, SearchMode } from "@/components/search/SearchPostList";
+import type { PostRow, SearchMode } from "@/components/search/SearchPostList";
 import SearchZeroResultsNudge from "@/components/SearchZeroResultsNudge";
 import LocationFilter from "@/components/search/LocationFilter";
 import GenreFilter from "@/components/search/GenreFilter";
@@ -134,10 +134,10 @@ const listStagger = {
 function UsersSkeleton() {
   return (
     <div className="px-3 py-2">
-      <div className="mb-2 text-[11px] font-medium text-slate-400">Users</div>
+      <div className="mb-2 text-[11px] font-medium text-slate-400 dark:text-gray-500">Users</div>
       <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-2">
+          <div key={i} className="flex items-center gap-3 rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-white/[.04] px-3 py-2">
             <Skeleton circle width={40} height={40} />
             <div className="min-w-0 flex-1">
               <Skeleton width={160} height={12} />
@@ -155,7 +155,7 @@ function PostsSkeleton() {
   return (
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="border-b border-slate-100 px-3 py-3">
+        <div key={i} className="border-b border-slate-100 dark:border-white/[.06] px-3 py-3">
           <div className="flex items-center gap-3">
             <Skeleton circle width={36} height={36} />
             <div className="flex-1">
@@ -862,7 +862,7 @@ export default function SearchPage() {
         {!isEmpty && (
           <div className="flex items-center gap-2 mb-2 px-1">
             {committedMode === "station" && <TrainFront size={14} className="shrink-0 text-slate-500" />}
-            <p className="text-[13px] font-medium text-slate-700">{titleText}</p>
+            <p className="text-[13px] font-medium text-slate-700 dark:text-gray-300">{titleText}</p>
           </div>
         )}
 
@@ -870,7 +870,7 @@ export default function SearchPage() {
         <div className="relative w-full">
           <Sparkles
             size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-gray-500"
           />
           <input
             value={q}
@@ -881,7 +881,7 @@ export default function SearchPage() {
             }}
             onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
             placeholder={searchPlaceholder}
-            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-18 text-[16px] font-normal outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100 leading-tight"
+            className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] py-2 pl-9 pr-18 text-[16px] font-normal text-slate-900 dark:text-gray-100 outline-none transition placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-slate-300 dark:focus:border-white/20 focus:ring-2 focus:ring-slate-100 dark:focus:ring-white/5 leading-tight"
             inputMode="search"
             enterKeyHint="search"
           />
@@ -890,7 +890,7 @@ export default function SearchPage() {
             type="button"
             onClick={() => setHintsOpen((v) => !v)}
             aria-label="検索ヒント"
-            className={`absolute right-9 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full transition hover:bg-slate-100 ${hintsOpen ? "text-orange-500" : "text-slate-400"}`}
+            className={`absolute right-9 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full transition hover:bg-slate-100 dark:hover:bg-white/10 ${hintsOpen ? "text-orange-500" : "text-slate-400 dark:text-gray-500"}`}
           >
             <HelpCircle size={15} />
           </button>
@@ -898,14 +898,14 @@ export default function SearchPage() {
             type="button"
             onClick={handleSearch}
             aria-label="検索"
-            className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+            className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 dark:text-gray-400 transition hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-gray-200"
           >
             <Search size={15} />
           </button>
 
           {/* @mention サジェストドロップダウン */}
           {mentionOpen && mentionSuggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-black/[.08] bg-white shadow-lg">
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-black/[.08] dark:border-white/10 bg-white dark:bg-[#1e2026] shadow-lg">
               {mentionSuggestions.map((u) => {
                 const name = u.display_name ?? u.username ?? "";
                 const initial = (name || "U").slice(0, 1).toUpperCase();
@@ -914,17 +914,17 @@ export default function SearchPage() {
                     key={u.id}
                     type="button"
                     onMouseDown={() => selectMention(u.username ?? "")}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 active:bg-slate-100"
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-white/[.06] active:bg-slate-100 dark:active:bg-white/10"
                   >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400">
                       {u.avatar_url
                         // eslint-disable-next-line @next/next/no-img-element
                         ? <img src={u.avatar_url} alt="" className="h-8 w-8 object-cover" />
                         : initial}
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
-                      {u.username && <div className="text-xs text-slate-500">@{u.username}</div>}
+                      <div className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100">{name}</div>
+                      {u.username && <div className="text-xs text-slate-500 dark:text-gray-500">@{u.username}</div>}
                     </div>
                   </button>
                 );
@@ -942,16 +942,16 @@ export default function SearchPage() {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2.5 text-[11px] text-slate-600">
+              <div className="mt-2 rounded-xl bg-slate-50 dark:bg-white/[.06] px-3 py-2.5 text-[11px] text-slate-600 dark:text-gray-400">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="font-semibold text-orange-700">✨ こんな検索ができます</span>
-                  <button type="button" onClick={() => setHintsOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
+                  <span className="font-semibold text-orange-700 dark:text-orange-400">✨ こんな検索ができます</span>
+                  <button type="button" onClick={() => setHintsOpen(false)} className="text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"><X size={13} /></button>
                 </div>
-                <ul className="space-y-1.5 text-slate-600">
-                  <li><span className="font-medium text-slate-800">渋谷で軽くランチ</span> — 地名 + 気分で検索</li>
-                  <li><span className="font-medium text-slate-800">記念日向きの雰囲気のいいフレンチ</span> — 自然な言葉でOK</li>
-                  <li><span className="font-medium text-slate-800">{placeholderMentions[0] ? `@${placeholderMentions[0]}` : "@友達"} のおすすめラーメン</span> — フォロー中の人の投稿に絞れる</li>
-                  <li><span className="font-medium text-slate-800">{placeholderMentions[1] ?? placeholderMentions[0] ? `@${placeholderMentions[1] ?? placeholderMentions[0]}` : "@知り合い"} の東京駅近くのカフェ</span> — 地名 + ユーザー指定の組み合わせも可</li>
+                <ul className="space-y-1.5 text-slate-600 dark:text-gray-400">
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">渋谷で軽くランチ</span> — 地名 + 気分で検索</li>
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">記念日向きの雰囲気のいいフレンチ</span> — 自然な言葉でOK</li>
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{placeholderMentions[0] ? `@${placeholderMentions[0]}` : "@友達"} のおすすめラーメン</span> — フォロー中の人の投稿に絞れる</li>
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{placeholderMentions[1] ?? placeholderMentions[0] ? `@${placeholderMentions[1] ?? placeholderMentions[0]}` : "@知り合い"} の東京駅近くのカフェ</span> — 地名 + ユーザー指定の組み合わせも可</li>
                 </ul>
               </div>
             </motion.div>
@@ -966,7 +966,7 @@ export default function SearchPage() {
             onSelect={selectStation}
             onClear={clearStation}
           />
-          <label className="inline-flex cursor-pointer select-none items-center gap-2 text-[13px] text-slate-600">
+          <label className="inline-flex cursor-pointer select-none items-center gap-2 text-[13px] text-slate-600 dark:text-gray-400">
             <input
               type="checkbox"
               checked={followOnly}
@@ -995,7 +995,7 @@ export default function SearchPage() {
               type="button"
               onClick={handleSearchFromLocation}
               disabled={geoLoading}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-[0.97] transition disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-gray-200 shadow-sm hover:bg-slate-50 dark:hover:bg-white/10 active:scale-[0.97] transition disabled:opacity-50"
             >
               <MapPinIcon size={15} className="text-blue-500" />
               {geoLoading ? "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u4E2D\u2026" : "\u73FE\u5728\u5730\u304B\u3089\u63A2\u3059"}
@@ -1028,11 +1028,7 @@ export default function SearchPage() {
                   onClose={() => setSelectedMapPost(null)}
                 />
               )}
-              {posts.length > 0 && (
-                <motion.div {...fadeUp}>
-                  <SearchPostList posts={posts} meId={meId} mode="geo" searchedStationName={null} revealImages={true} />
-                </motion.div>
-              )}
+              {/* タイムラインリストは廃止 — カルーセル + 詳細遷移で十分 */}
             </div>
           )}
 
@@ -1040,7 +1036,7 @@ export default function SearchPage() {
             <AnimatePresence mode="wait">
               {!showDiscover ? (
                 <motion.div key="empty-splash" {...fadeUp} className="px-3 py-2">
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-500 dark:text-gray-500">
                     {"\u30AD\u30FC\u30EF\u30FC\u30C9\u5165\u529B\u30FB\u99C5\u9078\u629E\u30FB\u30B8\u30E3\u30F3\u30EB\u9078\u629E\u3067\u3082\u691C\u7D22\u3067\u304D\u307E\u3059"}
                   </div>
                 </motion.div>
@@ -1059,7 +1055,7 @@ export default function SearchPage() {
             <UsersSkeleton />
           ) : users.length > 0 ? (
             <motion.section className="px-3 py-2" {...fadeUp}>
-              <div className="mb-2 text-[11px] font-medium text-slate-400">Users</div>
+              <div className="mb-2 text-[11px] font-medium text-slate-400 dark:text-gray-500">Users</div>
               <motion.div className="flex flex-col gap-1.5" variants={listStagger} initial="initial" animate="animate">
                 {users.map((u) => {
                   const name = u.display_name ?? u.username ?? "\u30E6\u30FC\u30B6\u30FC";
@@ -1067,8 +1063,8 @@ export default function SearchPage() {
                   const initial = (name || "U").slice(0, 1).toUpperCase();
                   return (
                     <motion.div key={u.id} variants={fadeUp}>
-                      <Link href={`/u/${u.id}`} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-slate-50">
-                        <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600">
+                      <Link href={`/u/${u.id}`} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-slate-50 dark:hover:bg-white/[.06]">
+                        <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-100 dark:bg-white/15 text-[10px] font-semibold text-slate-600 dark:text-gray-300">
                           {u.avatar_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={u.avatar_url} alt="" className="h-10 w-10 object-cover" />
@@ -1076,12 +1072,12 @@ export default function SearchPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
-                            {handle && <div className="truncate text-xs text-slate-500">{handle}</div>}
+                            <div className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100">{name}</div>
+                            {handle && <div className="truncate text-xs text-slate-500 dark:text-gray-500">{handle}</div>}
                           </div>
-                          {u.bio && <div className="truncate text-xs text-slate-600">{u.bio}</div>}
+                          {u.bio && <div className="truncate text-xs text-slate-600 dark:text-gray-400">{u.bio}</div>}
                         </div>
-                        <div className="text-xs font-semibold text-orange-600">{"\u898B\u308B"}</div>
+                        <div className="text-xs font-semibold text-orange-600 dark:text-orange-400">{"\u898B\u308B"}</div>
                       </Link>
                     </motion.div>
                   );
@@ -1126,14 +1122,14 @@ export default function SearchPage() {
                   {/* Quick results shown while AI is thinking */}
                   {quickPosts.length > 0 && (
                     <motion.div {...fadeUp}>
-                      <div className="px-2 py-1.5 text-[11px] text-slate-400 flex items-center gap-1.5">
+                      <div className="px-2 py-1.5 text-[11px] text-slate-400 dark:text-gray-500 flex items-center gap-1.5">
                         <span>{"\u30AF\u30A4\u30C3\u30AF\u7D50\u679C"}</span>
-                        <span className="text-slate-300">{"\u00B7"}</span>
+                        <span className="text-slate-300 dark:text-gray-600">{"\u00B7"}</span>
                         <span>{quickPosts.length}{"\u4EF6"}</span>
-                        <span className="text-slate-300">{"\u00B7"}</span>
+                        <span className="text-slate-300 dark:text-gray-600">{"\u00B7"}</span>
                         <span className="text-orange-400">{"\u2728 AI\u691C\u7D22\u4E2D\u2026"}</span>
                       </div>
-                      <SearchPostList posts={quickPosts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} />
+                      {/* カルーセルはマップ上部で表示済み */}
                     </motion.div>
                   )}
                   {quickPosts.length === 0 && (
@@ -1169,28 +1165,28 @@ export default function SearchPage() {
                 <motion.div {...fadeUp}>
                   {/* 検索理解バナー: 駅 + 意図 + @mention を1行で */}
                   {(detectedStations.length > 0 || parsedIntent || detectedAuthor) && (
-                    <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2 py-1.5 text-[11px] text-slate-500">
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2 py-1.5 text-[11px] text-slate-500 dark:text-gray-500">
                       {detectedStations.length > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-slate-600 dark:text-gray-300">
                           <TrainFront size={10} className="shrink-0" />
                           {detectedStations.map((s) => s.name.endsWith("\u99C5") ? s.name : `${s.name}\u99C5`).join("\u30FB")}{"\u5468\u8FBA"}
                         </span>
                       )}
                       {detectedAuthor && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-slate-600 dark:text-gray-300">
                           @{detectedAuthor.username}{detectedAuthor.displayName ? `\uFF08${detectedAuthor.displayName}\uFF09` : ""}
                         </span>
                       )}
                       {parsedIntent && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-slate-600 dark:text-gray-300">
                           {"\u300C"}{parsedIntent}{"\u300D"}{"\u3067\u691C\u7D22"}
                         </span>
                       )}
-                      <span className="text-slate-400">{"\u00B7"}</span>
-                      <span className="text-slate-400">{semanticPosts.length}{"\u4EF6"}</span>
+                      <span className="text-slate-400 dark:text-gray-500">{"\u00B7"}</span>
+                      <span className="text-slate-400 dark:text-gray-500">{semanticPosts.length}{"\u4EF6"}</span>
                     </div>
                   )}
-                  <SearchPostList posts={semanticPosts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} showRanks={true} />
+                  {/* タイムラインリストは廃止 — カルーセル + 詳細遷移で十分 */}
                 </motion.div>
               )}
               {!semanticLoading && !semanticError && semanticPosts.length === 0 && (
@@ -1207,31 +1203,26 @@ export default function SearchPage() {
           {resultMode === "keyword" && (
             <>
               {loading && posts.length === 0 ? (
-                <PostsSkeleton />
-              ) : posts.length > 0 ? (
-                <motion.div {...fadeUp}>
-                  <SearchPostList posts={posts} meId={meId} mode={committedMode} searchedStationName={searchedStationName} revealImages={true} />
+                <motion.div {...fadeUp} className="flex flex-col items-center gap-3 py-12">
+                  <div className="flex items-center gap-3 text-xl">
+                    {["\uD83C\uDF5C", "\uD83C\uDF63", "\uD83C\uDF5B"].map((emoji, i) => (
+                      <motion.span key={i} animate={{ y: [0, -6, 0] }} transition={{ duration: 0.5, delay: i * 0.1, repeat: Infinity, repeatDelay: 1.5 }}>{emoji}</motion.span>
+                    ))}
+                  </div>
+                  <p className="text-[12px] text-slate-400 dark:text-gray-500">{"\u691C\u7D22\u4E2D\u2026"}</p>
                 </motion.div>
               ) : null}
 
+              {/* カルーセルはマップ上部で表示済み */}
+
               <div ref={sentinelRef} className="h-10" />
 
-              {loading && posts.length > 0 && (
-                <motion.div {...fadeUp} className="pb-8">
-                  <div className="text-center text-xs text-slate-500">{"\u8AAD\u307F\u8FBC\u307F\u4E2D..."}</div>
-                  <div className="mt-3">
-                    <Skeleton height={10} />
-                    <div className="mt-2"><Skeleton height={10} /></div>
-                  </div>
-                </motion.div>
-              )}
-
               {error && !error.includes("Unauthorized") && (
-                <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600">{error}</motion.div>
+                <motion.div {...fadeUp} className="pb-8 text-center text-xs text-red-600 dark:text-red-400">{error}</motion.div>
               )}
 
               {done && posts.length > 0 && (
-                <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400">{"\u3053\u308C\u4EE5\u4E0A\u3042\u308A\u307E\u305B\u3093"}</motion.div>
+                <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400 dark:text-gray-500">{"\u3053\u308C\u4EE5\u4E0A\u3042\u308A\u307E\u305B\u3093"}</motion.div>
               )}
 
               {/* 0件 */}

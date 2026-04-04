@@ -98,10 +98,10 @@ function CTASection({
   secondaryLabel?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-black/[.06] bg-white p-6">
-      <div className="text-base font-semibold text-slate-900">{title}</div>
+    <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-[#16181e] p-6">
+      <div className="text-base font-semibold text-slate-900 dark:text-gray-100">{title}</div>
       {desc ? (
-        <div className="mt-2 text-sm leading-6 text-slate-600">{desc}</div>
+        <div className="mt-2 text-sm leading-6 text-slate-600 dark:text-gray-400">{desc}</div>
       ) : null}
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -115,7 +115,7 @@ function CTASection({
         {secondaryHref && secondaryLabel ? (
           <Link
             href={secondaryHref}
-            className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-200"
+            className="inline-flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 px-4 py-2 text-sm font-semibold text-slate-800 dark:text-gray-200 hover:bg-slate-200 dark:hover:bg-white/15"
           >
             {secondaryLabel}
           </Link>
@@ -220,12 +220,12 @@ function GuestFAQ() {
   }, []);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-black/[.06] bg-white">
+    <div className="overflow-hidden rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-[#16181e]">
       <div className="px-4 pb-2 pt-4">
-        <div className="text-base font-semibold text-slate-900">よくある質問</div>
+        <div className="text-base font-semibold text-slate-900 dark:text-gray-100">よくある質問</div>
       </div>
 
-      <div className="divide-y divide-black/[.06]">
+      <div className="divide-y divide-black/[.06] dark:divide-white/[.08]">
         {items.map((it, idx) => {
           const isOpen = openSet.has(idx);
           const panelId = `faq-panel-${idx}`;
@@ -241,19 +241,19 @@ function GuestFAQ() {
                 onClick={() => toggle(idx)}
                 className={[
                   "w-full text-left px-4 py-4",
-                  "hover:bg-black/[.02] active:bg-black/[.03]",
+                  "hover:bg-black/[.02] dark:hover:bg-white/[.03] active:bg-black/[.03] dark:active:bg-white/[.05]",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400",
                 ].join(" ")}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[15px] font-semibold text-slate-900">
+                  <div className="text-[15px] font-semibold text-slate-900 dark:text-gray-100">
                     {it.q}
                   </div>
 
                   <motion.span
                     animate={{ rotate: isOpen ? 180 : 0 }}
                     transition={t}
-                    className="shrink-0 text-slate-500"
+                    className="shrink-0 text-slate-500 dark:text-gray-400"
                     aria-hidden="true"
                   >
                     <ChevronDown size={18} />
@@ -284,7 +284,7 @@ function GuestFAQ() {
                     transition={t}
                     className="pb-4"
                   >
-                    <div className="text-[13px] leading-6 text-slate-600">
+                    <div className="text-[13px] leading-6 text-slate-600 dark:text-gray-400">
                       {it.a}
                     </div>
                   </motion.div>
@@ -298,7 +298,7 @@ function GuestFAQ() {
       <div className="p-4">
         <Link
           href="/auth/signup"
-          className="block w-full rounded-xl bg-orange-600 py-3 text-center text-sm font-semibold text-white hover:bg-orange-800"
+          className="block w-full rounded-xl bg-orange-600 py-3 text-center text-sm font-semibold !text-white hover:bg-orange-800"
         >
           サインアップはこちら
         </Link>
@@ -404,7 +404,7 @@ function DiscoverFlipTile({
       href={href}
       aria-disabled={!post}
       className={[
-        "relative block overflow-hidden bg-slate-100",
+        "relative block overflow-hidden bg-slate-100 dark:bg-[#1e2026]",
         "focus:outline-none focus:ring-2 focus:ring-orange-400",
         "gm-press",
         tileSpan,
@@ -449,8 +449,8 @@ function DiscoverFlipTile({
                 />
               </motion.div>
             ) : (
-              <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-100">
-                <div className="p-2 text-[11px] text-slate-500 line-clamp-6">
+              <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 dark:from-[#1e2026] dark:to-[#16181e]">
+                <div className="p-2 text-[11px] text-slate-500 dark:text-gray-400 line-clamp-6">
                   {placeName ? `📍 ${placeName}\n` : ""}
                   {post?.content ? post.content : "投稿"}
                 </div>
@@ -771,7 +771,7 @@ export default function FriendsTimelineClient({
             </Link>
             <Link
               href="/auth/login"
-              className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-200"
+              className="inline-flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 px-4 py-2 text-sm font-semibold text-slate-800 dark:text-gray-200 hover:bg-slate-200 dark:hover:bg-white/15"
             >
               ログイン
             </Link>

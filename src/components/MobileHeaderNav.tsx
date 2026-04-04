@@ -57,7 +57,7 @@ function IconButton({
       className={`
         relative inline-flex h-9 w-9 items-center justify-center rounded-full
         transition-colors
-        ${active ? activeClassName ?? "bg-black/[.06]" : "hover:bg-black/[.04]"}
+        ${active ? activeClassName ?? "bg-black/[.06] dark:bg-white/[.08]" : "hover:bg-black/[.04] dark:hover:bg-white/[.06]"}
         ${className ?? ""}
       `}
     >
@@ -178,8 +178,8 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
       <header
         className="
           fixed left-0 right-0 top-0 z-50
-          border-b border-black/[.06]
-          bg-white/90 backdrop-blur
+          border-b border-black/[.06] dark:border-white/[.08]
+          bg-white/90 dark:bg-[#12131a]/90 backdrop-blur
           pt-[env(safe-area-inset-top)]
         "
       >
@@ -212,7 +212,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               activeClassName="bg-slate-100"
             >
               <span className="relative inline-flex">
-                <Bell size={18} className="text-slate-500" />
+                <Bell size={18} className="text-slate-500 dark:text-gray-400" />
                 <Badge count={notifCount} />
               </span>
             </IconButton>
@@ -225,7 +225,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               activeClassName="bg-slate-100"
             >
               <span className="relative inline-flex">
-                <UserPlus size={18} className="text-slate-500" />
+                <UserPlus size={18} className="text-slate-500 dark:text-gray-400" />
                 <Badge count={followReqCount} />
               </span>
             </IconButton>
@@ -237,7 +237,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               ariaLabel="設定"
               activeClassName="bg-slate-100"
             >
-              <Settings size={18} className="text-slate-500" />
+              <Settings size={18} className="text-slate-500 dark:text-gray-400" />
             </IconButton>
 
 {/* 投稿（白地のシンプル＋） */}
@@ -245,12 +245,12 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
   href={gate("/posts/new")}
   className={[
     "relative inline-flex h-8 w-8 items-center justify-center rounded-full",
-    "bg-white border border-black/10",
-    "hover:bg-black/[.03] active:scale-[0.99] transition",
+    "bg-white dark:bg-[#1e2026] border border-black/10 dark:border-white/10",
+    "hover:bg-black/[.03] dark:hover:bg-white/[.06] active:scale-[0.99] transition",
   ].join(" ")}
   aria-label="投稿"
 >
-  <Plus size={16} className="text-slate-700" />
+  <Plus size={16} className="text-slate-700 dark:text-gray-300" />
 </Link>
 
           </div>
@@ -259,7 +259,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 {/* 2段目：メイン列 3ボタン（Home / Search / Profile） */}
 <div className="px-2 pb-1.5">
   <div className="mx-auto max-w-[420px]">
-    <div className="grid grid-cols-3 items-center rounded-xl bg-black/[.03] px-2 py-0.5">
+    <div className="grid grid-cols-3 items-center rounded-xl bg-black/[.03] dark:bg-white/[.05] px-2 py-0.5">
       {/* Home（左） */}
       <div className="justify-self-start">
         <IconButton
@@ -268,7 +268,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           ariaLabel="ホーム"
           activeClassName="bg-slate-200/70"
         >
-          <Home size={18} className={isActive("/timeline") ? "text-slate-800" : "text-slate-500"} />
+          <Home size={18} className={isActive("/timeline") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
           <Dot on={timelineDot} />
         </IconButton>
       </div>
@@ -281,7 +281,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           ariaLabel="検索"
           activeClassName="bg-slate-200/70"
         >
-          <Search size={18} className={isActive("/search") ? "text-slate-800" : "text-slate-500"} />
+          <Search size={18} className={isActive("/search") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
         </IconButton>
       </div>
 
@@ -292,7 +292,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           className={`
             relative inline-flex h-9 w-9 items-center justify-center rounded-full
             transition-colors
-            ${isActive("/profile") ? "bg-slate-200/70" : "hover:bg-black/[.04]"}
+            ${isActive("/profile") ? "bg-slate-200/70 dark:bg-white/10" : "hover:bg-black/[.04] dark:hover:bg-white/[.06]"}
           `}
           aria-label={displayNameSafe || "プロフィール"}
         >
@@ -305,7 +305,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
               referrerPolicy="no-referrer"
             />
           ) : (
-            <span className="text-[10px] font-semibold text-slate-600">
+            <span className="text-[10px] font-semibold text-slate-600 dark:text-gray-400">
               {(displayNameSafe || "U").slice(0, 1).toUpperCase()}
             </span>
           )}

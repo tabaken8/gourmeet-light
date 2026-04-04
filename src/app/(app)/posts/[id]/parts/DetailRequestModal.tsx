@@ -177,7 +177,7 @@ export default function DetailRequestModal({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center rounded-full border border-orange-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:bg-orange-50"
+        className="inline-flex items-center rounded-full border border-orange-200 dark:border-orange-800/40 bg-white dark:bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-white/15"
       >
         リクエスト
       </button>

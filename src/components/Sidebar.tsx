@@ -45,6 +45,7 @@ function NavItem({
         group
         flex items-center gap-3 rounded-lg px-3 py-2 text-base
         hover:bg-gray-100/80
+        dark:hover:bg-white/[.06]
       "
     >
       <div className="relative w-6 h-6 flex items-center justify-center shrink-0">
@@ -53,13 +54,13 @@ function NavItem({
           <img
             src={avatarUrl}
             alt={avatarAlt ?? "profile"}
-            className="h-6 w-6 rounded-full object-cover bg-slate-200"
+            className="h-6 w-6 rounded-full object-cover bg-slate-200 dark:bg-white/10"
             referrerPolicy="no-referrer"
           />
         ) : Icon ? (
           <Icon size={22} className={iconClassName} />
         ) : (
-          <UserRound size={22} className="text-slate-700" />
+          <UserRound size={22} className="text-slate-700 dark:text-gray-400" />
         )}
 
         <span
@@ -233,9 +234,10 @@ export default function Sidebar({ name }: { name?: string }) {
         group
         bg-white/80 backdrop-blur
         shadow-[0_0_40px_rgba(0,0,0,0.06)]
+        dark:bg-[#12131a]/90 dark:shadow-[0_0_40px_rgba(0,0,0,0.3)]
       "
     >
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-r from-transparent to-white/80" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-r from-transparent to-white/80 dark:to-[#12131a]/90" />
 
       <div className="mb-6 px-1 relative">
         <div
@@ -286,7 +288,7 @@ export default function Sidebar({ name }: { name?: string }) {
         />
 
         {/* サブ（通知・フォロリク・設定） */}
-        <div className="my-2 h-px bg-black/[.08]" />
+        <div className="my-2 h-px bg-black/[.08] dark:bg-white/[.08]" />
 
         <NavItem
           href={gate("/notifications")}
@@ -308,7 +310,7 @@ export default function Sidebar({ name }: { name?: string }) {
           href={gate("/settings")}
           label="設定"
           icon={Settings}
-          iconClassName="text-slate-700"
+          iconClassName="text-slate-700 dark:text-gray-400"
         />
 
         <NavItem
@@ -324,7 +326,7 @@ export default function Sidebar({ name }: { name?: string }) {
             href={gate("/posts/new")}
             className={[
               "relative flex items-center justify-center gap-2 rounded-full py-3 font-semibold",
-              "bg-orange-700 text-white hover:bg-orange-800 transition",
+              "bg-orange-700 !text-white hover:bg-orange-800 transition",
               showPromo ? "ring-2 ring-orange-300 shadow-lg shadow-orange-200/70 animate-pulse" : "",
             ].join(" ")}
           >
@@ -368,15 +370,15 @@ export default function Sidebar({ name }: { name?: string }) {
                 group-hover:opacity-100 group-hover:translate-y-0
               "
             >
-              <div className="rounded-xl border border-orange-100 bg-orange-50/70 px-3 py-2 shadow-sm">
-                <div className="text-[11px] font-semibold text-slate-900 truncate">🎁 {promoText}</div>
-                <div className="text-[10px] text-slate-600 truncate">{promoSub}</div>
+              <div className="rounded-xl border border-orange-100 dark:border-orange-900/40 bg-orange-50/70 dark:bg-orange-950/40 px-3 py-2 shadow-sm">
+                <div className="text-[11px] font-semibold text-slate-900 dark:text-gray-100 truncate">🎁 {promoText}</div>
+                <div className="text-[10px] text-slate-600 dark:text-gray-400 truncate">{promoSub}</div>
 
                 {/* クリックできるようにしたいなら pointer-events を戻す */}
                 <div className="mt-1 pointer-events-auto">
                   <Link
                     href={gate("/points")}
-                    className="inline-flex rounded-full border border-orange-100 bg-white px-2 py-1 text-[10px] font-semibold text-orange-700 hover:bg-orange-100"
+                    className="inline-flex rounded-full border border-orange-100 dark:border-orange-900/40 bg-white dark:bg-white/10 px-2 py-1 text-[10px] font-semibold text-orange-700 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-white/15"
                   >
                     ここからポイント残高を見る
                   </Link>
@@ -387,7 +389,7 @@ export default function Sidebar({ name }: { name?: string }) {
         </div>
       </nav>
 
-      <div className="mt-6 text-sm text-gray-600 px-1 relative">
+      <div className="mt-6 text-sm text-gray-600 dark:text-gray-400 px-1 relative">
         <div
           className="
             truncate font-semibold
@@ -403,7 +405,7 @@ export default function Sidebar({ name }: { name?: string }) {
         <form action="/auth/logout" method="post">
           <button
             className="
-              mt-2 flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-gray-100/80
+              mt-2 flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-gray-100/80 dark:hover:bg-white/[.06]
               w-full
             "
           >

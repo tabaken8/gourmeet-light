@@ -22,7 +22,7 @@ export default async function ClientAuthNav() {
       ) : (
         <Link
           href="/auth/login"
-          className="rounded-full bg-black px-3 py-1 text-xs font-medium text-white"
+          className="rounded-full bg-black px-3 py-1 text-xs font-medium !text-white"
         >
           ログイン
         </Link>

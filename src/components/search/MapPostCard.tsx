@@ -1,8 +1,9 @@
 // src/components/search/MapPostCard.tsx
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { Utensils, X, ChevronLeft, ChevronRight } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Utensils, X, ChevronLeft, ChevronRight, MapPin, Sparkles, ExternalLink } from "lucide-react";
 import type { PostRow } from "./SearchPostList";
 
 function getSquareImageUrl(p: PostRow): string | null {
@@ -19,12 +20,12 @@ function formatPrice(p: PostRow): string | null {
   if (p.price_range) {
     const m: Record<string, string> = {
       "~999": "\u301C\u00A5999",
-      "1000-1999": "\u00A51,000\u301C\u00A51,999",
-      "2000-2999": "\u00A52,000\u301C\u00A52,999",
-      "3000-3999": "\u00A53,000\u301C\u00A53,999",
-      "4000-4999": "\u00A54,000\u301C\u00A54,999",
-      "5000-6999": "\u00A55,000\u301C\u00A56,999",
-      "7000-9999": "\u00A57,000\u301C\u00A59,999",
+      "1000-1999": "\u00A51,000\u301C",
+      "2000-2999": "\u00A52,000\u301C",
+      "3000-3999": "\u00A53,000\u301C",
+      "4000-4999": "\u00A54,000\u301C",
+      "5000-6999": "\u00A55,000\u301C",
+      "7000-9999": "\u00A57,000\u301C",
       "10000+": "\u00A510,000\u301C",
     };
     return m[p.price_range] ?? p.price_range;
@@ -32,15 +33,25 @@ function formatPrice(p: PostRow): string | null {
   return null;
 }
 
-/** Single compact card (used inside carousel) */
+function extractPrefCity(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const s = address.replace(/^日本[、,\s]*/u, "").replace(/〒\s*\d{3}-?\d{4}\s*/u, "").trim();
+  const match = s.match(/(東京都|北海道|大阪府|京都府|.{2,3}県)([^0-9\s,、]{1,20}?(市|区|町|村))/u);
+  if (!match) return null;
+  return `${match[1]}${match[2]}`;
+}
+
+/** Single enriched card */
 function CardItem({
   post,
   rank,
   active,
+  onTap,
 }: {
   post: PostRow;
   rank?: number;
   active?: boolean;
+  onTap: () => void;
 }) {
   const img = getSquareImageUrl(post);
   const prof = post.profile;
@@ -50,88 +61,132 @@ function CardItem({
   const score = typeof post.recommend_score === "number" ? post.recommend_score : null;
   const price = formatPrice(post);
   const genre = post.place_genre ?? null;
+  const area = extractPrefCity(post.place_address);
   const nearestStation = post.nearest_station_name ?? null;
   const nearestMin = typeof post.nearest_station_distance_m === "number"
     ? Math.max(1, Math.ceil(post.nearest_station_distance_m / 80))
     : null;
 
+  const contentSnippet = (post.content ?? "").trim().split("\n")[0]?.slice(0, 50) || null;
+
+  // Location parts
+  const locParts: string[] = [];
+  if (area) locParts.push(area);
+  if (nearestStation && nearestMin) locParts.push(`${nearestStation} 徒歩${nearestMin}分`);
+  const locLine = locParts.join(" · ");
+
   return (
-    <a
-      href={`/posts/${post.id}`}
-      className={`block rounded-xl bg-white shadow-md border overflow-hidden no-underline shrink-0 transition-all duration-200 ${
-        active ? "border-orange-300 ring-2 ring-orange-100" : "border-slate-100"
-      }`}
-      style={{ color: "inherit", textDecoration: "none", width: 280 }}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onTap}
+      onKeyDown={(e) => { if (e.key === "Enter") onTap(); }}
+      className={[
+        "group relative rounded-2xl overflow-hidden shrink-0 transition-all duration-200 cursor-pointer",
+        "bg-white dark:bg-[#16181e] border shadow-sm",
+        active
+          ? "border-orange-400 dark:border-orange-500/60 ring-2 ring-orange-100 dark:ring-orange-500/20 scale-[1.02]"
+          : "border-slate-200/80 dark:border-white/[.08] hover:border-slate-300 dark:hover:border-white/15",
+      ].join(" ")}
+      style={{ width: 260 }}
     >
-      <div className="flex gap-0">
+      {/* Image */}
+      <div className="relative aspect-[16/10] overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
         {img ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={img}
-            alt=""
-            className="w-[88px] h-[88px] object-cover shrink-0"
-            loading="lazy"
-          />
+          <img src={img} alt="" className="h-full w-full object-cover" loading="lazy" />
         ) : (
-          <div className="w-[88px] h-[88px] bg-slate-100 shrink-0 flex items-center justify-center">
-            <Utensils size={20} className="text-slate-300" />
+          <div className="h-full w-full flex items-center justify-center">
+            <Utensils size={24} className="text-slate-300 dark:text-gray-600" />
           </div>
         )}
 
-        <div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between relative">
-          {rank != null && (
-            <div className="absolute -top-0.5 -left-0.5 bg-orange-500 text-white text-[9px] font-bold rounded-br-lg rounded-tl-lg px-1.5 py-0.5">
-              {rank}位
-            </div>
+        {/* Rank badge */}
+        {rank != null && (
+          <div className={[
+            "absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold",
+            rank === 1
+              ? "bg-orange-500 text-white"
+              : rank <= 3
+              ? "bg-white/90 dark:bg-black/60 text-orange-600 dark:text-orange-400"
+              : "bg-white/90 dark:bg-black/60 text-slate-500 dark:text-gray-400",
+          ].join(" ")}>
+            {rank}位
+          </div>
+        )}
+
+        {/* Score overlay */}
+        {score !== null && (
+          <div className="absolute top-2 right-2 inline-flex items-center gap-0.5 rounded-full bg-black/50 backdrop-blur-sm px-1.5 py-0.5 text-[10px] font-bold text-white">
+            <Sparkles size={9} />
+            {score.toFixed(1)}
+          </div>
+        )}
+
+        {/* Gradient overlay at bottom */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/30 to-transparent" />
+
+        {/* Place name on image */}
+        <div className="absolute inset-x-2 bottom-1.5 flex items-end justify-between gap-2">
+          <div className="truncate text-[12px] font-bold text-white drop-shadow-sm">
+            {post.place_name ?? "お店"}
+          </div>
+          {price && (
+            <span className="shrink-0 text-[10px] font-semibold text-white/80">{price}</span>
           )}
-          <div>
-            <div className="font-bold text-[13px] text-slate-900 leading-tight truncate">
-              {post.place_name ?? "\u304A\u5E97"}
-            </div>
-            <div className="flex items-center gap-1 mt-0.5 text-[11px] text-slate-500 truncate">
-              {genre && <span>{genre}</span>}
-              {genre && nearestStation && <span className="text-slate-300">{"\u00B7"}</span>}
-              {nearestStation && nearestMin && (
-                <span>{nearestStation} {"\u5F92\u6B69"}{nearestMin}{"\u5206"}</span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between mt-1">
-            <div className="flex items-center gap-2">
-              {score !== null && (
-                <span
-                  className="inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] font-bold"
-                  style={{
-                    background: score >= 8 ? "#fff7ed" : "#f8fafc",
-                    color: score >= 8 ? "#ea580c" : "#64748b",
-                  }}
-                >
-                  {score}{" / 10"}
-                </span>
-              )}
-              {price && <span className="text-[11px] text-slate-500">{price}</span>}
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[10px] text-slate-400 truncate max-w-[50px]">{name}</span>
-              <div className="h-5 w-5 rounded-full overflow-hidden bg-orange-100 flex items-center justify-center text-[8px] font-semibold text-orange-700 shrink-0">
-                {avatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatar} alt="" className="h-5 w-5 object-cover" loading="lazy" />
-                ) : (
-                  initial
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
-    </a>
+
+      {/* Body */}
+      <div className="px-3 py-2">
+        {/* Location + genre */}
+        <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-gray-500 truncate">
+          {genre && <span className="font-medium text-slate-600 dark:text-gray-400">{genre}</span>}
+          {genre && locLine && <span>·</span>}
+          {locLine && (
+            <>
+              <MapPin size={9} className="shrink-0 opacity-60" />
+              <span className="truncate">{locLine}</span>
+            </>
+          )}
+        </div>
+
+        {/* Content snippet */}
+        {contentSnippet && (
+          <p className="mt-1 text-[11px] leading-snug text-slate-700 dark:text-gray-300 line-clamp-2">
+            {contentSnippet}
+          </p>
+        )}
+
+        {/* Footer: user + detail link */}
+        <div className="mt-1.5 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="h-4 w-4 rounded-full overflow-hidden bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-[7px] font-semibold text-orange-700 dark:text-orange-400 shrink-0">
+              {avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatar} alt="" className="h-4 w-4 object-cover" loading="lazy" />
+              ) : initial}
+            </div>
+            <span className="truncate text-[10px] text-slate-400 dark:text-gray-500">{name}</span>
+          </div>
+
+          {/* Detail link — only show when active */}
+          {active && (
+            <Link
+              href={`/posts/${post.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded-full bg-orange-600 hover:bg-orange-700 px-2.5 py-1 text-[10px] font-bold !text-white transition"
+            >
+              詳細 <ExternalLink size={9} />
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
-/** Horizontal carousel of post cards with auto-select #1 */
+/** Horizontal carousel of post cards */
 export default function MapPostCardCarousel({
   posts,
   selectedPostId,
@@ -159,9 +214,8 @@ export default function MapPostCardCarousel({
     const idx = posts.findIndex((p) => p.id === selectedPostId);
     if (idx < 0) return;
     const el = scrollRef.current;
-    const cardWidth = 288; // 280px card + 8px gap
-    const targetScroll = idx * cardWidth - (el.clientWidth - 280) / 2;
-    // Use requestAnimationFrame to ensure DOM is ready
+    const cardWidth = 268; // 260px card + 8px gap
+    const targetScroll = idx * cardWidth - (el.clientWidth - 260) / 2;
     requestAnimationFrame(() => {
       el.scrollTo({ left: Math.max(0, targetScroll), behavior: "smooth" });
     });
@@ -169,7 +223,7 @@ export default function MapPostCardCarousel({
 
   const scrollBy = (dir: number) => {
     if (!scrollRef.current) return;
-    scrollRef.current.scrollBy({ left: dir * 288, behavior: "smooth" });
+    scrollRef.current.scrollBy({ left: dir * 268, behavior: "smooth" });
   };
 
   if (posts.length === 0) return null;
@@ -180,7 +234,7 @@ export default function MapPostCardCarousel({
       <button
         type="button"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
-        className="absolute -top-1 right-1 z-10 w-5 h-5 rounded-full bg-white/90 backdrop-blur flex items-center justify-center text-slate-400 hover:text-slate-600 shadow-sm border border-slate-100"
+        className="absolute -top-1.5 right-1 z-10 w-5 h-5 rounded-full bg-white/90 dark:bg-[#1e2026] backdrop-blur flex items-center justify-center text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300 shadow-sm border border-slate-100 dark:border-white/10"
         aria-label="close"
       >
         <X size={10} />
@@ -191,7 +245,7 @@ export default function MapPostCardCarousel({
         <button
           type="button"
           onClick={() => scrollBy(-1)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white/90 backdrop-blur flex items-center justify-center text-slate-500 shadow border border-slate-100 hover:bg-white"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/90 dark:bg-[#1e2026]/90 backdrop-blur flex items-center justify-center text-slate-500 dark:text-gray-400 shadow border border-slate-100 dark:border-white/10 hover:bg-white dark:hover:bg-[#1e2026]"
         >
           <ChevronLeft size={14} />
         </button>
@@ -202,7 +256,7 @@ export default function MapPostCardCarousel({
         <button
           type="button"
           onClick={() => scrollBy(1)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white/90 backdrop-blur flex items-center justify-center text-slate-500 shadow border border-slate-100 hover:bg-white"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/90 dark:bg-[#1e2026]/90 backdrop-blur flex items-center justify-center text-slate-500 dark:text-gray-400 shadow border border-slate-100 dark:border-white/10 hover:bg-white dark:hover:bg-[#1e2026]"
         >
           <ChevronRight size={14} />
         </button>
@@ -212,7 +266,7 @@ export default function MapPostCardCarousel({
       <style>{`.map-card-strip::-webkit-scrollbar{display:none}`}</style>
       <div
         ref={scrollRef}
-        className="map-card-strip flex gap-2 overflow-x-auto px-2 py-1"
+        className="map-card-strip flex gap-2 overflow-x-auto px-2 py-1.5"
         style={{
           scrollSnapType: "x mandatory",
           WebkitOverflowScrolling: "touch",
@@ -221,21 +275,20 @@ export default function MapPostCardCarousel({
         }}
       >
         {posts.map((post, i) => (
-          <div
-            key={post.id}
-            style={{ scrollSnapAlign: "center" }}
-            onClick={(e) => {
-              // Don't prevent navigation, but also select the card on click
-              onSelect(post);
-            }}
-          >
+          <div key={post.id} style={{ scrollSnapAlign: "center" }}>
             <CardItem
               post={post}
               rank={i + 1}
               active={selectedPostId === post.id}
+              onTap={() => onSelect(post)}
             />
           </div>
         ))}
+      </div>
+
+      {/* Result count */}
+      <div className="text-center text-[10px] text-slate-400 dark:text-gray-600 mt-0.5 pb-0.5">
+        {posts.length}件
       </div>
     </div>
   );

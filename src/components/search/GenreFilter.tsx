@@ -16,8 +16,8 @@ function chip(active: boolean) {
   return [
     "shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-medium transition",
     active
-      ? "border-orange-400 bg-orange-50 text-orange-800 font-semibold"
-      : "border-black/[.08] bg-white text-slate-700 hover:bg-slate-50",
+      ? "border-orange-400 dark:border-orange-700/50 bg-orange-50 dark:bg-orange-950/40 text-orange-800 dark:text-orange-300 font-semibold"
+      : "border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10",
   ].join(" ");
 }
 
@@ -39,7 +39,7 @@ export default function GenreFilter({ genres, selectedGenre, loading, onSelect }
       </button>
 
       {loading && genres.length === 0 && (
-        <span className="self-center px-1 text-[11px] text-slate-400">読込中…</span>
+        <span className="self-center px-1 text-[11px] text-slate-400 dark:text-gray-500">読込中…</span>
       )}
 
       {visible.map((g) => (
@@ -57,7 +57,7 @@ export default function GenreFilter({ genres, selectedGenre, loading, onSelect }
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 rounded-full border border-black/[.08] bg-white px-3 py-1.5 text-[12px] text-slate-500 transition hover:bg-slate-50"
+          className="shrink-0 rounded-full border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] px-3 py-1.5 text-[12px] text-slate-500 dark:text-gray-400 transition hover:bg-slate-50 dark:hover:bg-white/10"
         >
           {expanded ? "閉じる" : `+${genres.length - GENRE_LIMIT}`}
         </button>

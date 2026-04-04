@@ -66,7 +66,7 @@ export default function LocationFilter({ stationPlaceId, stationName, onSelect, 
   // Station selected → show chip
   if (stationPlaceId && stationName) {
     return (
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-800 pl-3 pr-2 py-1.5 text-[13px] font-semibold text-white">
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-800 dark:bg-white/15 pl-3 pr-2 py-1.5 text-[13px] font-semibold text-white dark:text-gray-100">
         <TrainFront size={13} className="shrink-0" />
         <span className="max-w-[140px] truncate">{stationName}</span>
         <button
@@ -85,8 +85,8 @@ export default function LocationFilter({ stationPlaceId, stationName, onSelect, 
   if (open) {
     return (
       <div className="relative">
-        <div className="flex items-center gap-2 rounded-full border border-orange-300 bg-white px-3 py-1.5 shadow-sm">
-          <TrainFront size={14} className="shrink-0 text-slate-500" />
+        <div className="flex items-center gap-2 rounded-full border border-orange-300 dark:border-orange-700/50 bg-white dark:bg-white/[.06] px-3 py-1.5 shadow-sm">
+          <TrainFront size={14} className="shrink-0 text-slate-500 dark:text-gray-400" />
           <input
             ref={inputRef}
             value={query}
@@ -94,31 +94,31 @@ export default function LocationFilter({ stationPlaceId, stationName, onSelect, 
             onBlur={() => setTimeout(close, 150)}
             onKeyDown={(e) => { if (e.key === "Escape") close(); }}
             placeholder="駅名を入力..."
-            className="w-32 bg-transparent text-sm outline-none placeholder:text-slate-400"
+            className="w-32 bg-transparent text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500"
             inputMode="search"
           />
-          {loading && <span className="text-[11px] text-slate-400">…</span>}
-          <button type="button" onClick={close} className="text-slate-400 hover:text-slate-600">
+          {loading && <span className="text-[11px] text-slate-400 dark:text-gray-500">…</span>}
+          <button type="button" onClick={close} className="text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300">
             <X size={13} />
           </button>
         </div>
 
         {suggests.length > 0 && (
-          <div className="absolute left-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-black/[.08] bg-white shadow-lg">
+          <div className="absolute left-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-black/[.08] dark:border-white/10 bg-white dark:bg-[#1e2026] shadow-lg">
             {suggests.map((s) => (
               <button
                 key={s.station_place_id}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect(s)}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-orange-50"
+                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-orange-50 dark:hover:bg-white/[.06]"
               >
                 <div className="flex items-center gap-2">
-                  <TrainFront size={14} className="shrink-0 text-slate-500" />
-                  <span className="text-sm font-medium text-slate-900">{s.station_name}</span>
+                  <TrainFront size={14} className="shrink-0 text-slate-500 dark:text-gray-400" />
+                  <span className="text-sm font-medium text-slate-900 dark:text-gray-100">{s.station_name}</span>
                 </div>
                 {typeof s.count_places === "number" && (
-                  <span className="shrink-0 text-[11px] text-slate-400">{s.count_places}件</span>
+                  <span className="shrink-0 text-[11px] text-slate-400 dark:text-gray-500">{s.count_places}件</span>
                 )}
               </button>
             ))}
@@ -133,9 +133,9 @@ export default function LocationFilter({ stationPlaceId, stationName, onSelect, 
     <button
       type="button"
       onClick={openSearch}
-      className="inline-flex items-center gap-1.5 rounded-full border border-black/[.08] bg-white px-3 py-1.5 text-[13px] text-slate-600 transition hover:bg-slate-50"
+      className="inline-flex items-center gap-1.5 rounded-full border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] px-3 py-1.5 text-[13px] text-slate-600 dark:text-gray-400 transition hover:bg-slate-50 dark:hover:bg-white/10"
     >
-      <TrainFront size={13} className="text-slate-400" />
+      <TrainFront size={13} className="text-slate-400 dark:text-gray-500" />
       <span>駅で絞り込む</span>
     </button>
   );

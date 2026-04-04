@@ -231,7 +231,7 @@ export default async function CollectionPage({
                     className={[
                       "whitespace-nowrap rounded-full border px-3 py-1.5 text-xs transition",
                       isActive
-                        ? "border-orange-400 bg-orange-400 text-white"
+                        ? "border-orange-400 bg-orange-400 !text-white"
                         : "border-orange-100 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-500",
                     ].join(" ")}
                   >

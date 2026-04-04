@@ -63,7 +63,7 @@ function AvatarBubble({
   return (
     <span
       className={[
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 ring-1 ring-white",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 dark:bg-white/15 ring-1 ring-white dark:ring-[#0b0c0f]",
         className,
       ].join(" ")}
       style={{ width: size, height: size }}
@@ -81,7 +81,7 @@ function AvatarBubble({
           decoding="async"
         />
       ) : (
-        <span className="text-[10px] font-semibold text-slate-600">{initial}</span>
+        <span className="text-[10px] font-semibold text-slate-600 dark:text-gray-300">{initial}</span>
       )}
     </span>
   );
@@ -143,13 +143,13 @@ function LikeListModal({
       />
 
       {/* bottom sheet */}
-      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white dark:bg-[#16181e] shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3">
-          <div className="text-sm font-semibold">いいね！</div>
+          <div className="text-sm font-semibold dark:text-gray-100">いいね！</div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-slate-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-white/10 dark:text-gray-300"
             aria-label="閉じる"
           >
             <X className="h-5 w-5" />
@@ -157,23 +157,23 @@ function LikeListModal({
         </div>
 
         <div className="px-4 pb-3">
-          <div className="flex items-center gap-2 rounded-2xl border border-black/10 bg-slate-50 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-2xl border border-black/10 dark:border-white/10 bg-slate-50 dark:bg-white/[.06] px-3 py-2">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="検索"
-              className="w-full bg-transparent text-sm outline-none"
+              className="w-full bg-transparent text-sm outline-none dark:text-gray-200 dark:placeholder:text-gray-500"
             />
           </div>
         </div>
 
         <div className="max-h-[55vh] overflow-y-auto px-2 pb-4">
           {loading ? (
-            <div className="px-4 py-8 text-center text-xs text-slate-500">読み込み中...</div>
+            <div className="px-4 py-8 text-center text-xs text-slate-500 dark:text-gray-400">読み込み中...</div>
           ) : error ? (
-            <div className="px-4 py-8 text-center text-xs text-red-600">{error}</div>
+            <div className="px-4 py-8 text-center text-xs text-red-600 dark:text-red-400">{error}</div>
           ) : filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-xs text-slate-500">該当なし</div>
+            <div className="px-4 py-8 text-center text-xs text-slate-500 dark:text-gray-400">該当なし</div>
           ) : (
             filtered.map((u) => {
               const initial = (u.display_name ?? "U").slice(0, 1).toUpperCase();
@@ -182,10 +182,10 @@ function LikeListModal({
               return (
                 <div
                   key={u.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl px-3 py-2 hover:bg-slate-50"
+                  className="flex items-center justify-between gap-3 rounded-2xl px-3 py-2 hover:bg-slate-50 dark:hover:bg-white/[.06]"
                 >
                   <Link href={`/u/${u.id}`} className="flex min-w-0 items-center gap-3">
-                    <span className="inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-slate-200">
+                    <span className="inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-slate-200 dark:bg-white/15">
                       {u.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -196,25 +196,25 @@ function LikeListModal({
                           decoding="async"
                         />
                       ) : (
-                        <span className="text-sm font-semibold text-slate-600">{initial}</span>
+                        <span className="text-sm font-semibold text-slate-600 dark:text-gray-300">{initial}</span>
                       )}
                     </span>
 
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900">
+                      <div className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100">
                         {u.display_name ?? "ユーザー"}
                       </div>
-                      <div className="truncate text-xs text-slate-500">@{u.id.slice(0, 10)}…</div>
+                      <div className="truncate text-xs text-slate-500 dark:text-gray-500">@{u.id.slice(0, 10)}…</div>
                     </div>
                   </Link>
 
                   <div className="shrink-0">
                     {isMe ? (
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                      <span className="rounded-full bg-slate-100 dark:bg-white/10 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-gray-300">
                         あなた
                       </span>
                     ) : u.is_following ? (
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      <span className="rounded-full bg-slate-100 dark:bg-white/10 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-gray-300">
                         フォロー中
                       </span>
                     ) : (
@@ -361,7 +361,7 @@ export default function PostActions({
         type="button"
         onClick={toggleLike}
         disabled={loading}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-red-500 hover:bg-red-50 disabled:cursor-not-allowed"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:cursor-not-allowed"
         aria-label={liked ? "いいねを取り消す" : "いいね"}
       >
         <Heart className="h-5 w-5" fill={liked ? "currentColor" : "none"} strokeWidth={1.8} />
@@ -387,7 +387,7 @@ export default function PostActions({
 
           {/* text */}
 {/* text */}
-<div className="min-w-0 text-[12px] text-slate-700">
+<div className="min-w-0 text-[12px] text-slate-700 dark:text-gray-300">
   {likeCount <= 0 ? null : (
     <span className="truncate">
       <span className="font-semibold">いいね！</span>{" "}
@@ -395,18 +395,18 @@ export default function PostActions({
         <>
           <Link
             href={`/u/${displayRow.first.id}`}
-            className="font-semibold text-slate-900 hover:underline"
+            className="font-semibold text-slate-900 dark:text-gray-100 hover:underline"
           >
             {displayRow.first.display_name ?? "ユーザー"}
           </Link>
 
           {displayRow.showOthers ? (
             <>
-              <span className="text-slate-500">、</span>
+              <span className="text-slate-500 dark:text-gray-500">、</span>
               <button
                 type="button"
                 onClick={() => setOpenList(true)}
-                className="font-semibold text-slate-900 hover:underline"
+                className="font-semibold text-slate-900 dark:text-gray-100 hover:underline"
               >
                 他
               </button>
@@ -417,7 +417,7 @@ export default function PostActions({
         <button
           type="button"
           onClick={() => setOpenList(true)}
-          className="font-semibold text-slate-900 hover:underline"
+          className="font-semibold text-slate-900 dark:text-gray-100 hover:underline"
         >
           {likeCount}人
         </button>

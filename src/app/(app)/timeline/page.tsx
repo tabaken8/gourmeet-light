@@ -27,17 +27,17 @@ export default async function TimelinePage({
   const isLoggedIn = !!user;
 
   return (
-    <main className="min-h-screen text-slate-800 bg-white">
+    <main className="min-h-screen text-slate-800 dark:text-gray-200 bg-white dark:bg-transparent">
       <div className="mx-auto w-full max-w-6xl px-2 py-3 md:px-6 md:py-6">
-        <section className="rounded-2xl bg-white">
-          <div className="flex border-b border-slate-100">
+        <section className="rounded-2xl bg-white dark:bg-[#16181e]">
+          <div className="flex border-b border-slate-100 dark:border-white/[.08]">
               <Link
                 href="?tab=friends"
                 className={[
                   "flex-1 py-2 text-center text-[13px] font-medium transition relative",
                   activeTab === "friends"
-                    ? "text-slate-900"
-                    : "text-slate-400 hover:text-slate-600",
+                    ? "text-slate-900 dark:text-gray-100"
+                    : "text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300",
                 ].join(" ")}
               >
                 {"\u6700\u65B0"}
@@ -49,8 +49,8 @@ export default async function TimelinePage({
                 className={[
                   "flex-1 py-2 text-center text-[13px] font-medium transition relative",
                   activeTab === "discover"
-                    ? "text-slate-900"
-                    : "text-slate-400 hover:text-slate-600",
+                    ? "text-slate-900 dark:text-gray-100"
+                    : "text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300",
                 ].join(" ")}
               >
                 {"\u767A\u898B"}

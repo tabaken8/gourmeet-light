@@ -109,16 +109,16 @@ export default async function MoreDiscoverBlock({
     <section>
       <div className="mb-3 flex items-end justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-900">もっと見つける</div>
-          <div className="text-[11px] text-slate-500">テイストが似ているお店</div>
+          <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">もっと見つける</div>
+          <div className="text-[11px] text-slate-500 dark:text-gray-500">テイストが似ているお店</div>
         </div>
-        <Link href="/timeline?tab=discover" className="gm-chip gm-press inline-flex items-center px-2 py-1 text-[11px] text-orange-700 hover:underline">
+        <Link href="/timeline?tab=discover" className="gm-chip gm-press inline-flex items-center px-2 py-1 text-[11px] text-orange-700 dark:text-orange-400 hover:underline">
           もっと見る
         </Link>
       </div>
 
       {recPosts.length === 0 ? (
-        <div className="rounded-2xl border border-black/[.06] bg-white/70 p-6 text-center text-xs text-slate-500">
+        <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white/70 dark:bg-white/[.04] p-6 text-center text-xs text-slate-500 dark:text-gray-500">
           まだおすすめがありません。
         </div>
       ) : (
@@ -133,9 +133,9 @@ export default async function MoreDiscoverBlock({
               <Link
                 key={rp.id}
                 href={`/posts/${rp.id}`}
-                className="gm-press group overflow-hidden rounded-2xl border border-black/[.06] bg-white/80 backdrop-blur"
+                className="gm-press group overflow-hidden rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white/80 dark:bg-white/[.04] backdrop-blur"
               >
-                <div className="relative aspect-square bg-slate-100">
+                <div className="relative aspect-square bg-slate-100 dark:bg-[#1e2026]">
                   {rthumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={rthumb} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
@@ -151,10 +151,10 @@ export default async function MoreDiscoverBlock({
                 </div>
 
                 <div className="p-3">
-                  <div className="truncate text-[11px] font-medium text-slate-900">{rdisplay}</div>
+                  <div className="truncate text-[11px] font-medium text-slate-900 dark:text-gray-100">{rdisplay}</div>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {rscore ? <span className="gm-chip inline-flex items-center px-2 py-1 text-[10px] text-orange-800">{rscore}/10</span> : null}
-                    {rprice ? <span className="gm-chip inline-flex items-center px-2 py-1 text-[10px] text-slate-700">{rprice}</span> : null}
+                    {rscore ? <span className="gm-chip inline-flex items-center px-2 py-1 text-[10px] text-orange-800 dark:text-orange-300">{rscore}/10</span> : null}
+                    {rprice ? <span className="gm-chip inline-flex items-center px-2 py-1 text-[10px] text-slate-700 dark:text-gray-300">{rprice}</span> : null}
                   </div>
                 </div>
               </Link>

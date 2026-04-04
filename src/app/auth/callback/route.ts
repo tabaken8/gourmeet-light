@@ -76,8 +76,9 @@ export async function GET(req: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(oauthCode);
 
   if (error) {
+    console.error("exchangeCodeForSession failed:", error.message, error);
     return NextResponse.redirect(
-      `${requestUrl.origin}/auth/login?debug=exchange_failed&next=${encodeURIComponent(nextPath)}`
+      `${requestUrl.origin}/auth/login?debug=exchange_failed&reason=${encodeURIComponent(error.message)}&next=${encodeURIComponent(nextPath)}`
     );
   }
 
