@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { HelpCircle, MapPin as MapPinIcon, Search, Sparkles, TrainFront, X } from "lucide-react";
+import { Compass, HelpCircle, MapPin as MapPinIcon, Search, Sparkles, TrainFront, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,8 +19,11 @@ import LocationFilter from "@/components/search/LocationFilter";
 import GenreFilter from "@/components/search/GenreFilter";
 import MapPostCardCarousel from "@/components/search/MapPostCard";
 import type { MapBounds, MapPost } from "@/components/search/SearchMap";
+import PersonCardCarousel from "@/components/discover/PersonCard";
+import type { PersonMapItem, PeopleMapResponse } from "@/app/api/people-map/route";
 
 const SearchMap = dynamic(() => import("@/components/search/SearchMap"), { ssr: false });
+const PeopleMap = dynamic(() => import("@/components/discover/PeopleMap"), { ssr: false });
 
 // ---------- types ----------
 type UserHit = {
@@ -255,6 +258,12 @@ export default function SearchPage() {
   // --- empty 時の遅延描画 ---
   const [showDiscover, setShowDiscover] = useState(false);
 
+  // --- people map (discover) ---
+  const [peoplePeople, setPeoplePeople] = useState<PersonMapItem[]>([]);
+  const [peopleCentroid, setPeopleCentroid] = useState<{ lat: number; lng: number } | null>(null);
+  const [peopleLoading, setPeopleLoading] = useState(true);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
   // --- map ---
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [geoMode, setGeoMode] = useState(false);
@@ -279,6 +288,34 @@ export default function SearchPage() {
       .catch(() => { if (alive) setGenreCandidates([]); })
       .finally(() => { if (alive) setGenreCandidatesLoading(false); });
     return () => { alive = false; };
+  }, []);
+
+  // ---- people map データ取得（1回だけ）----
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/people-map");
+        if (!res.ok) throw new Error("Failed to fetch");
+        const data: PeopleMapResponse = await res.json();
+        if (!alive) return;
+        setPeoplePeople(data.people ?? []);
+        setPeopleCentroid(data.my_centroid ?? null);
+      } catch {
+        // silently fail — discover section just won't show
+      } finally {
+        if (alive) setPeopleLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const handleSelectPerson = useCallback((userId: string | null) => {
+    setSelectedUserId(userId);
+  }, []);
+
+  const handleCardSelect = useCallback((userId: string) => {
+    setSelectedUserId(userId);
   }, []);
 
   // ---- モバイル判定（リサイズ追跡）----
@@ -1034,15 +1071,48 @@ export default function SearchPage() {
 
           {!geoMode && (
             <AnimatePresence mode="wait">
-              {!showDiscover ? (
-                <motion.div key="empty-splash" {...fadeUp} className="px-3 py-2">
-                  <div className="text-xs text-slate-500 dark:text-gray-500">
-                    {"\u30AD\u30FC\u30EF\u30FC\u30C9\u5165\u529B\u30FB\u99C5\u9078\u629E\u30FB\u30B8\u30E3\u30F3\u30EB\u9078\u629E\u3067\u3082\u691C\u7D22\u3067\u304D\u307E\u3059"}
+              {peopleLoading ? (
+                <motion.div key="people-loading" {...fadeUp} className="space-y-3 px-2">
+                  <div className="w-full rounded-xl bg-slate-100 dark:bg-[#1e2026] animate-pulse" style={{ height: "40vh", minHeight: 240 }} />
+                  <div className="flex gap-3 overflow-hidden">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="w-[240px] shrink-0 rounded-2xl bg-slate-100 dark:bg-[#1e2026] animate-pulse h-[180px]" />
+                    ))}
                   </div>
                 </motion.div>
-              ) : (
+              ) : peoplePeople.length > 0 ? (
                 <motion.div key="discover" {...fadeUp}>
-                  <TimelineFeed activeTab="discover" meId={meId} />
+                  <div className="mb-2 flex items-center gap-2 px-3">
+                    <Compass size={14} className="text-orange-500" />
+                    <h2 className="text-[13px] font-semibold text-slate-700 dark:text-gray-300">
+                      みんなの食の地図
+                    </h2>
+                    <span className="text-[10px] text-slate-400 dark:text-gray-600">
+                      {peoplePeople.filter((p) => p.is_following).length}人
+                      {peoplePeople.filter((p) => !p.is_following).length > 0
+                        ? ` + おすすめ${peoplePeople.filter((p) => !p.is_following).length}人`
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="px-2">
+                    <PeopleMap
+                      people={peoplePeople}
+                      selectedUserId={selectedUserId}
+                      onSelectPerson={handleSelectPerson}
+                      initialCenter={peopleCentroid}
+                    />
+                  </div>
+                  <PersonCardCarousel
+                    people={peoplePeople}
+                    selectedUserId={selectedUserId}
+                    onSelect={handleCardSelect}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div key="empty-splash" {...fadeUp} className="px-3 py-2">
+                  <div className="text-xs text-slate-500 dark:text-gray-500">
+                    キーワード入力・駅選択・ジャンル選択でも検索できます
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

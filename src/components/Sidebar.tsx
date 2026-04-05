@@ -263,9 +263,9 @@ export default function Sidebar({ name }: { name?: string }) {
           iconClassName="text-blue-600"
         />
 
-        {/* ✅ 発見（People Map） */}
+        {/* ✅ 発見（People Map + Search） */}
         <NavItem
-          href={gate("/discover", true)}
+          href={gate("/search", true)}
           label="発見"
           icon={Compass}
           iconClassName="text-orange-700"

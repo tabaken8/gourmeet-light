@@ -276,12 +276,12 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
       {/* 発見（中央） */}
       <div className="justify-self-center">
         <IconButton
-          href={gate("/discover", true)}
-          active={isActive("/discover")}
+          href={gate("/search", true)}
+          active={isActive("/search")}
           ariaLabel="発見"
           activeClassName="bg-slate-200/70"
         >
-          <Compass size={18} className={isActive("/discover") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
+          <Compass size={18} className={isActive("/search") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
         </IconButton>
       </div>
 

@@ -9,20 +9,53 @@ import {
   OverlayView,
 } from "@react-google-maps/api";
 import type { PersonMapItem } from "@/app/api/people-map/route";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
-// ── map options ──
-const MAP_OPTIONS: google.maps.MapOptions = {
+// ── shared map options (without styles — those are theme-dependent) ──
+const BASE_MAP_OPTIONS: google.maps.MapOptions = {
   disableDefaultUI: true,
   zoomControl: true,
   zoomControlOptions: { position: 3 /* RIGHT_TOP */ },
   gestureHandling: "greedy",
   clickableIcons: false,
-  styles: [
-    { featureType: "poi.business", stylers: [{ visibility: "off" }] },
-    { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
-    { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  ],
 };
+
+const LIGHT_STYLES: google.maps.MapTypeStyle[] = [
+  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+];
+
+const DARK_STYLES: google.maps.MapTypeStyle[] = [
+  { elementType: "geometry", stylers: [{ color: "#1d2c4d" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8ec3b9" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#1a3646" }] },
+  { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [{ color: "#4b6878" }] },
+  { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#64779e" }] },
+  { featureType: "administrative.province", elementType: "geometry.stroke", stylers: [{ color: "#4b6878" }] },
+  { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ color: "#334e87" }] },
+  { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#023e58" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#283d6a" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#6f9ba5" }] },
+  { featureType: "poi", elementType: "labels.text.stroke", stylers: [{ color: "#1d2c4d" }] },
+  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#023e58" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#3C7680" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#304a7d" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#98a5be" }] },
+  { featureType: "road", elementType: "labels.text.stroke", stylers: [{ color: "#1d2c4d" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2c6675" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#255763" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#b0d5ce" }] },
+  { featureType: "road.highway", elementType: "labels.text.stroke", stylers: [{ color: "#023e58" }] },
+  { featureType: "transit", stylers: [{ color: "#146474" }] },
+  { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", elementType: "labels.text.fill", stylers: [{ color: "#98a5be" }] },
+  { featureType: "transit", elementType: "labels.text.stroke", stylers: [{ color: "#1d2c4d" }] },
+  { featureType: "water", elementType: "geometry.fill", stylers: [{ color: "#132f47" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#4e6d70" }] },
+];
 
 const MAP_CONTAINER: React.CSSProperties = {
   width: "100%",
@@ -118,48 +151,22 @@ function PostPin({
       {expanded ? (
         /* Expanded: thumbnail card */
         <div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              backgroundColor: "white",
-              borderRadius: 10,
-              padding: "5px 8px 5px 5px",
-              maxWidth: 180,
-              border: "2px solid #f97316",
-            }}
-          >
+          <div className="flex items-center gap-1.5 rounded-[10px] border-2 border-orange-500 bg-white dark:bg-[#1e2026] px-1.5 py-1 max-w-[180px]">
             {post.image_url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={post.image_url}
                 alt=""
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 6,
-                  objectFit: "cover",
-                  flexShrink: 0,
-                }}
+                className="w-9 h-9 rounded-md object-cover shrink-0"
                 loading="lazy"
               />
             )}
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "#1e293b",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[11px] font-semibold text-slate-800 dark:text-gray-100">
                 {post.place_name}
               </div>
               {post.recommend_score != null && (
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#f97316" }}>
+                <div className="text-[10px] font-bold text-orange-500">
                   {post.recommend_score.toFixed(1)}
                 </div>
               )}
@@ -240,6 +247,12 @@ export default function PeopleMap({
   onSelectPerson: (userId: string | null) => void;
   initialCenter?: { lat: number; lng: number } | null;
 }) {
+  const { resolved: theme } = useTheme();
+  const mapOptions = useMemo<google.maps.MapOptions>(
+    () => ({ ...BASE_MAP_OPTIONS, styles: theme === "dark" ? DARK_STYLES : LIGHT_STYLES }),
+    [theme],
+  );
+
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
     id: "gourmeet-google-maps",
@@ -252,6 +265,13 @@ export default function PeopleMap({
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
   }, []);
+
+  // Update map styles when theme changes
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.setOptions({ styles: theme === "dark" ? DARK_STYLES : LIGHT_STYLES });
+    }
+  }, [theme]);
 
   const handleMapClick = useCallback(() => {
     setExpandedPinIdx(null);
@@ -379,7 +399,7 @@ export default function PeopleMap({
         mapContainerStyle={MAP_CONTAINER}
         center={center}
         zoom={13}
-        options={MAP_OPTIONS}
+        options={mapOptions}
         onLoad={onMapLoad}
         onClick={handleMapClick}
       >
