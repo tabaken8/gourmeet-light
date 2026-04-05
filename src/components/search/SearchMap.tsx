@@ -10,6 +10,7 @@ import {
 } from "@react-google-maps/api";
 import { MapPin, Navigation, Search, Utensils, Loader2 } from "lucide-react";
 import type { PostRow } from "./SearchPostList";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 // ── types ──
 export type MapBounds = {
@@ -22,18 +23,50 @@ export type MapBounds = {
 export type MapPost = PostRow & { place_lat: number; place_lng: number };
 
 // ── map options ──
-const MAP_OPTIONS: google.maps.MapOptions = {
+const BASE_MAP_OPTIONS: google.maps.MapOptions = {
   disableDefaultUI: true,
   zoomControl: true,
   zoomControlOptions: { position: 3 /* RIGHT_TOP */ },
   gestureHandling: "greedy",
   clickableIcons: false,
-  styles: [
-    { featureType: "poi.business", stylers: [{ visibility: "off" }] },
-    { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
-    { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  ],
 };
+
+const LIGHT_STYLES: google.maps.MapTypeStyle[] = [
+  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+];
+
+const DARK_STYLES: google.maps.MapTypeStyle[] = [
+  { elementType: "geometry", stylers: [{ color: "#1d2c4d" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8ec3b9" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#1a3646" }] },
+  { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [{ color: "#4b6878" }] },
+  { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#64779e" }] },
+  { featureType: "administrative.province", elementType: "geometry.stroke", stylers: [{ color: "#4b6878" }] },
+  { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ color: "#334e87" }] },
+  { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#023e58" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#283d6a" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#6f9ba5" }] },
+  { featureType: "poi", elementType: "labels.text.stroke", stylers: [{ color: "#1d2c4d" }] },
+  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#023e58" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#3C7680" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#304a7d" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#98a5be" }] },
+  { featureType: "road", elementType: "labels.text.stroke", stylers: [{ color: "#1d2c4d" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2c6675" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#255763" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#b0d5ce" }] },
+  { featureType: "road.highway", elementType: "labels.text.stroke", stylers: [{ color: "#023e58" }] },
+  { featureType: "transit", stylers: [{ color: "#146474" }] },
+  { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", elementType: "labels.text.fill", stylers: [{ color: "#98a5be" }] },
+  { featureType: "transit", elementType: "labels.text.stroke", stylers: [{ color: "#1d2c4d" }] },
+  { featureType: "water", elementType: "geometry.fill", stylers: [{ color: "#132f47" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#4e6d70" }] },
+];
 
 const MAP_CONTAINER: React.CSSProperties = {
   width: "100%",
@@ -113,6 +146,12 @@ export default function SearchMap({
   /** Keyword search within current map bounds */
   onScopedSearch?: (keyword: string, bounds: MapBounds) => void;
 }) {
+  const { resolved: theme } = useTheme();
+  const mapOptions = useMemo<google.maps.MapOptions>(
+    () => ({ ...BASE_MAP_OPTIONS, styles: theme === "dark" ? DARK_STYLES : LIGHT_STYLES }),
+    [theme],
+  );
+
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
     id: "gourmeet-google-maps",
@@ -273,6 +312,13 @@ export default function SearchMap({
     settledBoundsRef.current = `${currentBounds.north.toFixed(4)}_${currentBounds.south.toFixed(4)}_${currentBounds.east.toFixed(4)}_${currentBounds.west.toFixed(4)}`;
   }, [currentBounds, onSearchThisArea, onScopedSearch, scopedQ]);
 
+  // Update map styles when theme changes
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.setOptions({ styles: theme === "dark" ? DARK_STYLES : LIGHT_STYLES });
+    }
+  }, [theme]);
+
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
     if (mappablePosts.length > 0) {
@@ -319,7 +365,7 @@ export default function SearchMap({
         mapContainerStyle={MAP_CONTAINER}
         center={center}
         zoom={userLocation ? 15 : 13}
-        options={MAP_OPTIONS}
+        options={mapOptions}
         onLoad={onMapLoad}
         onIdle={handleBoundsChanged}
         onClick={handleMapClick}
