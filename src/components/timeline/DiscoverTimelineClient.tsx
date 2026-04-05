@@ -1,7 +1,7 @@
 // src/components/timeline/DiscoverTimelineClient.tsx
 "use client";
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import TimelinePostList from "@/components/timeline/TimelinePostList";
 import PostsSkeleton from "@/components/PostsSkeleton";
 
@@ -48,6 +48,18 @@ export default function DiscoverTimelineClient({
 
   const hasMore = !!nextCursor;
 
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) load(true); },
+      { rootMargin: "600px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [load]);
+
   if (!booted && loading) return <PostsSkeleton />;
 
   if (posts.length === 0) return null;
@@ -56,17 +68,7 @@ export default function DiscoverTimelineClient({
     <div>
       <TimelinePostList posts={posts} meId={meId} />
 
-      {hasMore ? (
-        <div className="mt-4 flex justify-center">
-          <button
-            onClick={() => load(true)}
-            disabled={loading}
-            className="rounded-full px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 disabled:opacity-60"
-          >
-            {loading ? "読み込み中..." : "もっと見る"}
-          </button>
-        </div>
-      ) : null}
+      {hasMore ? <div ref={sentinelRef} className="h-px" /> : null}
 
       {loading ? (
         <div className="mt-4">

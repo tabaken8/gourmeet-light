@@ -55,15 +55,15 @@ function PitchIcon({ kind }: { kind?: PitchItem["icon"] }) {
   const cls = "h-4 w-4 shrink-0";
   switch (kind) {
     case "friends":
-      return <Users className={`${cls} text-blue-700`} />;
+      return <Users className={`${cls} text-blue-700 dark:text-blue-400`} />;
     case "bookmark":
-      return <Bookmark className={`${cls} text-pink-700`} />;
+      return <Bookmark className={`${cls} text-pink-700 dark:text-pink-400`} />;
     case "map":
-      return <MapPin className={`${cls} text-emerald-700`} />;
+      return <MapPin className={`${cls} text-emerald-700 dark:text-emerald-400`} />;
     case "trust":
-      return <ShieldCheck className={`${cls} text-violet-700`} />;
+      return <ShieldCheck className={`${cls} text-violet-700 dark:text-violet-400`} />;
     default:
-      return <Sparkles className={`${cls} text-orange-700`} />;
+      return <Sparkles className={`${cls} text-orange-700 dark:text-orange-400`} />;
   }
 }
 

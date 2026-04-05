@@ -1,7 +1,7 @@
 // src/components/timeline/FriendsTimelineClient.tsx
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type RefCallback } from "react";
 import Link from "next/link";
 import TimelinePostList from "@/components/timeline/TimelinePostList";
 import PostsSkeleton from "@/components/PostsSkeleton";
@@ -673,6 +673,18 @@ export default function FriendsTimelineClient({
     }
   }, [hasMore, loadingMore, nextCursor, meta]);
 
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) loadMore(); },
+      { rootMargin: "600px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [loadMore]);
+
   const suggestBlock = useMemo(() => {
     const sug = meta?.suggestion;
     const users = sug?.users ?? [];
@@ -700,7 +712,7 @@ export default function FriendsTimelineClient({
       : 1;
   }, [meta]);
 
-  // guest でも zero-follow でも “プレビューgrid” を取る（必要時のみ）
+  // guest でも zero-follow でも "プレビューgrid" を取る（必要時のみ）
   useEffect(() => {
     const needPreview =
       (!meId && discoverPosts.length === 0) ||
@@ -739,13 +751,13 @@ export default function FriendsTimelineClient({
       <div className="flex flex-col gap-4">
 {/* 先頭説明（枠なし） */}
 <div className="mt-2 px-1">
-  <div className="text-[24px] leading-tight font-extrabold text-slate-900">
+  <div className="text-[24px] leading-tight font-extrabold text-slate-900 dark:text-gray-100">
     ようこそGourmeetへ！
           </div>
 
-  <div className="mt-2 text-[14px] leading-6 text-slate-600">
+  <div className="mt-2 text-[14px] leading-6 text-slate-600 dark:text-gray-400">
     Gourmeetは、「星3.3の平均点」や「知らない人の口コミ」よりも、身近な友達の
-    <span className="font-semibold text-slate-900"> “ここ良かったよ” </span>
+    <span className="font-semibold text-slate-900 dark:text-gray-100"> "ここ良かったよ" </span>
     でお店に出会える、グルメ専用SNSです。
     <br />
     <br />
@@ -754,11 +766,11 @@ export default function FriendsTimelineClient({
         </div>
 
         {/* ログイン/サインアップ導線（上へ） */}
-        <div className="rounded-2xl border border-black/[.06] bg-white p-5">
-          <div className="text-sm font-semibold text-slate-900">
+        <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-[#16181e] p-5">
+          <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">
             だれでも5秒でサインアップ
           </div>
-          <div className="mt-1 text-[13px] leading-6 text-slate-600">
+          <div className="mt-1 text-[13px] leading-6 text-slate-600 dark:text-gray-400">
             メールアドレス or Googleからから、すぐ始められます。
           </div>
 
@@ -778,7 +790,7 @@ export default function FriendsTimelineClient({
           </div>
         </div>
 
-        {/* ✅ 端まで表示（Searchと同じ “余白ゼロ感”） */}
+        {/* ✅ 端まで表示（Searchと同じ "余白ゼロ感"） */}
         <FullBleed className="md:relative md:left-auto md:right-auto md:w-auto md:translate-x-0">
           {discoverLoading && discoverPosts.length === 0 ? (
             <div className="py-10 text-center text-xs text-slate-500">読み込み中...</div>
@@ -787,7 +799,7 @@ export default function FriendsTimelineClient({
               表示できる投稿がありません
             </div>
           ) : (
-            <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
+            <div className="md:rounded-2xl md:border md:border-black/[.06] dark:md:border-white/[.08] md:bg-white dark:md:bg-[#16181e] overflow-hidden">
               <DiscoverGrid posts={discoverPosts} meId={null} seed="guest-welcome" />
             </div>
           )}
@@ -802,11 +814,11 @@ export default function FriendsTimelineClient({
   if (followCount === 0 && (posts?.length ?? 0) === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="rounded-2xl border border-black/[.06] bg-white p-6">
-          <div className="text-base font-semibold text-slate-900">
+        <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-[#16181e] p-6">
+          <div className="text-base font-semibold text-slate-900 dark:text-gray-100">
             ようこそGourmeetへ
           </div>
-          <div className="mt-2 text-sm leading-6 text-slate-600">
+          <div className="mt-2 text-sm leading-6 text-slate-600 dark:text-gray-400">
             まずは発見タブで、友達や気になる人をフォローしてタイムラインを育ててみましょう。
           </div>
         </div>
@@ -822,7 +834,7 @@ export default function FriendsTimelineClient({
               表示できる投稿がありません
             </div>
           ) : (
-            <div className="md:rounded-2xl md:border md:border-black/[.06] md:bg-white overflow-hidden">
+            <div className="md:rounded-2xl md:border md:border-black/[.06] dark:md:border-white/[.08] md:bg-white dark:md:bg-[#16181e] overflow-hidden">
               <DiscoverGrid
                 posts={discoverPosts}
                 meId={meId}
@@ -889,17 +901,7 @@ export default function FriendsTimelineClient({
         {(posts?.length ?? 0) <= suggestAtIndex ? suggestBlock : null}
       </div>
 
-      {hasMore ? (
-        <div className="mt-4 flex justify-center">
-          <button
-            onClick={loadMore}
-            disabled={loadingMore}
-            className="rounded-full px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 disabled:opacity-60"
-          >
-            {loadingMore ? "読み込み中..." : "もっと見る"}
-          </button>
-        </div>
-      ) : null}
+      {hasMore ? <div ref={sentinelRef} className="h-px" /> : null}
 
       {loadingMore ? (
         <div className="mt-4">
