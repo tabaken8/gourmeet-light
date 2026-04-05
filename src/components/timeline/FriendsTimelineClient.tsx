@@ -1,7 +1,7 @@
 // src/components/timeline/FriendsTimelineClient.tsx
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, type RefCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import TimelinePostList from "@/components/timeline/TimelinePostList";
 import PostsSkeleton from "@/components/PostsSkeleton";
@@ -757,7 +757,7 @@ export default function FriendsTimelineClient({
 
   <div className="mt-2 text-[14px] leading-6 text-slate-600 dark:text-gray-400">
     Gourmeetは、「星3.3の平均点」や「知らない人の口コミ」よりも、身近な友達の
-    <span className="font-semibold text-slate-900 dark:text-gray-100"> "ここ良かったよ" </span>
+    <span className="font-semibold text-slate-900 dark:text-gray-100"> &ldquo;ここ良かったよ&rdquo; </span>
     でお店に出会える、グルメ専用SNSです。
     <br />
     <br />
