@@ -33,7 +33,7 @@ export async function GET(
   // プロフィール
   const { data: profs, error: perr } = await supabase
     .from("profiles")
-    .select("id, display_name, avatar_url, is_public")
+    .select("id, display_name, avatar_url, is_public, username")
     .in("id", userIds);
 
   if (perr) return json({ error: perr.message }, 500);
@@ -65,6 +65,7 @@ export async function GET(
         avatar_url: p.avatar_url,
         is_public: p.is_public ?? true,
         is_following: me?.id ? followingSet.has(p.id) : false,
+        username: p.username ?? null,
       };
     })
     .filter(Boolean);

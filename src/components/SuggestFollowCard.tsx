@@ -11,6 +11,7 @@ export type SuggestUser = {
   avatar_url: string | null;
   is_following: boolean;
   reason?: string | null;
+  username?: string | null;
 };
 
 function Avatar({ url, name }: { url: string | null; name: string }) {
@@ -53,7 +54,7 @@ export default function SuggestFollowCard({
               key={u.id}
               className="flex items-center justify-between gap-3 rounded-2xl px-3 py-2 hover:bg-slate-50"
             >
-              <Link href={`/u/${u.id}`} className="flex min-w-0 items-center gap-3">
+              <Link href={`/u/${u.username ?? u.id}`} className="flex min-w-0 items-center gap-3">
                 <Avatar url={u.avatar_url} name={name} />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold text-slate-900">{name}</div>

@@ -30,14 +30,12 @@ const MAP_CONTAINER: React.CSSProperties = {
   borderRadius: 12,
 };
 
-// ── Avatar Pin ──
+// ── Avatar Pin (overview mode) ──
 function AvatarPin({
   person,
-  selected,
   onClick,
 }: {
   person: PersonMapItem;
-  selected: boolean;
   onClick: () => void;
 }) {
   const initial = (person.display_name || person.username || "U").slice(0, 1).toUpperCase();
@@ -49,13 +47,11 @@ function AvatarPin({
         onClick();
       }}
       style={{
-        transform: `translate(-50%, -50%) scale(${selected ? 1.2 : 1})`,
+        transform: "translate(-50%, -50%)",
         cursor: "pointer",
         transition: "transform 0.2s ease, filter 0.2s ease",
-        zIndex: selected ? 100 : 1,
-        filter: selected
-          ? "drop-shadow(0 2px 8px rgba(234,88,12,0.5))"
-          : "drop-shadow(0 1px 3px rgba(0,0,0,0.25))",
+        zIndex: 1,
+        filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.25))",
       }}
     >
       <div
@@ -63,7 +59,7 @@ function AvatarPin({
           width: 44,
           height: 44,
           borderRadius: "50%",
-          border: selected ? "3px solid #f97316" : "3px solid white",
+          border: "3px solid white",
           overflow: "hidden",
           backgroundColor: "#fed7aa",
           display: "flex",
@@ -91,27 +87,143 @@ function AvatarPin({
           </span>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Post count badge */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: -2,
-          right: -4,
-          backgroundColor: selected ? "#ea580c" : "#64748b",
-          color: "white",
-          fontSize: 9,
-          fontWeight: 700,
-          borderRadius: 8,
-          padding: "1px 4px",
-          minWidth: 16,
-          textAlign: "center",
-          border: "2px solid white",
-          lineHeight: "12px",
-        }}
-      >
-        {person.post_count}
-      </div>
+// ── Post Pin (territory mode — tap to expand thumbnail card) ──
+function PostPin({
+  post,
+  expanded,
+  onTap,
+}: {
+  post: PersonMapItem["post_latlngs"][number];
+  expanded: boolean;
+  onTap: () => void;
+}) {
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onTap();
+      }}
+      style={{
+        transform: "translate(-50%, -100%)",
+        cursor: "pointer",
+        zIndex: expanded ? 90 : 50,
+        filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.3))",
+        transition: "z-index 0s",
+      }}
+    >
+      {expanded ? (
+        /* Expanded: thumbnail card */
+        <div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: "white",
+              borderRadius: 10,
+              padding: "5px 8px 5px 5px",
+              maxWidth: 180,
+              border: "2px solid #f97316",
+            }}
+          >
+            {post.image_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={post.image_url}
+                alt=""
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 6,
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
+                loading="lazy"
+              />
+            )}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "#1e293b",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {post.place_name}
+              </div>
+              {post.recommend_score != null && (
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#f97316" }}>
+                  {post.recommend_score.toFixed(1)}
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Arrow */}
+          <div
+            style={{
+              width: 0,
+              height: 0,
+              borderLeft: "7px solid transparent",
+              borderRight: "7px solid transparent",
+              borderTop: "7px solid #f97316",
+              margin: "0 auto",
+            }}
+          />
+        </div>
+      ) : (
+        /* Collapsed: pin icon */
+        <div>
+          <div
+            style={{
+              width: 24,
+              height: 32,
+              position: "relative",
+            }}
+          >
+            {/* Pin body */}
+            <div
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: "50% 50% 50% 0",
+                backgroundColor: "#f97316",
+                border: "2px solid white",
+                transform: "rotate(-45deg)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: "white",
+                  transform: "rotate(45deg)",
+                }}
+              />
+            </div>
+            {/* Pin shadow */}
+            <div
+              style={{
+                width: 10,
+                height: 4,
+                borderRadius: "50%",
+                backgroundColor: "rgba(0,0,0,0.15)",
+                margin: "1px auto 0",
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -126,7 +238,6 @@ export default function PeopleMap({
   people: PersonMapItem[];
   selectedUserId: string | null;
   onSelectPerson: (userId: string | null) => void;
-  /** User's own specialty centroid for initial view. Null → fit all people or default Tokyo. */
   initialCenter?: { lat: number; lng: number } | null;
 }) {
   const { isLoaded } = useJsApiLoader({
@@ -136,34 +247,37 @@ export default function PeopleMap({
 
   const mapRef = useRef<google.maps.Map | null>(null);
   const prevKeyRef = useRef<string>("");
+  const [expandedPinIdx, setExpandedPinIdx] = useState<number | null>(null);
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
   }, []);
 
   const handleMapClick = useCallback(() => {
+    setExpandedPinIdx(null);
     onSelectPerson(null);
   }, [onSelectPerson]);
 
-  // Fit map to initial view: user's centroid region or densest cluster of people
+  const selectedPerson = useMemo(
+    () => (selectedUserId ? people.find((p) => p.user_id === selectedUserId) ?? null : null),
+    [selectedUserId, people],
+  );
+
   const fitToPeople = useCallback((ppl: PersonMapItem[]) => {
     if (!mapRef.current || ppl.length === 0) return;
 
-    // If we have the user's own centroid, center on that area and zoom to show nearby people
     if (initialCenter) {
       mapRef.current.setCenter(initialCenter);
       mapRef.current.setZoom(13);
       return;
     }
 
-    // No user centroid → fit to the densest cluster of people
     if (ppl.length === 1) {
       mapRef.current.setCenter({ lat: ppl[0].centroid_lat, lng: ppl[0].centroid_lng });
       mapRef.current.setZoom(14);
       return;
     }
 
-    // Find densest cluster of people centroids (grid ~50km)
     const CELL = 0.5;
     const cells = new Map<string, PersonMapItem[]>();
     for (const p of ppl) {
@@ -175,7 +289,6 @@ export default function PeopleMap({
     let bestCell: PersonMapItem[] = ppl;
     let bestCount = 0;
     for (const [ck, arr] of cells) {
-      // Include adjacent cells
       const [cy, cx] = ck.split(",").map(Number);
       const nearby: PersonMapItem[] = [];
       for (let dy = -1; dy <= 1; dy++) {
@@ -212,18 +325,41 @@ export default function PeopleMap({
     return () => clearTimeout(t);
   }, [people, fitToPeople]);
 
-  // Pan to selected person
+  // Reset expanded pin when person changes
   useEffect(() => {
-    if (!selectedUserId || !mapRef.current) return;
-    const person = people.find((p) => p.user_id === selectedUserId);
-    if (!person) return;
-    mapRef.current.panTo({ lat: person.centroid_lat, lng: person.centroid_lng });
-  }, [selectedUserId, people]);
+    setExpandedPinIdx(null);
+  }, [selectedUserId]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    if (!selectedPerson) {
+      fitToPeople(people);
+      return;
+    }
+
+    if (selectedPerson.bounds) {
+      const bounds = new google.maps.LatLngBounds(
+        selectedPerson.bounds.sw,
+        selectedPerson.bounds.ne,
+      );
+      mapRef.current.fitBounds(bounds, { top: 50, bottom: 50, left: 40, right: 40 });
+
+      google.maps.event.addListenerOnce(mapRef.current, "idle", () => {
+        if (mapRef.current) {
+          const z = mapRef.current.getZoom();
+          if (z !== undefined && z > 16) mapRef.current.setZoom(16);
+        }
+      });
+    } else {
+      mapRef.current.panTo({ lat: selectedPerson.centroid_lat, lng: selectedPerson.centroid_lng });
+    }
+  }, [selectedPerson, people, fitToPeople]);
 
   const center = useMemo(() => {
     if (initialCenter) return initialCenter;
     if (people.length > 0) return { lat: people[0].centroid_lat, lng: people[0].centroid_lng };
-    return { lat: 35.681236, lng: 139.767125 }; // Tokyo Station default
+    return { lat: 35.681236, lng: 139.767125 };
   }, [people, initialCenter]);
 
   if (!isLoaded) {
@@ -247,16 +383,32 @@ export default function PeopleMap({
         onLoad={onMapLoad}
         onClick={handleMapClick}
       >
-        {people.map((person) => (
+        {/* Overview: avatar pins (hidden when someone is selected) */}
+        {!selectedUserId &&
+          people.map((person) => (
+            <OverlayViewF
+              key={person.user_id}
+              position={{ lat: person.centroid_lat, lng: person.centroid_lng }}
+              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+            >
+              <AvatarPin
+                person={person}
+                onClick={() => onSelectPerson(person.user_id)}
+              />
+            </OverlayViewF>
+          ))}
+
+        {/* Territory: all post pins for selected person */}
+        {selectedPerson?.post_latlngs.map((post, i) => (
           <OverlayViewF
-            key={person.user_id}
-            position={{ lat: person.centroid_lat, lng: person.centroid_lng }}
+            key={`pin-${i}`}
+            position={{ lat: post.lat, lng: post.lng }}
             mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
           >
-            <AvatarPin
-              person={person}
-              selected={selectedUserId === person.user_id}
-              onClick={() => onSelectPerson(person.user_id)}
+            <PostPin
+              post={post}
+              expanded={expandedPinIdx === i}
+              onTap={() => setExpandedPinIdx(expandedPinIdx === i ? null : i)}
             />
           </OverlayViewF>
         ))}

@@ -5,17 +5,19 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function FollowersPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();;
-  const userId = params.id;
+  const paramId = params.id;
 
-  // 対象ユーザー存在確認（名前表示用）
-  const { data: prof } = await supabase
-    .from("profiles")
-    .select("id, username, display_name")
-    .eq("id", userId)
-    .maybeSingle();
+  // resolve username or UUID → profile
+  const { data: prof } = UUID_RE.test(paramId)
+    ? await supabase.from("profiles").select("id, username, display_name").eq("id", paramId).maybeSingle()
+    : await supabase.from("profiles").select("id, username, display_name").ilike("username", paramId).maybeSingle();
   if (!prof) return notFound();
+
+  const userId = prof.id;
 
   // follower_id を取得
   const { data: rows } = await supabase
@@ -52,7 +54,7 @@ export default async function FollowersPage({ params }: { params: { id: string }
                 <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-white/10" />
               )}
               <div className="min-w-0">
-                <Link href={`/u/${u.id}`} className="block truncate font-medium hover:underline dark:text-gray-100">
+                <Link href={`/u/${u.username ?? u.id}`} className="block truncate font-medium hover:underline dark:text-gray-100">
                   {u.display_name ?? u.username ?? "ユーザー"}
                 </Link>
                 {u.username && <div className="truncate text-xs text-black/60 dark:text-gray-500">@{u.username}</div>}

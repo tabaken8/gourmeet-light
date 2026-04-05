@@ -174,7 +174,7 @@ export default function NotificationsClient({ initial }: { initial: Notification
               // ✅ 行全体のリンク先：基本は投稿、なければプロフィール
               const rowHref =
                 postHref ??
-                (a?.id ? `/u/${encodeURIComponent(a.id)}` : "/notifications");
+                (a?.id ? `/u/${encodeURIComponent(a.username ?? a.id)}` : "/notifications");
 
               const unread = false; // 既読化済み前提にしてる（未読ハイライトしたければ n.read_at を使う）
 

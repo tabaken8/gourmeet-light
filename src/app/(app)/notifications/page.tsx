@@ -345,7 +345,7 @@ export default function NotificationsPage() {
                       n.type === "detail_answer" && dr?.id
                         ? `/requests/${dr.id}`
                         : n.type === "follow" && actor?.id
-                        ? `/u/${actor.id}`
+                        ? `/u/${actor.username ?? actor.id}`
                         : post?.id
                         ? `/posts/${post.id}`
                         : "/timeline";

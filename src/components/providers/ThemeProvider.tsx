@@ -20,8 +20,8 @@ type ThemeCtx = {
 };
 
 const ThemeContext = createContext<ThemeCtx>({
-  theme: "system",
-  resolved: "light",
+  theme: "dark",
+  resolved: "dark",
   setTheme: () => {},
   toggle: () => {},
 });
@@ -47,8 +47,8 @@ function applyClass(resolved: Resolved) {
 }
 
 export default function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [resolved, setResolved] = useState<Resolved>("light");
+  const [theme, setThemeState] = useState<Theme>("dark");
+  const [resolved, setResolved] = useState<Resolved>("dark");
 
   // Initialise from localStorage
   useEffect(() => {

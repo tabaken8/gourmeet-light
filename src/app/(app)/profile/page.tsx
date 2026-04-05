@@ -226,7 +226,7 @@ export default async function AccountPage() {
 
                 <li className="flex items-center gap-1.5">
                   <Link
-                    href={`/u/${user.id}/following`}
+                    href={`/u/${username || user.id}/following`}
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followingCount}</span>
@@ -236,7 +236,7 @@ export default async function AccountPage() {
 
                 <li className="flex items-center gap-1.5">
                   <Link
-                    href={`/u/${user.id}/followers`}
+                    href={`/u/${username || user.id}/followers`}
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followersCount}</span>

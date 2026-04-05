@@ -21,6 +21,9 @@ function normalizePlacesShape(row: any) {
   return { ...row, places };
 }
 
+// UUID v4 pattern
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function UserPublicPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
 
@@ -29,7 +32,24 @@ export default async function UserPublicPage({ params }: { params: { id: string 
   } = await supabase.auth.getUser();
   if (!me) redirect("/auth/login");
 
-  const userId = params.id;
+  const paramId = params.id;
+
+  // --- resolve paramId → UUID ---
+  let userId: string;
+  if (UUID_RE.test(paramId)) {
+    // UUID がそのまま渡された場合
+    userId = paramId;
+  } else {
+    // username として解決を試みる
+    const { data: resolved } = await supabase
+      .from("profiles")
+      .select("id")
+      .ilike("username", paramId)
+      .maybeSingle();
+    if (!resolved) return notFound();
+    userId = resolved.id;
+  }
+
   if (userId === me.id) redirect("/profile");
 
   const { startKey: startJstKey, startIsoUtc, todayKey: todayJstKey } = subtractDaysKeyJST(364);

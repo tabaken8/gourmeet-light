@@ -63,6 +63,7 @@ export default async function CollectionPage({
         id: string;
         display_name: string | null;
         avatar_url: string | null;
+        username: string | null;
       } | null;
     } | null;
     collections: {
@@ -73,7 +74,7 @@ export default async function CollectionPage({
   let posts: any[] = [];
   const profiles: Record<
     string,
-    { display_name: string | null; avatar_url: string | null }
+    { display_name: string | null; avatar_url: string | null; username: string | null }
   > = {};
 
   // 2. アクティブコレクションの投稿取得
@@ -94,7 +95,8 @@ export default async function CollectionPage({
           profiles (
             id,
             display_name,
-            avatar_url
+            avatar_url,
+            username
           )
         ),
         collections ( id )
@@ -114,6 +116,7 @@ export default async function CollectionPage({
         profiles[prof.id] = {
           display_name: prof.display_name,
           avatar_url: prof.avatar_url,
+          username: prof.username,
         };
       }
     }
@@ -298,7 +301,7 @@ export default async function CollectionPage({
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Link
-                          href={`/u/${p.user_id}`}
+                          href={`/u/${prof?.username ?? p.user_id}`}
                           className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-600 ring-1 ring-orange-200"
                         >
                           {avatar ? (
@@ -314,7 +317,7 @@ export default async function CollectionPage({
                         </Link>
                         <div className="min-w-0">
                           <Link
-                            href={`/u/${p.user_id}`}
+                            href={`/u/${prof?.username ?? p.user_id}`}
                             className="truncate text-xs font-medium text-slate-800 hover:underline"
                           >
                             {display}

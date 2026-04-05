@@ -20,6 +20,7 @@ export type ProfileLite = {
   display_name: string | null;
   avatar_url: string | null;
   is_public: boolean | null;
+  username?: string | null;
 };
 
 export type SearchMode = "geo" | "station" | "auto";
@@ -208,6 +209,7 @@ export default function SearchPostList({
                 typeof (rawProf?.is_public ?? p?.is_public) === "boolean"
                   ? Boolean(rawProf?.is_public ?? p?.is_public)
                   : true,
+              username: (rawProf?.username ?? p?.username ?? null) as string | null,
             }
           : null;
 
@@ -302,7 +304,7 @@ export default function SearchPostList({
                 <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <Link
-                      href={p.user_id ? `/u/${p.user_id}` : "#"}
+                      href={p.profile?.username ? `/u/${p.profile.username}` : p.user_id ? `/u/${p.user_id}` : "#"}
                       className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-[10px] font-semibold text-orange-700 dark:text-orange-400"
                     >
                       {avatar ? (
@@ -322,7 +324,7 @@ export default function SearchPostList({
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <Link
-                          href={p.user_id ? `/u/${p.user_id}` : "#"}
+                          href={p.profile?.username ? `/u/${p.profile.username}` : p.user_id ? `/u/${p.user_id}` : "#"}
                           className="truncate text-[13px] font-semibold text-slate-900 dark:text-gray-100 hover:underline"
                         >
                           {display}

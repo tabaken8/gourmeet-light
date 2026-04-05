@@ -24,6 +24,7 @@ type ProfileLite = {
   display_name: string | null;
   avatar_url: string | null;
   is_public: boolean | null;
+  username?: string | null;
 };
 
 type PostRow = {
@@ -785,7 +786,7 @@ export default function TimelineFeed({
                 <div className="flex items-center justify-between px-4 pt-4 pb-2">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link
-                      href={`/u/${p.user_id}`}
+                      href={`/u/${p.profile?.username ?? p.user_id}`}
                       className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-700"
                     >
                       {avatar ? (
@@ -805,7 +806,7 @@ export default function TimelineFeed({
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <Link
-                          href={`/u/${p.user_id}`}
+                          href={`/u/${p.profile?.username ?? p.user_id}`}
                           className="truncate text-xs font-medium text-slate-900 hover:underline"
                         >
                           {display}

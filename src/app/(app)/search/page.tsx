@@ -1063,7 +1063,7 @@ export default function SearchPage() {
                   const initial = (name || "U").slice(0, 1).toUpperCase();
                   return (
                     <motion.div key={u.id} variants={fadeUp}>
-                      <Link href={`/u/${u.id}`} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-slate-50 dark:hover:bg-white/[.06]">
+                      <Link href={`/u/${u.username ?? u.id}`} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-slate-50 dark:hover:bg-white/[.06]">
                         <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-100 dark:bg-white/15 text-[10px] font-semibold text-slate-600 dark:text-gray-300">
                           {u.avatar_url ? (
                             // eslint-disable-next-line @next/next/no-img-element

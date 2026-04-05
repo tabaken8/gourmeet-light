@@ -10,6 +10,7 @@ type ProfileLite = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  username?: string | null;
 };
 
 type CommentRow = {
@@ -161,7 +162,7 @@ export default function PostComments({
     if (ids.length) {
       const { data: pData, error: pErr } = await supabase
         .from("profiles")
-        .select("id, display_name, avatar_url")
+        .select("id, display_name, avatar_url, username")
         .in("id", ids);
 
       if (pErr) {
@@ -379,7 +380,7 @@ export default function PostComments({
               return (
                 <div key={c.id} className="flex items-start gap-2">
                   <Link
-                    href={`/u/${c.user_id}`}
+                    href={`/u/${c.profile?.username ?? c.user_id}`}
                     className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600"
                   >
                     {avatar ? (
@@ -394,7 +395,7 @@ export default function PostComments({
                     {/* ✅ name / time / delete (delete は時刻の右) */}
                     <div className="flex items-center gap-2 min-w-0">
                       <Link
-                        href={`/u/${c.user_id}`}
+                        href={`/u/${c.profile?.username ?? c.user_id}`}
                         className="truncate text-xs font-medium text-slate-800 hover:underline"
                       >
                         {name}
@@ -419,7 +420,7 @@ export default function PostComments({
                     {/* ✅ 返信の文脈が分かるように表示 */}
                     {c.reply_to_user_id && replyName && (
                       <div className="mt-0.5 text-[12px] text-slate-500">
-                        <Link href={`/u/${c.reply_to_user_id}`} className="hover:underline">
+                        <Link href={`/u/${c.replyToProfile?.username ?? c.reply_to_user_id}`} className="hover:underline">
                           @{replyName}
                         </Link>{" "}
                         に返信

@@ -236,7 +236,7 @@ export default function PostMainContent({
           {/* 投稿サマリー */}
           <section className="border-b border-black/[.06] dark:border-white/[.08] px-4 py-4">
             <div className="flex items-start gap-3 min-w-0">
-              <Link href={`/u/${post.user_id}`} className="gm-press flex h-10 w-10 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-black/[.06] dark:ring-white/[.08]">
+              <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="gm-press flex h-10 w-10 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-black/[.06] dark:ring-white/[.08]">
                 {avatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={avatar} alt="" className="h-full w-full object-cover" />
@@ -247,7 +247,7 @@ export default function PostMainContent({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1 min-w-0">
-                    <Link href={`/u/${post.user_id}`} className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100 hover:underline">
+                    <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100 hover:underline">
                       {display}
                     </Link>
                     {!isPublic ? <span className="text-[11px] text-slate-400 dark:text-gray-500">🔒</span> : null}

@@ -28,7 +28,7 @@ function PersonCardItem({
   onTap: () => void;
 }) {
   const initial = (person.display_name || person.username || "U").slice(0, 1).toUpperCase();
-  const latestImg = person.latest_post?.image_url ?? null;
+  const topPosts = person.top_posts ?? [];
 
   return (
     <div
@@ -116,30 +116,35 @@ function PersonCardItem({
         </div>
       )}
 
-      {/* Latest post preview */}
-      {person.latest_post && (
-        <div className="mx-3 mb-2.5 rounded-lg bg-slate-50 dark:bg-white/[.04] border border-slate-100 dark:border-white/[.06] overflow-hidden">
-          <div className="flex items-center gap-2 p-2">
-            {latestImg && (
-              <div className="h-10 w-10 rounded-md overflow-hidden bg-slate-200 dark:bg-[#1e2026] shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={latestImg} alt="" className="h-10 w-10 object-cover" loading="lazy" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[11px] font-medium text-slate-700 dark:text-gray-200">
-                {person.latest_post.place_name ?? "お店"}
-              </div>
-              <div className="flex items-center gap-1.5 text-[9px] text-slate-400 dark:text-gray-500">
-                {person.latest_post.recommend_score != null && (
-                  <span className="font-bold text-orange-500 dark:text-orange-400">
-                    {person.latest_post.recommend_score.toFixed(1)}
-                  </span>
-                )}
-                <span>{timeAgo(person.latest_post.created_at)}</span>
+      {/* Top posts preview (up to 2) */}
+      {topPosts.length > 0 && (
+        <div className="mx-3 mb-2.5 space-y-1.5">
+          {topPosts.map((post, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-white/[.04] border border-slate-100 dark:border-white/[.06] p-2"
+            >
+              {post.image_url && (
+                <div className="h-10 w-10 rounded-md overflow-hidden bg-slate-200 dark:bg-[#1e2026] shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={post.image_url} alt="" className="h-10 w-10 object-cover" loading="lazy" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium text-slate-700 dark:text-gray-200">
+                  {post.place_name ?? "お店"}
+                </div>
+                <div className="flex items-center gap-1.5 text-[9px] text-slate-400 dark:text-gray-500">
+                  {post.recommend_score != null && (
+                    <span className="font-bold text-orange-500 dark:text-orange-400">
+                      {post.recommend_score.toFixed(1)}
+                    </span>
+                  )}
+                  <span>{timeAgo(post.created_at)}</span>
+                </div>
               </div>
             </div>
-          </div>
+          ))}
         </div>
       )}
 

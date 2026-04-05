@@ -15,17 +15,22 @@ export type PersonMapItem = {
   avg_score: number;
   centroid_lat: number;
   centroid_lng: number;
+  /** All post locations (outliers removed) with place info */
+  post_latlngs: { lat: number; lng: number; place_name: string; image_url: string | null; recommend_score: number | null }[];
+  /** Bounding box of post_latlngs for fitBounds */
+  bounds: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } } | null;
+  /** Top 2 posts by recommend_score for card display */
+  top_posts: {
+    place_name: string;
+    image_url: string | null;
+    recommend_score: number | null;
+    created_at: string;
+  }[];
   top_genre: string | null;
   area_name: string | null;
   is_following: boolean;
   /** For not-following: why they appear (e.g. "しょうご, りーさぬ がフォロー中") */
   mutual_context: string | null;
-  latest_post: {
-    place_name: string | null;
-    recommend_score: number | null;
-    created_at: string;
-    image_url: string | null;
-  } | null;
 };
 
 export type PeopleMapResponse = {
@@ -191,13 +196,21 @@ export async function GET() {
   // ──────────────────────────────────────────────
   const profileMap = new Map(profiles.map((p: any) => [p.id, p]));
 
+  type PostEntry = {
+    lat: number;
+    lng: number;
+    place_name: string;
+    recommend_score: number | null;
+    image_url: string | null;
+    created_at: string;
+  };
   type UserGroup = {
     scores: number[];
     lats: number[];
     lngs: number[];
     genres: string[];
     areas: string[];
-    latestPost: any | null;
+    allPosts: PostEntry[];
   };
   const userGroups = new Map<string, UserGroup>();
 
@@ -207,7 +220,7 @@ export async function GET() {
 
     let group = userGroups.get(post.user_id);
     if (!group) {
-      group = { scores: [], lats: [], lngs: [], genres: [], areas: [], latestPost: null };
+      group = { scores: [], lats: [], lngs: [], genres: [], areas: [], allPosts: [] };
       userGroups.set(post.user_id, group);
     }
 
@@ -217,18 +230,19 @@ export async function GET() {
     if (place.genre) group.genres.push(place.genre);
     if (place.area) group.areas.push(place.area);
 
-    if (!group.latestPost) {
-      const imageUrl = post.cover_square_url
-        ?? post.image_assets?.[0]?.square
-        ?? post.image_variants?.[0]?.thumb
-        ?? (Array.isArray(post.image_urls) ? post.image_urls[0] : null);
-      group.latestPost = {
-        place_name: post.place_name,
-        recommend_score: post.recommend_score,
-        created_at: post.created_at,
-        image_url: imageUrl,
-      };
-    }
+    const imageUrl = post.cover_square_url
+      ?? post.image_assets?.[0]?.square
+      ?? post.image_variants?.[0]?.thumb
+      ?? (Array.isArray(post.image_urls) ? post.image_urls[0] : null);
+
+    group.allPosts.push({
+      lat: place.lat,
+      lng: place.lng,
+      place_name: post.place_name ?? "お店",
+      recommend_score: post.recommend_score,
+      image_url: imageUrl,
+      created_at: post.created_at,
+    });
   }
 
   // ──────────────────────────────────────────────
@@ -251,6 +265,35 @@ export async function GET() {
       ? Math.round((group.scores.reduce((a, b) => a + b, 0) / group.scores.length) * 10) / 10
       : 0;
 
+    // Build post locations and remove outliers
+    const filtered = removeOutliers(group.lats, group.lngs);
+    // Build enriched post_latlngs by matching back to allPosts
+    const filteredSet = new Set(filtered.lats.map((lat, i) => `${lat},${filtered.lngs[i]}`));
+    const seenPlaces = new Set<string>();
+    const postLatlngs: PersonMapItem["post_latlngs"] = [];
+    for (const p of group.allPosts) {
+      const key = `${p.lat},${p.lng}`;
+      if (filteredSet.has(key) && !seenPlaces.has(key)) {
+        seenPlaces.add(key);
+        postLatlngs.push({ lat: p.lat, lng: p.lng, place_name: p.place_name, image_url: p.image_url, recommend_score: p.recommend_score });
+      }
+    }
+
+    let bounds: PersonMapItem["bounds"] = null;
+    if (postLatlngs.length > 0) {
+      let swLat = Infinity, swLng = Infinity, neLat = -Infinity, neLng = -Infinity;
+      for (const p of postLatlngs) {
+        if (p.lat < swLat) swLat = p.lat;
+        if (p.lng < swLng) swLng = p.lng;
+        if (p.lat > neLat) neLat = p.lat;
+        if (p.lng > neLng) neLng = p.lng;
+      }
+      bounds = { sw: { lat: swLat, lng: swLng }, ne: { lat: neLat, lng: neLng } };
+    }
+
+    // Pick top 2 posts by recommend_score (deduplicated by place)
+    const topPosts = pickTopPosts(group.allPosts);
+
     return {
       user_id: userId,
       display_name: profile.display_name,
@@ -260,11 +303,13 @@ export async function GET() {
       avg_score: avgScore,
       centroid_lat: centroid.lat,
       centroid_lng: centroid.lng,
+      post_latlngs: postLatlngs,
+      bounds,
+      top_posts: topPosts,
       top_genre: mode(group.genres),
       area_name: mode(group.areas),
       is_following: isFollowing,
       mutual_context: mutualContext,
-      latest_post: group.latestPost,
     };
   }
 
@@ -393,6 +438,72 @@ function mode(arr: string[]): string | null {
     if (c > bestCount) { best = k; bestCount = c; }
   }
   return best || null;
+}
+
+/**
+ * Remove geographic outliers using IQR on distances from centroid.
+ * Keeps points within Q3 + 1.5 * IQR of the centroid distance.
+ * For small sets (≤3), returns all points.
+ */
+function removeOutliers(lats: number[], lngs: number[]): { lats: number[]; lngs: number[] } {
+  if (lats.length <= 3) return { lats: [...lats], lngs: [...lngs] };
+
+  const centroid = {
+    lat: lats.reduce((a, b) => a + b, 0) / lats.length,
+    lng: lngs.reduce((a, b) => a + b, 0) / lngs.length,
+  };
+
+  const distances = lats.map((lat, i) => haversineKm(centroid.lat, centroid.lng, lat, lngs[i]));
+  const sorted = [...distances].sort((a, b) => a - b);
+
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = q3 - q1;
+  const upperFence = q3 + 1.5 * iqr;
+  // Minimum fence of 30km so we don't over-filter users with spread-out but real activity
+  const fence = Math.max(upperFence, 30);
+
+  const filteredLats: number[] = [];
+  const filteredLngs: number[] = [];
+  for (let i = 0; i < lats.length; i++) {
+    if (distances[i] <= fence) {
+      filteredLats.push(lats[i]);
+      filteredLngs.push(lngs[i]);
+    }
+  }
+
+  // If too much was filtered, return all
+  if (filteredLats.length < lats.length * 0.5) return { lats: [...lats], lngs: [...lngs] };
+  return { lats: filteredLats, lngs: filteredLngs };
+}
+
+/**
+ * Pick the top 2 posts by recommend_score.
+ * Deduplicates by place (same lat/lng), keeping the highest-scored version.
+ */
+function pickTopPosts(
+  allPosts: { lat: number; lng: number; place_name: string; image_url: string | null; recommend_score: number | null; created_at: string }[],
+): PersonMapItem["top_posts"] {
+  // Deduplicate by place, keeping highest score
+  const byPlace = new Map<string, typeof allPosts[number]>();
+  for (const p of allPosts) {
+    const key = `${p.lat},${p.lng}`;
+    const existing = byPlace.get(key);
+    if (!existing || (p.recommend_score ?? 0) > (existing.recommend_score ?? 0)) {
+      byPlace.set(key, p);
+    }
+  }
+
+  const sorted = [...byPlace.values()].sort(
+    (a, b) => (b.recommend_score ?? 0) - (a.recommend_score ?? 0),
+  );
+
+  return sorted.slice(0, 2).map((p) => ({
+    place_name: p.place_name,
+    image_url: p.image_url,
+    recommend_score: p.recommend_score,
+    created_at: p.created_at,
+  }));
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {

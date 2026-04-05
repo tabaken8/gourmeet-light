@@ -181,7 +181,7 @@ export async function fetchPostDetail(postId: string): Promise<PostDetailData | 
       `id, content, user_id, created_at, visited_on, time_of_day,
        image_urls, image_variants, place_name, place_address, place_id,
        recommend_score, price_yen, price_range, tag_ids,
-       profiles (id, display_name, avatar_url, is_public),
+       profiles (id, display_name, avatar_url, is_public, username),
        places (place_id, name, address, primary_genre, area_label_ja)`
     )
     .eq("id", postId)

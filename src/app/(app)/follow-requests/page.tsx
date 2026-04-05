@@ -145,7 +145,7 @@ export default function FollowRequestsPage() {
           >
             {/* アイコン */}
             <Link
-              href={f ? `/u/${f.id}` : "#"}
+              href={f ? `/u/${f.username ?? f.id}` : "#"}
               className="h-10 w-10 rounded-full overflow-hidden shrink-0 bg-gray-200 flex items-center justify-center"
             >
               {f?.avatar_url ? (
@@ -166,7 +166,7 @@ export default function FollowRequestsPage() {
             <div className="flex-1 min-w-0">
               <p className="text-sm">
                 <Link
-                  href={f ? `/u/${f.id}` : "#"}
+                  href={f ? `/u/${f.username ?? f.id}` : "#"}
                   className="font-semibold hover:underline"
                 >
                   {display}

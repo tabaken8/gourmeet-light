@@ -153,7 +153,7 @@ export default function UserProfileContent({
                 </li>
                 <li className="flex items-center gap-1.5">
                   <Link
-                    href={`/u/${userId}/following`}
+                    href={`/u/${username || userId}/following`}
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followingCount}</span>
@@ -162,7 +162,7 @@ export default function UserProfileContent({
                 </li>
                 <li className="flex items-center gap-1.5">
                   <Link
-                    href={`/u/${userId}/followers`}
+                    href={`/u/${username || userId}/followers`}
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followersCount}</span>

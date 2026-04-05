@@ -9,6 +9,7 @@ export type LikerLite = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  username?: string | null;
 };
 
 type LikerRow = LikerLite & {
@@ -184,7 +185,7 @@ function LikeListModal({
                   key={u.id}
                   className="flex items-center justify-between gap-3 rounded-2xl px-3 py-2 hover:bg-slate-50 dark:hover:bg-white/[.06]"
                 >
-                  <Link href={`/u/${u.id}`} className="flex min-w-0 items-center gap-3">
+                  <Link href={`/u/${u.username ?? u.id}`} className="flex min-w-0 items-center gap-3">
                     <span className="inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-slate-200 dark:bg-white/15">
                       {u.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -375,7 +376,7 @@ export default function PostActions({
             {bubbleUsers.map((u, idx) => (
               <Link
                 key={u.id}
-                href={`/u/${u.id}`}
+                href={`/u/${u.username ?? u.id}`}
                 className={["inline-flex", idx === 0 ? "" : "-ml-1.5"].join(" ")}
                 aria-label={`${u.display_name ?? "ユーザー"}のプロフィールへ`}
                 title={u.display_name ?? undefined}
@@ -394,7 +395,7 @@ export default function PostActions({
       {displayRow.first ? (
         <>
           <Link
-            href={`/u/${displayRow.first.id}`}
+            href={`/u/${displayRow.first.username ?? displayRow.first.id}`}
             className="font-semibold text-slate-900 dark:text-gray-100 hover:underline"
           >
             {displayRow.first.display_name ?? "ユーザー"}
