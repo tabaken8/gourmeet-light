@@ -40,8 +40,8 @@ function FieldShell({
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[13px] font-medium text-slate-900">{label}</p>
-        {rightSlot ? <div className="text-[12px] text-slate-500">{rightSlot}</div> : null}
+        <p className="text-[13px] font-medium text-slate-900 dark:text-gray-100">{label}</p>
+        {rightSlot ? <div className="text-[12px] text-slate-500 dark:text-gray-500">{rightSlot}</div> : null}
       </div>
       {children}
     </div>
@@ -68,11 +68,11 @@ function TextInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       className={[
-        "h-11 w-full rounded-xl border bg-white px-3 text-[15px] font-medium text-slate-900 outline-none",
-        "border-black/[.08] hover:border-black/[.12]",
-        "transition focus:ring-4 focus:ring-orange-200/40 focus:border-orange-300",
+        "h-11 w-full rounded-xl border bg-white dark:bg-white/[.06] px-3 text-[15px] font-medium text-slate-900 dark:text-gray-100 outline-none",
+        "border-black/[.08] dark:border-white/10 hover:border-black/[.12] dark:hover:border-white/15",
+        "transition focus:ring-4 focus:ring-orange-200/40 dark:focus:ring-white/10 focus:border-orange-300 dark:focus:border-white/25",
         isBad ? "border-red-300" : "",
-        "placeholder:text-slate-400",
+        "placeholder:text-slate-400 dark:placeholder:text-gray-500",
       ].join(" ")}
     />
   );
@@ -97,10 +97,10 @@ function TextArea({
       placeholder={placeholder}
       rows={4}
       className={[
-        "w-full resize-none rounded-xl border bg-white px-3 py-3 text-[15px] font-medium text-slate-900 outline-none",
-        "border-black/[.08] hover:border-black/[.12]",
-        "transition focus:ring-4 focus:ring-orange-200/40 focus:border-orange-300",
-        "placeholder:text-slate-400",
+        "w-full resize-none rounded-xl border bg-white dark:bg-white/[.06] px-3 py-3 text-[15px] font-medium text-slate-900 dark:text-gray-100 outline-none",
+        "border-black/[.08] dark:border-white/10 hover:border-black/[.12] dark:hover:border-white/15",
+        "transition focus:ring-4 focus:ring-orange-200/40 dark:focus:ring-white/10 focus:border-orange-300 dark:focus:border-white/25",
+        "placeholder:text-slate-400 dark:placeholder:text-gray-500",
       ].join(" ")}
     />
   );
@@ -129,16 +129,16 @@ function AtInput({
   return (
     <div
       className={[
-        "relative flex items-center rounded-xl border bg-white",
+        "relative flex items-center rounded-xl border bg-white dark:bg-white/[.06]",
         "shadow-[0_1px_0_rgba(0,0,0,0.02)] transition",
-        "focus-within:ring-4 focus-within:ring-orange-200/40",
-        isBad ? "border-red-300" : "border-black/[.08] hover:border-black/[.12]",
+        "focus-within:ring-4 focus-within:ring-orange-200/40 dark:focus-within:ring-white/10",
+        isBad ? "border-red-300" : "border-black/[.08] dark:border-white/10 hover:border-black/[.12] dark:hover:border-white/15",
       ].join(" ")}
     >
       {leftBadge ? <div className="pl-2 pr-2 py-2">{leftBadge}</div> : null}
 
       <div className="relative flex w-full items-center pr-3">
-        <span className="select-none pl-3 text-[15px] font-semibold text-slate-300">
+        <span className="select-none pl-3 text-[15px] font-semibold text-slate-300 dark:text-gray-600">
           @
         </span>
         <input
@@ -151,8 +151,8 @@ function AtInput({
           className={[
             "h-11 w-full bg-transparent outline-none",
             "pl-0 pr-0",
-            "text-[15px] font-medium text-slate-900",
-            "placeholder:text-slate-400",
+            "text-[15px] font-medium text-slate-900 dark:text-gray-100",
+            "placeholder:text-slate-400 dark:placeholder:text-gray-500",
           ].join(" ")}
         />
       </div>
@@ -162,7 +162,7 @@ function AtInput({
 
 function InstagramBadge() {
   return (
-    <div className="grid h-9 w-9 place-items-center rounded-lg border border-black/[.08] bg-white shadow-sm">
+    <div className="grid h-9 w-9 place-items-center rounded-lg border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] shadow-sm">
       <InstagramIcon className="h-5 w-5" />
     </div>
   );
@@ -170,8 +170,8 @@ function InstagramBadge() {
 
 function XBadge() {
   return (
-    <div className="grid h-9 w-9 place-items-center rounded-lg border border-black/[.08] bg-white shadow-sm">
-      <XIcon className="h-5 w-5 text-slate-900" />
+    <div className="grid h-9 w-9 place-items-center rounded-lg border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] shadow-sm">
+      <XIcon className="h-5 w-5 text-slate-900 dark:text-gray-100" />
     </div>
   );
 }
@@ -210,14 +210,14 @@ export default function ProfileEditForm({ initial }: Props) {
   const xBad = x ? !X_RE.test(x) : false;
 
   return (
-    <section className="rounded-2xl border border-orange-100 bg-white/95 shadow-sm overflow-hidden">
+    <section className="rounded-2xl border border-orange-100 dark:border-white/[.08] bg-white/95 dark:bg-[#16181e] shadow-sm overflow-hidden">
       {/* header / preview */}
       <div className="px-4 pt-4 pb-5">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-black/[.08] bg-orange-100"
+            className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-black/[.08] dark:border-white/10 bg-orange-100 dark:bg-orange-900/30"
             aria-label="アイコン画像を変更"
           >
             {currentAvatar ? (
@@ -228,7 +228,7 @@ export default function ProfileEditForm({ initial }: Props) {
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-orange-700">
+              <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-orange-700 dark:text-orange-400">
                 {initialLetter}
               </div>
             )}
@@ -242,16 +242,16 @@ export default function ProfileEditForm({ initial }: Props) {
           </button>
 
           <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-slate-900 leading-tight">
+            <p className="text-[15px] font-semibold text-slate-900 dark:text-gray-100 leading-tight">
               {displayName || "User"}
             </p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-slate-500 dark:text-gray-500">
               {username ? `@${username}` : "ユーザーID未設定"}
             </p>
 
             {avatarFile ? (
               <div className="mt-2 flex items-center gap-2">
-                <span className="text-xs text-slate-500 truncate max-w-[240px]">
+                <span className="text-xs text-slate-500 dark:text-gray-500 truncate max-w-[240px]">
                   選択中: {avatarFile.name}
                 </span>
                 <button
@@ -260,7 +260,7 @@ export default function ProfileEditForm({ initial }: Props) {
                     setAvatarFile(null);
                     if (fileRef.current) fileRef.current.value = "";
                   }}
-                  className="inline-flex items-center gap-1 rounded-full border border-black/[.08] bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-full border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] px-2 py-1 text-xs font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
                 >
                   <XLucide size={14} />
                   取り消し
@@ -305,8 +305,8 @@ export default function ProfileEditForm({ initial }: Props) {
           />
         </FieldShell>
 
-        <div className="rounded-2xl border border-black/[.06] bg-white p-3">
-          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-slate-900">
+        <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-3">
+          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-slate-900 dark:text-gray-100">
             <Link2 size={16} />
             外部SNS連携(任意)
           </div>
@@ -343,7 +343,7 @@ export default function ProfileEditForm({ initial }: Props) {
         <input type="hidden" name="username" value={username} />
 
         <div className="pt-1">
-          <button className="w-full rounded-2xl bg-black px-5 py-3 text-[15px] font-semibold text-white hover:opacity-90">
+          <button className="w-full rounded-2xl bg-black dark:bg-white/15 px-5 py-3 text-[15px] font-semibold text-white hover:opacity-90">
             保存する
           </button>
         </div>

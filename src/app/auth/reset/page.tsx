@@ -19,10 +19,10 @@ export default function ResetPage() {
   };
 
   return (
-    <main className="rounded-2xl bg-white p-8 shadow-sm max-w-md">
-      <h1 className="mb-4 text-2xl font-bold">パスワードをリセット</h1>
+    <main className="rounded-2xl bg-white dark:bg-[#16181e] dark:border dark:border-white/[.08] p-8 shadow-sm max-w-md">
+      <h1 className="mb-4 text-2xl font-bold dark:text-gray-100">パスワードをリセット</h1>
       <form onSubmit={submit} className="space-y-3">
-        <input className="w-full rounded border border-black/10 px-3 py-2"
+        <input className="w-full rounded border border-black/10 dark:border-white/15 bg-white dark:bg-white/[.06] px-3 py-2 text-slate-900 dark:text-gray-100 outline-none focus:border-orange-600 dark:focus:border-white/25 placeholder:text-slate-400 dark:placeholder:text-gray-500"
                type="email" required placeholder="you@example.com"
                value={email} onChange={e=>setEmail(e.target.value)} />
         <button disabled={loading}
@@ -30,7 +30,7 @@ export default function ResetPage() {
           {loading ? "送信中..." : "メールを送る"}
         </button>
       </form>
-      {msg && <p className="mt-3 text-sm">{msg}</p>}
+      {msg && <p className="mt-3 text-sm dark:text-gray-300">{msg}</p>}
     </main>
   );
 }

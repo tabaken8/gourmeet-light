@@ -21,13 +21,13 @@ export default function UpdatePasswordPage() {
     };
 
     return (
-        <main className="rounded-2xl bg-white p-8 shadow-sm max-w-md">
-            <h1 className="mb-4 text-2xl font-bold">新しいパスワード</h1>
+        <main className="rounded-2xl bg-white dark:bg-[#16181e] dark:border dark:border-white/[.08] p-8 shadow-sm max-w-md">
+            <h1 className="mb-4 text-2xl font-bold dark:text-gray-100">新しいパスワード</h1>
             <form onSubmit={submit} className="space-y-3">
-                <input className="w-full rounded border border-black/10 px-3 py-2"
+                <input className="w-full rounded border border-black/10 dark:border-white/15 bg-white dark:bg-white/[.06] px-3 py-2 text-slate-900 dark:text-gray-100 outline-none focus:border-orange-600 dark:focus:border-white/25 placeholder:text-slate-400 dark:placeholder:text-gray-500"
                     type="password" placeholder="6文字以上"
                     value={pw} onChange={e => setPw(e.target.value)} minLength={6} required />
-                <input className={"w-full rounded border px-3 py-2 " + (pw2 ? (match ? "border-green-500" : "border-red-500") : "border-black/10")}
+                <input className={"w-full rounded border px-3 py-2 bg-white dark:bg-white/[.06] text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 " + (pw2 ? (match ? "border-green-500" : "border-red-500") : "border-black/10 dark:border-white/15")}
                     type="password" placeholder="確認"
                     value={pw2} onChange={e => setPw2(e.target.value)} required />
                 <button disabled={!match}

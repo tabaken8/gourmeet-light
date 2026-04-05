@@ -41,10 +41,10 @@ export default async function ProfileEditPage() {
     <main className="min-h-screen">
       <div className="mx-auto max-w-lg px-4 py-6 space-y-5">
         <div className="flex items-center justify-between">
-          <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">
+          <h1 className="text-[17px] font-semibold tracking-tight text-slate-900 dark:text-gray-100">
             プロフィールを編集
           </h1>
-          <Link href="/profile" className="text-sm text-black/60 hover:text-black/80">
+          <Link href="/profile" className="text-sm text-black/60 dark:text-gray-400 hover:text-black/80 dark:hover:text-gray-200">
             戻る
           </Link>
         </div>

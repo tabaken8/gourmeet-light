@@ -60,11 +60,11 @@ export default function UserProfileContent({
   const albumPosts = postsData?.albumPosts ?? [];
   const pinnedPostIds = postsData?.pinnedPostIds ?? [];
 
-  const cardClass = "w-full overflow-hidden rounded-2xl border border-black/[.06] bg-white/95 shadow-sm";
+  const cardClass = "w-full overflow-hidden rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white/95 dark:bg-[#16181e] shadow-sm";
   const cardPad = "px-4 py-5 md:px-6 md:py-6";
 
   return (
-    <main className="min-h-screen bg-orange-50 text-slate-800">
+    <main className="min-h-screen bg-orange-50 dark:bg-transparent text-slate-800 dark:text-gray-200">
       <div className="w-full overflow-x-hidden pb-24 pt-6">
         <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
 
@@ -79,32 +79,32 @@ export default function UserProfileContent({
                       <img
                         src={avatarUrl}
                         alt="avatar"
-                        className="h-20 w-20 rounded-full border border-black/[.06] bg-orange-100 object-cover"
+                        className="h-20 w-20 rounded-full border border-black/[.06] dark:border-white/10 bg-orange-100 dark:bg-orange-900/30 object-cover"
                       />
                     ) : (
-                      <div className="flex h-20 w-20 items-center justify-center rounded-full border border-black/[.06] bg-orange-100 text-2xl font-bold text-orange-700">
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full border border-black/[.06] dark:border-white/10 bg-orange-100 dark:bg-orange-900/30 text-2xl font-bold text-orange-700 dark:text-orange-400">
                         {displayName.slice(0, 1).toUpperCase()}
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0">
-                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 md:text-2xl">
+                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-gray-100 md:text-2xl">
                       {displayName}
                     </h1>
 
                     <div className="mt-0.5 flex flex-wrap items-center gap-2">
                       {username ? (
-                        <p className="text-xs font-medium text-slate-500 md:text-sm">@{username}</p>
+                        <p className="text-xs font-medium text-slate-500 dark:text-gray-500 md:text-sm">@{username}</p>
                       ) : null}
                       {isFollowing ? (
-                        <p className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 md:text-xs">
+                        <p className="rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-gray-400 md:text-xs">
                           フォローされています
                         </p>
                       ) : null}
                     </div>
 
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 md:text-xs">
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-gray-500 md:text-xs">
                       {isPublic ? (
                         <>
                           <Globe2 size={14} />
@@ -137,18 +137,18 @@ export default function UserProfileContent({
                     />
                   </div>
                   {initiallyRequested ? (
-                    <p className="text-[11px] text-slate-500">フォロー承認後に通知をONにできます</p>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-500">フォロー承認後に通知をONにできます</p>
                   ) : null}
                 </div>
               </div>
 
               {bio ? (
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{bio}</p>
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-gray-200">{bio}</p>
               ) : null}
 
-              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 md:text-sm">
+              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 dark:text-gray-400 md:text-sm">
                 <li className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-900">{postsCount}</span>
+                  <span className="font-semibold text-slate-900 dark:text-gray-100">{postsCount}</span>
                   <span>投稿</span>
                 </li>
                 <li className="flex items-center gap-1.5">
@@ -156,7 +156,7 @@ export default function UserProfileContent({
                     href={`/u/${userId}/following`}
                     className="flex items-center gap-1.5 hover:underline"
                   >
-                    <span className="font-semibold text-slate-900">{followingCount}</span>
+                    <span className="font-semibold text-slate-900 dark:text-gray-100">{followingCount}</span>
                     <span>フォロー中</span>
                   </Link>
                 </li>
@@ -165,12 +165,12 @@ export default function UserProfileContent({
                     href={`/u/${userId}/followers`}
                     className="flex items-center gap-1.5 hover:underline"
                   >
-                    <span className="font-semibold text-slate-900">{followersCount}</span>
+                    <span className="font-semibold text-slate-900 dark:text-gray-100">{followersCount}</span>
                     <span>フォロワー</span>
                   </Link>
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-900">{wantsCount}</span>
+                  <span className="font-semibold text-slate-900 dark:text-gray-100">{wantsCount}</span>
                   <span>行きたい</span>
                 </li>
               </ul>
@@ -184,8 +184,8 @@ export default function UserProfileContent({
             </section>
           ) : (
             <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
-              <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
-              <div className="mt-3 rounded-xl border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">来店ログ</h2>
+              <div className="mt-3 rounded-xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-xs text-slate-600 dark:text-gray-500 md:text-sm">
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             </section>
@@ -193,9 +193,9 @@ export default function UserProfileContent({
 
           {/* ========================= ALBUM CARD ========================= */}
           <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
-            <h2 className="mb-3 text-sm font-semibold text-slate-900 md:text-base">投稿</h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">投稿</h2>
             {!canViewPosts ? (
-              <div className="rounded-xl border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm">
+              <div className="rounded-xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-xs text-slate-600 dark:text-gray-500 md:text-sm">
                 このアカウントの投稿はフォロワーのみが閲覧できます。
               </div>
             ) : (

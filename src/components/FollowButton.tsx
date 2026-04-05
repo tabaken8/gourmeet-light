@@ -142,7 +142,7 @@ export default function FollowButton(props: Props) {
         disabled={pending || !validTarget}
         className={[
           common,
-          "border-slate-300 bg-white text-slate-800 hover:bg-slate-100",
+          "border-slate-300 dark:border-white/15 bg-white dark:bg-white/[.06] text-slate-800 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10",
         ].join(" ")}
         aria-pressed="true"
       >
@@ -159,7 +159,7 @@ export default function FollowButton(props: Props) {
         disabled={pending || !validTarget}
         className={[
           common,
-          "border-slate-400 bg-white text-slate-800 hover:bg-slate-100",
+          "border-slate-400 dark:border-white/20 bg-white dark:bg-white/[.06] text-slate-800 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10",
         ].join(" ")}
         aria-pressed="mixed"
       >
@@ -175,7 +175,7 @@ export default function FollowButton(props: Props) {
       disabled={pending || !validTarget}
       className={[
         common,
-        "border-slate-900 bg-slate-900 text-white hover:opacity-90",
+        "border-slate-900 dark:border-white/20 bg-slate-900 dark:bg-white/15 text-white hover:opacity-90",
       ].join(" ")}
       aria-pressed="false"
       title={!validTarget ? "targetId（またはtargetUserId/targetUsername）が必要です" : undefined}

@@ -26,7 +26,7 @@ export default function PostNotifyBellButton({
 
     if (!canToggle) {
       return {
-        className: `${base} ${dim} border-slate-200 bg-white text-slate-300`,
+        className: `${base} ${dim} border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] text-slate-300 dark:text-gray-600`,
         title: "フォローしている人だけ通知をONにできます",
         Icon: BellOff,
       };
@@ -34,14 +34,14 @@ export default function PostNotifyBellButton({
 
     if (enabled) {
       return {
-        className: `${base} ${dim} border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100`,
+        className: `${base} ${dim} border-orange-200 dark:border-orange-700/40 bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/40`,
         title: "投稿通知：ON（クリックでOFF）",
         Icon: Bell,
       };
     }
 
     return {
-      className: `${base} ${dim} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`,
+      className: `${base} ${dim} border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] text-slate-700 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-white/10`,
       title: "投稿通知：OFF（クリックでON）",
       Icon: BellOff,
     };

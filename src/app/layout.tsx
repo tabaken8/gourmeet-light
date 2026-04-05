@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ja">
+    <html lang="ja" className="dark" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -46,6 +46,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       {/* min-h は globals.css の body { min-height: 100dvh } に任せる */}
       <body className="bg-[#fffaf5] text-black/90 dark:bg-[#0b0c0f] dark:text-gray-200">
+        {/* Prevent flash: apply dark class before React hydration */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("gourmeet_theme");if(t==="light")return;if(t==="system"&&!window.matchMedia("(prefers-color-scheme: dark)").matches)return;document.documentElement.classList.add("dark")}catch(e){}})()`,
+          }}
+        />
         <ThemeProvider>
         <QueryProvider>
           {/* PC用ヘッダー（モバイルでは非表示） */}

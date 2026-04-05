@@ -268,7 +268,7 @@ export default function AlbumBrowser({
         onClick={() => setLightboxPost(null)}
       >
         <div
-          className="relative flex w-full flex-col md:flex-row bg-white md:max-w-4xl md:rounded-xl overflow-hidden mx-2 md:mx-0"
+          className="relative flex w-full flex-col md:flex-row bg-white dark:bg-[#1e2026] md:max-w-4xl md:rounded-xl overflow-hidden mx-2 md:mx-0"
           style={{ maxHeight: "90vh" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -306,7 +306,7 @@ export default function AlbumBrowser({
                 />
               </>
             ) : (
-              <div className="h-full w-full bg-slate-200" />
+              <div className="h-full w-full bg-slate-200 dark:bg-white/10" />
             )}
 
             {images.length > 1 && (
@@ -341,32 +341,32 @@ export default function AlbumBrowser({
           {/* ─ Info panel ─ */}
           <div className="flex flex-col overflow-y-auto p-4 md:w-[40%]">
             {isHR && (
-              <div className="mb-2 inline-flex items-center gap-1.5 self-start rounded-full border-2 border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-extrabold text-red-700">
+              <div className="mb-2 inline-flex items-center gap-1.5 self-start rounded-full border-2 border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/30 px-2.5 py-1 text-[11px] font-extrabold text-red-700 dark:text-red-400">
                 <Sparkles size={11} />
                 My Special Picks
               </div>
             )}
 
-            <div className="text-base font-bold leading-snug text-slate-900">{name}</div>
-            <div className="mt-0.5 text-sm text-slate-500">{genre}</div>
+            <div className="text-base font-bold leading-snug text-slate-900 dark:text-gray-100">{name}</div>
+            <div className="mt-0.5 text-sm text-slate-500 dark:text-gray-500">{genre}</div>
 
             {scoreText && (
-              <div className="mt-2 inline-flex items-center gap-1 self-start rounded-full bg-orange-50 px-3 py-1 text-sm font-bold text-orange-600">
+              <div className="mt-2 inline-flex items-center gap-1 self-start rounded-full bg-orange-50 dark:bg-orange-900/30 px-3 py-1 text-sm font-bold text-orange-600 dark:text-orange-400">
                 ⭐ {scoreText}
               </div>
             )}
 
             {content && (
-              <p className="mt-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{content}</p>
+              <p className="mt-3 text-sm leading-relaxed text-slate-700 dark:text-gray-300 whitespace-pre-wrap">{content}</p>
             )}
 
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-white/[.08] pt-4">
               {mapUrl && (
                 <a
                   href={mapUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/15 bg-white dark:bg-white/[.06] px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MapPin size={13} />
@@ -375,7 +375,7 @@ export default function AlbumBrowser({
               )}
               <Link
                 href={`/posts/${encodeURIComponent(String(lightboxPost.id))}`}
-                className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold hover:bg-slate-700"
+                className="inline-flex items-center gap-1 rounded-full bg-slate-900 dark:bg-white/15 px-3 py-1.5 text-xs font-semibold hover:bg-slate-700 dark:hover:bg-white/20"
                 style={{ color: "#fff" }}
               >
                 詳細を見る →
@@ -387,8 +387,8 @@ export default function AlbumBrowser({
                   className={[
                     "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold",
                     isHR
-                      ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                      ? "border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40"
+                      : "border-slate-200 dark:border-white/15 bg-white dark:bg-white/[.06] text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-white/10",
                   ].join(" ")}
                 >
                   <Sparkles size={12} />
@@ -421,8 +421,8 @@ export default function AlbumBrowser({
             <div
               key={stableId(p)}
               className={[
-                "bg-white shadow-sm",
-                isHR ? "border-2 border-red-300" : "border border-orange-100",
+                "bg-white dark:bg-[#16181e] shadow-sm",
+                isHR ? "border-2 border-red-300 dark:border-red-700/50" : "border border-orange-100 dark:border-white/[.08]",
               ].join(" ")}
               style={{ borderRadius: 0 }}
             >
@@ -432,7 +432,7 @@ export default function AlbumBrowser({
                 className="block w-full text-left"
                 onClick={() => openLightbox(p)}
               >
-                <div className={["relative aspect-square", isHR ? "bg-red-50" : "bg-orange-50", "overflow-hidden"].join(" ")}>
+                <div className={["relative aspect-square", isHR ? "bg-red-50 dark:bg-red-900/20" : "bg-orange-50 dark:bg-white/[.04]", "overflow-hidden"].join(" ")}>
                   {isHR && (
                     <div className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full border border-red-200 bg-white/90 px-2 py-1 text-[11px] font-extrabold text-red-700 backdrop-blur">
                       <Sparkles size={12} />
@@ -446,9 +446,9 @@ export default function AlbumBrowser({
               </button>
 
               <div className="px-3 py-2">
-                <div className="truncate text-sm font-semibold text-slate-900">{name}</div>
-                <div className="mt-0.5 truncate text-[12px] font-semibold text-slate-600">{genre || "未分類"}</div>
-                <div className="mt-1 text-[12px] font-semibold text-slate-700">{scoreText}</div>
+                <div className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100">{name}</div>
+                <div className="mt-0.5 truncate text-[12px] font-semibold text-slate-600 dark:text-gray-500">{genre || "未分類"}</div>
+                <div className="mt-1 text-[12px] font-semibold text-slate-700 dark:text-gray-400">{scoreText}</div>
 
                 {/* 地図ボタンのみ（3点リーダー削除） */}
                 {mapUrl && (
@@ -457,7 +457,7 @@ export default function AlbumBrowser({
                       href={mapUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/15 bg-white dark:bg-white/[.06] px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MapPin size={12} />
@@ -483,9 +483,9 @@ export default function AlbumBrowser({
 
     return (
       <div className="px-4 md:px-0">
-        <div className="border-2 border-red-300 bg-white shadow-sm" style={{ borderRadius: 0 }}>
-          <div className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-3 py-2">
-            <div className="inline-flex items-center gap-2 text-xs font-extrabold text-red-700">
+        <div className="border-2 border-red-300 dark:border-red-700/50 bg-white dark:bg-[#16181e] shadow-sm" style={{ borderRadius: 0 }}>
+          <div className="flex items-center justify-between gap-3 border-b border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+            <div className="inline-flex items-center gap-2 text-xs font-extrabold text-red-700 dark:text-red-400">
               <Sparkles size={14} />
               My Special Picks
             </div>
@@ -494,7 +494,7 @@ export default function AlbumBrowser({
                 href={mapUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/15 bg-white dark:bg-white/[.06] px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
                 onClick={(e) => e.stopPropagation()}
               >
                 <MapPin size={11} />
@@ -512,8 +512,8 @@ export default function AlbumBrowser({
                 <div className="pointer-events-none absolute inset-0 ring-2 ring-red-300/60" />
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-extrabold text-slate-900">{name}</div>
-                <div className="mt-0.5 truncate text-xs font-semibold text-slate-600">{genre}</div>
+                <div className="truncate text-sm font-extrabold text-slate-900 dark:text-gray-100">{name}</div>
+                <div className="mt-0.5 truncate text-xs font-semibold text-slate-600 dark:text-gray-500">{genre}</div>
               </div>
             </div>
           </button>
@@ -526,7 +526,7 @@ export default function AlbumBrowser({
     <select
       value={sort}
       onChange={(e) => setSort(e.target.value as SortKey)}
-      className="rounded-full border border-orange-100 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-orange-200"
+      className="rounded-full border border-orange-100 dark:border-white/10 bg-white dark:bg-white/[.06] px-3 py-2 text-xs font-semibold text-slate-700 dark:text-gray-300 outline-none focus:border-orange-200 dark:focus:border-white/25"
       aria-label="並び替え"
     >
       <option value="created">投稿日時順</option>
@@ -535,11 +535,11 @@ export default function AlbumBrowser({
   );
 
   const chipBase   = "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold";
-  const chipActive = "border-orange-200 bg-orange-50 text-slate-900";
-  const chipIdle   = "border-orange-100 bg-white text-slate-600 hover:bg-orange-50/40";
+  const chipActive = "border-orange-200 dark:border-orange-700/40 bg-orange-50 dark:bg-orange-900/30 text-slate-900 dark:text-orange-300";
+  const chipIdle   = "border-orange-100 dark:border-white/10 bg-white dark:bg-white/[.06] text-slate-600 dark:text-gray-400 hover:bg-orange-50/40 dark:hover:bg-white/10";
 
   return (
-    <section className="border border-orange-100 bg-white/95 px-0 py-4 shadow-sm backdrop-blur md:px-5 md:py-5">
+    <section className="border border-orange-100 dark:border-white/[.08] bg-white/95 dark:bg-[#16181e] px-0 py-4 shadow-sm backdrop-blur md:px-5 md:py-5">
       <div className="px-4 md:px-0">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
@@ -567,12 +567,12 @@ export default function AlbumBrowser({
 
           <div className="flex items-center justify-between gap-2 md:justify-end">
             <div className="relative w-full md:w-80">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-gray-500" />
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="店名・エリア・ジャンルで検索"
-                className="w-full rounded-full border border-orange-100 bg-white px-9 pr-9 py-2 text-base md:text-sm outline-none focus:border-orange-200"
+                className="w-full rounded-full border border-orange-100 dark:border-white/10 bg-white dark:bg-white/[.06] px-9 pr-9 py-2 text-base md:text-sm text-slate-900 dark:text-gray-100 outline-none focus:border-orange-200 dark:focus:border-white/25 placeholder:text-slate-400 dark:placeholder:text-gray-500"
               />
             </div>
             <div className="shrink-0">{sortSelect}</div>
@@ -582,7 +582,7 @@ export default function AlbumBrowser({
 
       <div className="mt-4 space-y-6">
         {posts.length === 0 ? (
-          <div className="mx-4 md:mx-0 border border-orange-50 bg-orange-50/60 p-8 text-center text-xs text-slate-600 md:text-sm">
+          <div className="mx-4 md:mx-0 border border-orange-50 dark:border-white/[.08] bg-orange-50/60 dark:bg-white/[.04] p-8 text-center text-xs text-slate-600 dark:text-gray-500 md:text-sm">
             投稿はまだありません。
           </div>
         ) : view === "all" ? (
@@ -590,7 +590,7 @@ export default function AlbumBrowser({
             {hrPosts.length > 0 && (
               <section className="space-y-3">
                 <div className="px-4 md:px-0 flex items-center gap-2">
-                  <div className="inline-flex items-center gap-2 rounded-full border-2 border-red-200 bg-red-50 px-3 py-1 text-xs font-extrabold text-red-700">
+                  <div className="inline-flex items-center gap-2 rounded-full border-2 border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/30 px-3 py-1 text-xs font-extrabold text-red-700 dark:text-red-400">
                     <Sparkles size={14} />
                     My Special Picks
                   </div>
@@ -604,10 +604,10 @@ export default function AlbumBrowser({
           areaBlocks.map((b) => (
             <section key={b.key} className="space-y-3">
               <div className="px-4 md:px-0 flex items-center gap-2">
-                <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
+                <div className="inline-flex items-center rounded-full border border-orange-200 dark:border-orange-700/40 bg-orange-50 dark:bg-orange-900/30 px-3 py-1 text-xs font-bold text-slate-900 dark:text-orange-300">
                   {b.key}
                 </div>
-                <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
+                <div className="text-xs font-semibold text-slate-500 dark:text-gray-500">{b.posts.length} posts</div>
               </div>
               <PostGrid items={b.posts} />
             </section>
@@ -616,10 +616,10 @@ export default function AlbumBrowser({
           genreBlocks.map((b) => (
             <section key={b.key} className="space-y-3">
               <div className="px-4 md:px-0 flex items-center gap-2">
-                <div className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-slate-900">
+                <div className="inline-flex items-center rounded-full border border-orange-200 dark:border-orange-700/40 bg-orange-50 dark:bg-orange-900/30 px-3 py-1 text-xs font-bold text-slate-900 dark:text-orange-300">
                   {b.key}
                 </div>
-                <div className="text-xs font-semibold text-slate-500">{b.posts.length} posts</div>
+                <div className="text-xs font-semibold text-slate-500 dark:text-gray-500">{b.posts.length} posts</div>
               </div>
               <PostGrid items={b.posts} />
             </section>

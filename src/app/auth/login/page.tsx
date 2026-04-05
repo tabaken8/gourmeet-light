@@ -47,7 +47,7 @@ const handleGoogleLogin = async () => {
 
 
   return (
-    <main className="min-h-screen bg-[#fffaf5] py-12">
+    <main className="min-h-screen bg-[#fffaf5] dark:bg-transparent py-12">
       <div className="mx-auto max-w-5xl px-4">
         <h1 className="sr-only">Log in</h1>
 
@@ -55,25 +55,25 @@ const handleGoogleLogin = async () => {
           {/* 左：ログインフォーム */}
           <section
             aria-label="ログイン"
-            className="rounded-2xl bg-white p-8 shadow-sm"
+            className="rounded-2xl bg-white p-8 shadow-sm dark:bg-[#16181e] dark:border dark:border-white/[.08]"
           >
-            <h2 className="mb-6 text-2xl font-bold tracking-tight">ログイン</h2>
+            <h2 className="mb-6 text-2xl font-bold tracking-tight dark:text-gray-100">ログイン</h2>
 
             <form onSubmit={onSubmit} className="space-y-4">
               <label className="block">
-                <span className="mb-1 block text-sm">メールアドレス</span>
+                <span className="mb-1 block text-sm dark:text-gray-300">メールアドレス</span>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   autoComplete="email"
-                  className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 outline-none focus:border-orange-600"
+                  className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-sm">パスワード</span>
+                <span className="mb-1 block text-sm dark:text-gray-300">パスワード</span>
                 <div className="flex items-stretch gap-2">
                   <input
                     type={show ? "text" : "password"}
@@ -81,12 +81,12 @@ const handleGoogleLogin = async () => {
                     onChange={(e) => setPw(e.target.value)}
                     required
                     autoComplete="current-password"
-                    className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 outline-none focus:border-orange-600"
+                    className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
                   />
                   <button
                     type="button"
                     onClick={() => setShow((v) => !v)}
-                    className="whitespace-nowrap rounded-lg border border-black/10 px-3 text-sm hover:bg-black/[.04]"
+                    className="whitespace-nowrap rounded-lg border border-black/10 px-3 text-sm hover:bg-black/[.04] dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                     aria-pressed={show}
                   >
                     {show ? "隠す" : "表示"}
@@ -101,7 +101,7 @@ const handleGoogleLogin = async () => {
                   onChange={(e) => setRemember(e.target.checked)}
                   className="h-4 w-4 accent-orange-700"
                 />
-                <span className="text-sm">ログイン状態を保持する</span>
+                <span className="text-sm dark:text-gray-300">ログイン状態を保持する</span>
               </label>
 
               {msg && <p className="text-sm text-red-600">{msg}</p>}
@@ -116,7 +116,7 @@ const handleGoogleLogin = async () => {
               <div className="mt-2">
                 <a
                   href="/auth/reset"
-                  className="text-sm text-orange-800 underline"
+                  className="text-sm text-orange-800 underline dark:text-orange-400"
                 >
                   パスワードをお忘れの方はこちら
                 </a>
@@ -127,7 +127,7 @@ const handleGoogleLogin = async () => {
             <button
               type="button"
               onClick={handleGoogleLogin}
-              className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-black/20 bg-white py-3 text-sm font-medium hover:bg-black/5"
+              className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-black/20 bg-white py-3 text-sm font-medium hover:bg-black/5 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-200 dark:hover:bg-white/10"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -159,28 +159,28 @@ const handleGoogleLogin = async () => {
           {/* 右：新規登録カード */}
           <aside
             aria-label="新規会員登録"
-            className="rounded-2xl border border-orange-100 bg-[#fff7ed] p-8"
+            className="rounded-2xl border border-orange-100 bg-[#fff7ed] p-8 dark:bg-[#1e1510] dark:border-orange-900/30"
           >
-            <h2 className="mb-2 text-lg font-bold">新規会員登録（無料）</h2>
-            <p className="mb-6 text-sm leading-6 text-black/70">
+            <h2 className="mb-2 text-lg font-bold dark:text-gray-100">新規会員登録（無料）</h2>
+            <p className="mb-6 text-sm leading-6 text-black/70 dark:text-gray-400">
               おいしいを友達とシェアしよう。
             </p>
             <a
               href="/auth/signup"
-              className="inline-flex h-11 items-center justify-center rounded-full border border-orange-800 px-6 font-medium text-orange-900 hover:bg-orange-800 hover:text-white"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-orange-800 px-6 font-medium text-orange-900 hover:bg-orange-800 hover:text-white dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
             >
               会員登録する
             </a>
 
             <div className="mt-6 text-sm">
-              <a href="/auth/signup" className="text-orange-800 underline">
+              <a href="/auth/signup" className="text-orange-800 underline dark:text-orange-400">
                 くわしく見る
               </a>
             </div>
           </aside>
         </div>
 
-        <p className="mt-8 text-center text-xs text-black/60">
+        <p className="mt-8 text-center text-xs text-black/60 dark:text-gray-500">
           セキュリティ保護のため、他サイトと同じパスワードの使い回しはお控えください。
         </p>
       </div>

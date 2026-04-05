@@ -295,20 +295,20 @@ export default function SignUpPage() {
 
   return (
     <main className="grid gap-8 md:grid-cols-2">
-      <section className="rounded-2xl bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-2xl font-bold tracking-tight">会員登録</h1>
+      <section className="rounded-2xl bg-white p-8 shadow-sm dark:bg-[#16181e] dark:border dark:border-white/[.08]">
+        <h1 className="mb-6 text-2xl font-bold tracking-tight dark:text-gray-100">会員登録</h1>
 
         {/* ✅ 招待コード */}
         <div className="mb-5">
           {inviteApplied ? (
-            <div className="rounded-2xl border border-black/10 bg-black/[.02] p-4">
+            <div className="rounded-2xl border border-black/10 bg-black/[.02] p-4 dark:bg-white/[.04] dark:border-white/10">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold">✅ 招待コードを適用しました</div>
-                  <div className="mt-1 font-mono text-lg tracking-widest break-all">
+                  <div className="text-sm font-semibold dark:text-gray-100">✅ 招待コードを適用しました</div>
+                  <div className="mt-1 font-mono text-lg tracking-widest break-all dark:text-gray-100">
                     {normalizeInvite(invite)}
                   </div>
-                  <p className="mt-1 text-xs text-gray-600">
+                  <p className="mt-1 text-xs text-gray-600 dark:text-gray-500">
                     変更したい場合は「変更する」から編集できます。
                   </p>
                 </div>
@@ -316,7 +316,7 @@ export default function SignUpPage() {
                 <button
                   type="button"
                   onClick={() => setInviteOpen((v) => !v)}
-                  className="shrink-0 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03]"
+                  className="shrink-0 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03] dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                 >
                   {inviteOpen ? "閉じる" : "変更する"}
                 </button>
@@ -325,11 +325,11 @@ export default function SignUpPage() {
               {inviteOpen && (
                 <div className="mt-3">
                   <label className="block">
-                    <span className="mb-1 block text-sm">招待コード（任意）</span>
+                    <span className="mb-1 block text-sm dark:text-gray-300">招待コード（任意）</span>
 
                     <div className="flex gap-2">
                       <input
-                        className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600"
+                        className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
                         value={invite}
                         onChange={(e) => setInvite(e.target.value)}
                         placeholder="例: ABCDEFGH12"
@@ -340,7 +340,7 @@ export default function SignUpPage() {
                         type="button"
                         onClick={pasteInviteFromClipboard}
                         disabled={pasting}
-                        className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50"
+                        className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                       >
                         {pasting ? "…" : "貼り付け"}
                       </button>
@@ -348,8 +348,8 @@ export default function SignUpPage() {
                   </label>
 
                   <div className="mt-1 flex items-center justify-between gap-2">
-                    <p className="text-xs text-gray-600">招待コードがなくても登録できます。</p>
-                    {inviteMsg && <p className="text-xs text-gray-600">{inviteMsg}</p>}
+                    <p className="text-xs text-gray-600 dark:text-gray-500">招待コードがなくても登録できます。</p>
+                    {inviteMsg && <p className="text-xs text-gray-600 dark:text-gray-500">{inviteMsg}</p>}
                   </div>
                 </div>
               )}
@@ -359,7 +359,7 @@ export default function SignUpPage() {
               <button
                 type="button"
                 onClick={() => setInviteOpen((v) => !v)}
-                className="text-sm font-semibold text-gray-700 underline decoration-black/20 underline-offset-4 hover:text-black"
+                className="text-sm font-semibold text-gray-700 underline decoration-black/20 underline-offset-4 hover:text-black dark:text-gray-400 dark:hover:text-gray-200"
               >
                 招待コードをお持ちの方はこちら
               </button>
@@ -368,7 +368,7 @@ export default function SignUpPage() {
                 type="button"
                 onClick={pasteInviteFromClipboard}
                 disabled={pasting}
-                className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03] disabled:opacity-50"
+                className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03] disabled:opacity-50 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                 title="クリップボードから貼り付け"
               >
                 {pasting ? "…" : "貼り付け"}
@@ -377,13 +377,13 @@ export default function SignUpPage() {
           )}
 
           {!inviteApplied && inviteOpen && (
-            <div className="mt-3 rounded-2xl border border-black/10 bg-black/[.02] p-4">
+            <div className="mt-3 rounded-2xl border border-black/10 bg-black/[.02] p-4 dark:bg-white/[.04] dark:border-white/10">
               <label className="block">
-                <span className="mb-1 block text-sm">招待コード（任意）</span>
+                <span className="mb-1 block text-sm dark:text-gray-300">招待コード（任意）</span>
 
                 <div className="flex gap-2">
                   <input
-                    className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600"
+                    className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
                     value={invite}
                     onChange={(e) => setInvite(e.target.value)}
                     placeholder="例: ABCDEFGH12"
@@ -394,7 +394,7 @@ export default function SignUpPage() {
                     type="button"
                     onClick={pasteInviteFromClipboard}
                     disabled={pasting}
-                    className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50"
+                    className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                   >
                     {pasting ? "…" : "貼り付け"}
                   </button>
@@ -402,8 +402,8 @@ export default function SignUpPage() {
               </label>
 
               <div className="mt-1 flex items-center justify-between gap-2">
-                <p className="text-xs text-gray-600">招待コードがなくても登録できます。</p>
-                {inviteMsg && <p className="text-xs text-gray-600">{inviteMsg}</p>}
+                <p className="text-xs text-gray-600 dark:text-gray-500">招待コードがなくても登録できます。</p>
+                {inviteMsg && <p className="text-xs text-gray-600 dark:text-gray-500">{inviteMsg}</p>}
               </div>
             </div>
           )}
@@ -412,9 +412,9 @@ export default function SignUpPage() {
         <form onSubmit={submit} className="space-y-4">
           {/* メールアドレス */}
           <label className="block">
-            <span className="mb-1 block text-sm">メールアドレス</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">メールアドレス</span>
             <input
-              className="w-full rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-orange-600"
+              className="w-full rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
               type="email"
               value={email}
               onChange={(e) => handleEmailChange(e.target.value)}
@@ -422,27 +422,26 @@ export default function SignUpPage() {
               autoComplete="email"
               placeholder="gourmeet@gmail.com"
             />
-            <p className="mt-1 text-xs text-black/60">{emailConfirmNote}</p>
+            <p className="mt-1 text-xs text-black/60 dark:text-gray-500">{emailConfirmNote}</p>
           </label>
 
           {/* ✅ ユーザーID（必須） */}
           <label className="block">
-            <span className="mb-1 block text-sm">ユーザーID（あとから変更できます）</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">ユーザーID（あとから変更できます）</span>
 
             <div
               className={[
-                "flex items-center rounded-lg border bg-white px-3 py-2 outline-none",
-                "focus-within:border-orange-600",
+                "flex items-center rounded-lg border bg-white px-3 py-2 outline-none dark:bg-white/[.06] focus-within:border-orange-600 dark:focus-within:border-white/25",
                 usernameClean.length === 0
-                  ? "border-black/10"
+                  ? "border-black/10 dark:border-white/15"
                   : usernameOk && !usernameMsg
-                  ? "border-green-400"
-                  : "border-red-400",
+                  ? "border-green-400 dark:border-green-500"
+                  : "border-red-400 dark:border-red-500",
               ].join(" ")}
             >
-              <span className="select-none text-sm font-semibold text-slate-300">@</span>
+              <span className="select-none text-sm font-semibold text-slate-300 dark:text-gray-600">@</span>
               <input
-                className="w-full bg-transparent pl-1 outline-none text-sm"
+                className="w-full bg-transparent pl-1 outline-none text-sm dark:text-gray-100 dark:placeholder:text-gray-500"
                 value={username}
                 onChange={(e) => {
                   setUsername(cleanHandle(e.target.value));
@@ -468,7 +467,7 @@ export default function SignUpPage() {
             ) : null}
 
             {usernameOk && checkingUsername ? (
-              <p className="mt-1 text-xs text-black/60">利用可能か確認中...</p>
+              <p className="mt-1 text-xs text-black/60 dark:text-gray-500">利用可能か確認中...</p>
             ) : null}
 
             {usernameOk && usernameMsg ? (
@@ -476,7 +475,7 @@ export default function SignUpPage() {
             ) : null}
 
             {usernameOk && !checkingUsername && !usernameMsg ? (
-              <p className="mt-1 text-xs text-black/60">
+              <p className="mt-1 text-xs text-black/60 dark:text-gray-500">
                 URLや検索で使われるIDです（後から変更も可能）。
               </p>
             ) : null}
@@ -484,25 +483,25 @@ export default function SignUpPage() {
 
           {/* 表示名 */}
           <label className="block">
-            <span className="mb-1 block text-sm">表示名（ハンドルネーム）</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">表示名（ハンドルネーム）</span>
             <input
-              className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-orange-600"
+              className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="グルミート太郎"
             />
-            <p className="mt-1 text-xs text-black/60">
+            <p className="mt-1 text-xs text-black/60 dark:text-gray-500">
               タイムラインなどに表示される名前です(@つきユーザーIDとは別)。
             </p>
           </label>
 
           {/* パスワード */}
           <label className="block">
-            <span className="mb-1 block text-sm">パスワード</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">パスワード</span>
             <div className="flex gap-2">
               <input
-                className="w-full rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-orange-600"
+                className="w-full rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
                 type={show ? "text" : "password"}
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
@@ -513,7 +512,7 @@ export default function SignUpPage() {
               <button
                 type="button"
                 onClick={() => setShow((v) => !v)}
-                className="rounded-lg border border-black/10 px-3 text-sm hover:bg-black/[.04]"
+                className="rounded-lg border border-black/10 px-3 text-sm hover:bg-black/[.04] dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
               >
                 {show ? "隠す" : "表示"}
               </button>
@@ -536,11 +535,11 @@ export default function SignUpPage() {
 
           {/* パスワード確認 */}
           <label className="block">
-            <span className="mb-1 block text-sm">パスワード（確認）</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">パスワード（確認）</span>
             <input
               className={
-                "w-full rounded-lg border px-3 py-2 outline-none " +
-                (pw2 ? (match ? "border-green-500" : "border-red-500") : "border-black/10")
+                "w-full rounded-lg border px-3 py-2 outline-none dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 " +
+                (pw2 ? (match ? "border-green-500 dark:border-green-500" : "border-red-500 dark:border-red-500") : "border-black/10 dark:border-white/15")
               }
               type={show ? "text" : "password"}
               value={pw2}
@@ -551,9 +550,9 @@ export default function SignUpPage() {
             {pw2 && !match && <p className="mt-1 text-xs text-red-600">一致しません。</p>}
           </label>
 
-          <p className="text-xs text-black/60">{emailConfirmNote}</p>
+          <p className="text-xs text-black/60 dark:text-gray-500">{emailConfirmNote}</p>
 
-          {msg && <p className="text-sm text-orange-800">{msg}</p>}
+          {msg && <p className="text-sm text-orange-800 dark:text-orange-400">{msg}</p>}
 
           <button
             disabled={!canSubmit || loading}
@@ -570,7 +569,7 @@ export default function SignUpPage() {
         <button
           type="button"
           onClick={handleGoogleContinue}
-          className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-black/20 bg-white py-3 text-sm font-medium hover:bg-black/5"
+          className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-black/20 bg-white py-3 text-sm font-medium hover:bg-black/5 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-200 dark:hover:bg-white/10"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48">
             <path
@@ -594,16 +593,16 @@ export default function SignUpPage() {
         </button>
       </section>
 
-      <aside className="rounded-2xl border border-orange-100 bg-[#fff7ed] p-8">
-        <h2 className="mb-2 text-lg font-bold">会員特典</h2>
-        <ul className="list-disc pl-5 text-sm leading-6 text-black/75">
+      <aside className="rounded-2xl border border-orange-100 bg-[#fff7ed] p-8 dark:bg-[#1e1510] dark:border-orange-900/30">
+        <h2 className="mb-2 text-lg font-bold dark:text-gray-100">会員特典</h2>
+        <ul className="list-disc pl-5 text-sm leading-6 text-black/75 dark:text-gray-300">
           <li>投稿の作成・保存ができます</li>
           <li>お気に入りの管理ができます</li>
           <li>通知やメール連携（今後）</li>
         </ul>
         <a
           href="/auth/login"
-          className="mt-6 inline-flex h-11 items-center rounded-full border border-orange-800 px-6 font-medium text-orange-900 hover:bg-orange-800 hover:text-white"
+          className="mt-6 inline-flex h-11 items-center rounded-full border border-orange-800 px-6 font-medium text-orange-900 hover:bg-orange-800 hover:text-white dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-800 dark:hover:text-white"
         >
           すでにアカウントをお持ちの方
         </a>

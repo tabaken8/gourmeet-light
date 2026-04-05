@@ -36,25 +36,25 @@ export default async function FollowingPage({ params }: { params: { id: string }
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-8 space-y-6">
-      <h1 className="text-xl font-semibold">フォロー中</h1>
+    <main className="mx-auto max-w-xl px-4 py-8 space-y-6 dark:text-gray-200">
+      <h1 className="text-xl font-semibold dark:text-gray-100">フォロー中</h1>
       {users.length === 0 ? (
-        <p className="text-black/60">まだ誰もフォローしていません。</p>
+        <p className="text-black/60 dark:text-gray-500">まだ誰もフォローしていません。</p>
       ) : (
         <ul className="space-y-3">
           {users.map((u) => (
             <li key={u.id} className="flex items-center gap-3">
               {u.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={u.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover border" />
+                <img src={u.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover border dark:border-white/10" />
               ) : (
-                <div className="h-10 w-10 rounded-full bg-gray-200" />
+                <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-white/10" />
               )}
               <div className="min-w-0">
-                <Link href={`/u/${u.id}`} className="block truncate font-medium hover:underline">
+                <Link href={`/u/${u.id}`} className="block truncate font-medium hover:underline dark:text-gray-100">
                   {u.display_name ?? u.username ?? "ユーザー"}
                 </Link>
-                {u.username && <div className="truncate text-xs text-black/60">@{u.username}</div>}
+                {u.username && <div className="truncate text-xs text-black/60 dark:text-gray-500">@{u.username}</div>}
               </div>
             </li>
           ))}

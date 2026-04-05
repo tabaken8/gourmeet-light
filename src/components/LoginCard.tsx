@@ -170,27 +170,27 @@ export default function LoginCard({
 
   return (
     <div className="flex min-h-[44vh] items-center justify-center px-2">
-      <div className="w-full max-w-md rounded-2xl border border-black/[.06] bg-white p-5 shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-black/[.06] bg-white p-5 shadow-sm dark:bg-[#16181e] dark:border-white/[.08]">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-900">{title}</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-gray-100">{title}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-gray-500">{description}</p>
           </div>
 
-          <div className="ml-3 flex h-9 w-9 items-center justify-center rounded-full bg-orange-100">
+          <div className="ml-3 flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30">
             <GoogleMark className="h-5 w-5" />
           </div>
         </div>
 
         {/* ✅ Pitch / 宣伝 */}
-        <div className="mt-4 rounded-2xl bg-black/[.03] p-4">
+        <div className="mt-4 rounded-2xl bg-black/[.03] p-4 dark:bg-white/[.04]">
           <div className="flex items-start gap-2">
-            <Sparkles size={18} className="mt-0.5 text-orange-700" />
+            <Sparkles size={18} className="mt-0.5 text-orange-700 dark:text-orange-400" />
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-900">{pitchTitle}</div>
+              <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">{pitchTitle}</div>
               {pitchSubtitle ? (
-                <div className="mt-1 text-xs leading-5 text-slate-600">{pitchSubtitle}</div>
+                <div className="mt-1 text-xs leading-5 text-slate-600 dark:text-gray-400">{pitchSubtitle}</div>
               ) : null}
             </div>
           </div>
@@ -200,16 +200,16 @@ export default function LoginCard({
               <div key={idx} className="flex gap-2">
                 <PitchIcon kind={it.icon} />
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-slate-800">{it.title}</div>
+                  <div className="text-xs font-semibold text-slate-800 dark:text-gray-200">{it.title}</div>
                   {it.body ? (
-                    <div className="mt-0.5 text-[11px] leading-4 text-slate-600">{it.body}</div>
+                    <div className="mt-0.5 text-[11px] leading-4 text-slate-600 dark:text-gray-500">{it.body}</div>
                   ) : null}
                 </div>
               </div>
             ))}
           </div>
 
-          {pitchNote ? <div className="mt-3 text-[11px] text-slate-500">{pitchNote}</div> : null}
+          {pitchNote ? <div className="mt-3 text-[11px] text-slate-500 dark:text-gray-600">{pitchNote}</div> : null}
         </div>
 
         {/* Actions */}
@@ -217,7 +217,7 @@ export default function LoginCard({
           <button
             type="button"
             onClick={handleGoogleLogin}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-black/10 bg-white text-sm font-medium text-slate-900 hover:bg-black/[.03]"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-black/10 bg-white text-sm font-medium text-slate-900 hover:bg-black/[.03] dark:border-white/15 dark:bg-white/[.06] dark:text-gray-200 dark:hover:bg-white/10"
           >
             <GoogleMark className="h-[18px] w-[18px]" />
             Googleで続ける
@@ -231,7 +231,7 @@ export default function LoginCard({
           </Link>
 
           <div className="mt-2 flex items-center justify-between gap-2">
-            <Link href={signupHref} className="text-xs font-medium text-orange-700 hover:underline">
+            <Link href={signupHref} className="text-xs font-medium text-orange-700 hover:underline dark:text-orange-400">
               アカウント作成
             </Link>
 
@@ -244,12 +244,13 @@ export default function LoginCard({
                   rounded-full border border-black/10 bg-black/[.02]
                   px-3 py-1.5 text-xs font-medium text-slate-800
                   hover:bg-black/[.04]
+                  dark:border-white/10 dark:bg-white/[.04] dark:text-gray-300 dark:hover:bg-white/[.06]
                 "
               >
-                <Sparkles size={14} className="text-orange-700" />
+                <Sparkles size={14} className="text-orange-700 dark:text-orange-400" />
                 <span>{exploreCopy.label}</span>
                 {exploreCopy.sub ? (
-                  <span className="hidden sm:inline text-[11px] text-slate-500">
+                  <span className="hidden sm:inline text-[11px] text-slate-500 dark:text-gray-500">
                     {exploreCopy.sub}
                   </span>
                 ) : null}

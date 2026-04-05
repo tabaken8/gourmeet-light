@@ -53,7 +53,8 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
   // Initialise from localStorage
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    const t = stored === "light" || stored === "dark" ? stored : "system";
+    // Default to dark when no preference is stored
+    const t = stored === "light" || stored === "dark" || stored === "system" ? stored : "dark";
     setThemeState(t);
     const r = t === "system" ? getSystemPref() : t;
     setResolved(r);

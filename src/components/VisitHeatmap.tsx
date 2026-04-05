@@ -115,7 +115,7 @@ function scoreToLevel(maxScore: number | null) {
 }
 
 function levelClass(level: number) {
-  if (level === 0) return "bg-slate-200/70";
+  if (level === 0) return "bg-slate-200/70 dark:bg-white/10";
   if (level === 1) return "bg-yellow-200";
   const palette = [
     "bg-yellow-300",
@@ -540,11 +540,11 @@ const monthMeta = useMemo(() => {
     if (!canShowAllToggle) return null;
 
     const base =
-      "inline-flex items-center rounded-full border border-black/[.08] bg-white p-1 text-[11px] md:text-xs";
+      "inline-flex items-center rounded-full border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] p-1 text-[11px] md:text-xs";
     const btn =
       "px-3 py-1.5 rounded-full transition outline-none focus:ring-2 focus:ring-orange-300/60 focus:ring-offset-2 focus:ring-offset-white";
-    const active = "bg-slate-900 text-white";
-    const idle = "text-slate-700 hover:bg-slate-50";
+    const active = "bg-slate-900 text-white dark:bg-white/15 dark:text-gray-100";
+    const idle = "text-slate-700 hover:bg-slate-50 dark:text-gray-400 dark:hover:bg-white/[.06]";
 
     return (
       <div className={base}>
@@ -567,22 +567,22 @@ const monthMeta = useMemo(() => {
   }, [canShowAllToggle, mode, onSelectMode]);
 
   return (
-    <section className="w-full max-w-full overflow-hidden bg-white rounded-none border border-black/[.06] shadow-none">
+    <section className="w-full max-w-full overflow-hidden bg-white dark:bg-transparent rounded-none border border-black/[.06] dark:border-white/[.08] shadow-none">
       {/* Header */}
       <div className="flex flex-col gap-2 px-3 pt-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-900 md:text-base">来店ログ</h2>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">来店ログ</h2>
             {Segmented}
             {mode === "all" && loadingAll ? (
-              <span className="text-[11px] text-slate-500">読み込み中...</span>
+              <span className="text-[11px] text-slate-500 dark:text-gray-500">読み込み中...</span>
             ) : null}
           </div>
-          <p className="mt-1 text-[11px] text-slate-500">ブロックを押すと投稿を見ることができます。</p>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-500">ブロックを押すと投稿を見ることができます。</p>
         </div>
 
-        <div className="min-w-0 text-[11px] text-slate-500 sm:text-right">
-          <div className="font-medium text-slate-700">{yearRangeText}</div>
+        <div className="min-w-0 text-[11px] text-slate-500 dark:text-gray-500 sm:text-right">
+          <div className="font-medium text-slate-700 dark:text-gray-300">{yearRangeText}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2 sm:justify-end">
             <div className="flex items-center gap-0.5">
               {legendLevels.map((lv) => (
@@ -604,13 +604,13 @@ const monthMeta = useMemo(() => {
         <>
           {/* ✅ 年（1月だけ） */}
           {m.yearText ? (
-            <span className="absolute left-0 top-0 text-[10px] font-semibold text-slate-500 whitespace-nowrap leading-none">
+            <span className="absolute left-0 top-0 text-[10px] font-semibold text-slate-500 dark:text-gray-500 whitespace-nowrap leading-none">
               {m.yearText}
             </span>
           ) : null}
 
           {/* 月 */}
-          <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 whitespace-nowrap leading-none">
+          <span className="absolute left-0 bottom-0 text-[10px] font-medium text-slate-500 dark:text-gray-500 whitespace-nowrap leading-none">
             {m.text}
           </span>
         </>
@@ -637,7 +637,7 @@ const monthMeta = useMemo(() => {
                       type="button"
                       className={[
                         "h-3.5 w-3.5 flex-none rounded-none transition",
-                        "outline-none focus:ring-2 focus:ring-orange-300/60 focus:ring-offset-2 focus:ring-offset-white",
+                        "outline-none focus:ring-2 focus:ring-orange-300/60 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#16181e]",
                         levelClass(level),
                         "hover:brightness-95",
                       ].join(" ")}
@@ -659,19 +659,19 @@ const monthMeta = useMemo(() => {
       {/* PC hover popover */}
       {hoverKey && hoverPos && hoverDay && isPointerFine() && (
         <div
-          className="fixed z-[9998] -translate-x-1/2 rounded-none border border-black/[.08] bg-white p-3 shadow-xl"
+          className="fixed z-[9998] -translate-x-1/2 rounded-none border border-black/[.08] dark:border-white/10 bg-white dark:bg-[#1e2026] p-3 shadow-xl"
           style={{ left: hoverPos.x, top: hoverPos.y - 12 }}
           onMouseLeave={closeHover}
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs font-semibold text-slate-900">{hoverKey}</div>
-            <div className="text-[11px] text-slate-500">{hoverDay.count}件</div>
+            <div className="text-xs font-semibold text-slate-900 dark:text-gray-100">{hoverKey}</div>
+            <div className="text-[11px] text-slate-500 dark:text-gray-400">{hoverDay.count}件</div>
           </div>
 
           <div className="mt-2 flex items-center gap-2">
             {hoverDay.posts?.length ? (
               hoverDay.posts.slice(0, 3).map((p) => (
-                <div key={p.id} className="h-12 w-12 overflow-hidden rounded-none bg-slate-100">
+                <div key={p.id} className="h-12 w-12 overflow-hidden rounded-none bg-slate-100 dark:bg-white/10">
                   {p.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.thumbUrl} alt="" className="h-full w-full object-cover" />
@@ -679,7 +679,7 @@ const monthMeta = useMemo(() => {
                 </div>
               ))
             ) : (
-              <div className="text-[11px] text-slate-500">投稿なし</div>
+              <div className="text-[11px] text-slate-500 dark:text-gray-500">投稿なし</div>
             )}
             <span className="flex-1" />
             <div className="text-[11px] text-orange-700">クリックで詳細</div>
@@ -694,19 +694,19 @@ const monthMeta = useMemo(() => {
           <div className="fixed inset-0 z-[9999]">
             <div className="absolute inset-0 bg-black/35" onClick={closeModal} aria-hidden="true" />
             <div className="absolute inset-0 flex items-center justify-center p-3 md:p-6">
-              <div className="w-full max-w-5xl overflow-hidden rounded-none border border-black/[.08] bg-white shadow-2xl">
-                <div className="flex items-start justify-between gap-3 border-b border-black/[.06] p-4 md:p-5">
+              <div className="w-full max-w-5xl overflow-hidden rounded-none border border-black/[.08] dark:border-white/10 bg-white dark:bg-[#1e2026] shadow-2xl">
+                <div className="flex items-start justify-between gap-3 border-b border-black/[.06] dark:border-white/[.08] p-4 md:p-5">
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Visits</div>
-                    <div className="mt-1 text-base font-bold text-slate-900 md:text-lg">{openKey}</div>
-                    <div className="mt-1 text-[11px] text-slate-500">
+                    <div className="mt-1 text-base font-bold text-slate-900 dark:text-gray-100 md:text-lg">{openKey}</div>
+                    <div className="mt-1 text-[11px] text-slate-500 dark:text-gray-500">
                       {loadingDetail ? "読み込み中..." : `${detailPosts.length}件`}
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-none border border-black/[.08] bg-white text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-none border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] text-slate-700 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-white/10"
                     aria-label="閉じる"
                   >
                     <X size={16} />
@@ -715,7 +715,7 @@ const monthMeta = useMemo(() => {
 
                 <div className="max-h-[78vh] overflow-y-auto p-4 md:p-5">
                   {loadingDetail ? (
-                    <div className="border border-black/[.06] bg-white p-8 text-center text-sm text-slate-700">
+                    <div className="border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-sm text-slate-700 dark:text-gray-400">
                       読み込み中…
                     </div>
                   ) : detailPosts.length ? (
@@ -738,9 +738,9 @@ const monthMeta = useMemo(() => {
                           <a
                             key={p.id}
                             href={`/posts/${p.id}`}
-                            className="group flex gap-3 border border-black/[.06] bg-white p-3 shadow-sm transition hover:shadow-md"
+                            className="group flex gap-3 border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-3 shadow-sm transition hover:shadow-md"
                           >
-                            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-none bg-slate-100 md:h-24 md:w-24">
+                            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-none bg-slate-100 dark:bg-white/10 md:h-24 md:w-24">
                               {p.thumbUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
@@ -756,7 +756,7 @@ const monthMeta = useMemo(() => {
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 {p.place_name ? (
-                                  <span className="inline-flex items-center gap-1 bg-slate-50 px-2 py-1 text-[11px] text-slate-800">
+                                  <span className="inline-flex items-center gap-1 bg-slate-50 dark:bg-white/[.06] px-2 py-1 text-[11px] text-slate-800 dark:text-gray-200">
                                     <MapPin size={13} className="opacity-70" />
                                     {mapUrl ? (
                                       <span className="max-w-[260px] truncate underline decoration-orange-200 underline-offset-2">
@@ -767,25 +767,25 @@ const monthMeta = useMemo(() => {
                                     )}
                                   </span>
                                 ) : (
-                                  <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-500">店名なし</span>
+                                  <span className="bg-slate-100 dark:bg-white/[.06] px-2 py-1 text-[11px] text-slate-500 dark:text-gray-500">店名なし</span>
                                 )}
 
                                 {score !== null ? (
-                                  <span className="bg-slate-50 px-2 py-1 text-[11px] text-orange-800">
+                                  <span className="bg-slate-50 dark:bg-white/[.06] px-2 py-1 text-[11px] text-orange-800 dark:text-orange-300">
                                     おすすめ <span className="ml-1 font-semibold">{score}/10</span>
                                   </span>
                                 ) : null}
 
                                 {priceLabel ? (
-                                  <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-700">{priceLabel}</span>
+                                  <span className="bg-slate-100 dark:bg-white/[.06] px-2 py-1 text-[11px] text-slate-700 dark:text-gray-400">{priceLabel}</span>
                                 ) : null}
                               </div>
 
                               {p.place_address ? (
-                                <div className="mt-1 truncate text-[11px] text-slate-500">{p.place_address}</div>
+                                <div className="mt-1 truncate text-[11px] text-slate-500 dark:text-gray-500">{p.place_address}</div>
                               ) : null}
 
-                              <div className="mt-2 text-[11px] text-slate-500">
+                              <div className="mt-2 text-[11px] text-slate-500 dark:text-gray-500">
                                 {p.visited_on ? `来店: ${p.visited_on}` : `投稿日: ${p.created_at}`}
                               </div>
 
@@ -796,7 +796,7 @@ const monthMeta = useMemo(() => {
                       })}
                     </div>
                   ) : (
-                    <div className="border border-black/[.06] bg-white p-8 text-center text-sm text-slate-700">
+                    <div className="border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-sm text-slate-700 dark:text-gray-400">
                       この日は投稿がありません。
                     </div>
                   )}
