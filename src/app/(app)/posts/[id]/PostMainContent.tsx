@@ -10,6 +10,7 @@ import PostMoreMenu from "@/components/PostMoreMenu";
 import PostActions, { type LikerLite } from "@/components/PostActions";
 import GenreVoteInline from "@/components/GenreVoteInline";
 import FollowButton from "@/components/FollowButton";
+import TranslateButton from "@/components/TranslateButton";
 import DetailRequestModal from "./parts/DetailRequestModal";
 import UserOtherPostsStrip from "./parts/UserOtherPostsStrip";
 
@@ -296,7 +297,9 @@ export default function PostMainContent({
           {/* 本文 */}
           {post.content ? (
             <section className="px-4 py-4 border-b border-black/[.06] dark:border-white/[.08]">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-gray-200">{post.content}</p>
+              <TranslateButton text={post.content}>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-gray-200">{post.content}</p>
+              </TranslateButton>
             </section>
           ) : null}
 

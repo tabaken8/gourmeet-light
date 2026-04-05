@@ -355,14 +355,14 @@ export default function PostComments({
 
   return (
     <div className="space-y-3">
-      {errMsg && <div className="text-xs text-red-700">{errMsg}</div>}
+      {errMsg && <div className="text-xs text-red-700 dark:text-red-400">{errMsg}</div>}
 
       {/* コメント一覧 */}
       <div className="space-y-2">
         {loading ? (
-          <div className="text-xs text-slate-400">コメントを読み込み中…</div>
+          <div className="text-xs text-slate-400 dark:text-gray-500">コメントを読み込み中…</div>
         ) : comments.length === 0 ? (
-          <div className="text-xs text-slate-400">まだコメントはありません。</div>
+          <div className="text-xs text-slate-400 dark:text-gray-500">まだコメントはありません。</div>
         ) : (
           <>
             {visibleComments.map((c) => {
@@ -381,7 +381,7 @@ export default function PostComments({
                 <div key={c.id} className="flex items-start gap-2">
                   <Link
                     href={`/u/${c.profile?.username ?? c.user_id}`}
-                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600"
+                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 dark:bg-white/10 text-[10px] font-semibold text-slate-600 dark:text-gray-400"
                   >
                     {avatar ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -396,19 +396,19 @@ export default function PostComments({
                     <div className="flex items-center gap-2 min-w-0">
                       <Link
                         href={`/u/${c.profile?.username ?? c.user_id}`}
-                        className="truncate text-xs font-medium text-slate-800 hover:underline"
+                        className="truncate text-xs font-medium text-slate-800 dark:text-gray-100 hover:underline"
                       >
                         {name}
                       </Link>
 
-                      <span className="text-[11px] text-slate-400">{formatJST(c.created_at)}</span>
+                      <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatJST(c.created_at)}</span>
 
                       {isMine ? (
                         <button
                           type="button"
                           onClick={() => deleteComment(c.id)}
                           disabled={deletingId === c.id}
-                          className="text-[11px] font-medium text-slate-400 hover:text-red-600 disabled:opacity-50"
+                          className="text-[11px] font-medium text-slate-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
                           aria-label="コメントを削除"
                           title="削除"
                         >
@@ -419,7 +419,7 @@ export default function PostComments({
 
                     {/* ✅ 返信の文脈が分かるように表示 */}
                     {c.reply_to_user_id && replyName && (
-                      <div className="mt-0.5 text-[12px] text-slate-500">
+                      <div className="mt-0.5 text-[12px] text-slate-500 dark:text-gray-400">
                         <Link href={`/u/${c.replyToProfile?.username ?? c.reply_to_user_id}`} className="hover:underline">
                           @{replyName}
                         </Link>{" "}
@@ -427,7 +427,7 @@ export default function PostComments({
                       </div>
                     )}
 
-                    <div className="mt-0.5 whitespace-pre-wrap text-xs text-slate-700">{c.body}</div>
+                    <div className="mt-0.5 whitespace-pre-wrap text-xs text-slate-700 dark:text-gray-300">{c.body}</div>
 
                     {/* actions row */}
                     {meId && (
@@ -454,7 +454,7 @@ export default function PostComments({
 
                             requestAnimationFrame(() => inputRef.current?.focus());
                           }}
-                          className="text-[11px] font-medium text-slate-400 hover:text-slate-600"
+                          className="text-[11px] font-medium text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"
                         >
                           返信
                         </button>
@@ -467,7 +467,7 @@ export default function PostComments({
                           className={[
                             "inline-flex items-center gap-1",
                             "text-[11px] font-medium",
-                            liked ? "text-red-500" : "text-slate-400 hover:text-slate-600",
+                            liked ? "text-red-500" : "text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300",
                             likeBusy ? "opacity-60" : "",
                           ].join(" ")}
                           aria-label={liked ? "コメントのいいねを取り消す" : "コメントにいいね"}
@@ -492,7 +492,7 @@ export default function PostComments({
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                className="text-xs font-medium text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
               >
                 {expanded ? "コメントを折りたたむ" : `コメントをもっと見る（+${hiddenCount}）`}
               </button>
@@ -504,7 +504,7 @@ export default function PostComments({
       {/* composer */}
       {!meCanComment ? (
         <div className="flex items-center justify-between gap-3">
-          <div className="text-xs text-slate-400">{placeholder}</div>
+          <div className="text-xs text-slate-400 dark:text-gray-500">{placeholder}</div>
           <Link
             href="/auth/login"
             className="rounded-full !bg-slate-900 px-3 py-1 text-xs font-medium !text-white hover:opacity-90"
@@ -521,7 +521,7 @@ export default function PostComments({
                 setOpen(true);
                 requestAnimationFrame(() => inputRef.current?.focus());
               }}
-              className="w-full text-left text-sm text-slate-500 hover:text-slate-700"
+              className="w-full text-left text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
             >
               コメントを書く…
             </button>
@@ -537,19 +537,19 @@ export default function PostComments({
             ].join(" ")}
             style={{ top: 0 }}
           >
-            <div className="rounded-2xl bg-white shadow-md p-3">
+            <div className="rounded-2xl bg-white dark:bg-[#16181e] shadow-md dark:shadow-black/40 p-3">
               {replyTo && (
                 <div className="mb-2 flex items-center justify-between">
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-slate-500 dark:text-gray-400">
                     返信先:{" "}
-                    <span className="font-medium text-slate-700">{replyTo.displayName}</span>
+                    <span className="font-medium text-slate-700 dark:text-gray-200">{replyTo.displayName}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       setReplyTo(null);
                     }}
-                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600"
+                    className="text-[11px] font-medium text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"
                   >
                     キャンセル
                   </button>
@@ -571,18 +571,18 @@ export default function PostComments({
                     setOpen(false);
                   }
                 }}
-                className="w-full resize-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                className="w-full resize-none bg-transparent text-sm text-slate-800 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500"
               />
 
               <div className="mt-2 flex items-center justify-between">
-                <div className="text-[11px] text-slate-400">Cmd/Ctrl + Enter</div>
+                <div className="text-[11px] text-slate-400 dark:text-gray-500">Cmd/Ctrl + Enter</div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       if (!replyTo && !hasText && !submitting) setOpen(false);
                     }}
-                    className="rounded-full px-3 py-1 text-xs text-slate-500 hover:text-slate-700"
+                    className="rounded-full px-3 py-1 text-xs text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
                   >
                     閉じる
                   </button>
@@ -593,8 +593,8 @@ export default function PostComments({
                     className={[
                       "rounded-full px-3 py-1 text-xs font-medium transition",
                       submitting || text.trim().length === 0
-                        ? "bg-slate-100 text-slate-400"
-                        : "bg-slate-900 text-white hover:opacity-90",
+                        ? "bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-gray-500"
+                        : "bg-slate-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:opacity-90",
                     ].join(" ")}
                   >
                     {submitting ? "送信中…" : "送信"}

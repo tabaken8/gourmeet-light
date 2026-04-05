@@ -10,6 +10,7 @@ import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions, { LikerLite } from "@/components/PostActions";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
+import TranslateButton from "@/components/TranslateButton";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
 
 type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
@@ -417,11 +418,15 @@ export default function SearchPostList({
                 {/* Body */}
                 <div className="px-3 pt-0.5 pb-1.5">
                   {p.content && (
-                    <p className="whitespace-pre-wrap text-[13px] leading-snug text-slate-800 dark:text-gray-200">
-                      <Link href={`/posts/${p.id}`} className="hover:underline">
-                        {p.content}
-                      </Link>
-                    </p>
+                    <>
+                      <TranslateButton text={p.content}>
+                        <p className="whitespace-pre-wrap text-[13px] leading-snug text-slate-800 dark:text-gray-200">
+                          <Link href={`/posts/${p.id}`} className="hover:underline">
+                            {p.content}
+                          </Link>
+                        </p>
+                      </TranslateButton>
+                    </>
                   )}
                 </div>
 

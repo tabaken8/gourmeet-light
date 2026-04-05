@@ -199,7 +199,7 @@ function iconForType(t: NotificationType) {
       return <Heart size={14} className="text-orange-500" />;
     case "comment":
     case "reply":
-      return <MessageCircle size={14} className="text-slate-500" />;
+      return <MessageCircle size={14} className="text-slate-500 dark:text-gray-400" />;
     case "follow":
       return <UserPlus size={14} className="text-sky-600" />;
     case "comment_like":
@@ -302,14 +302,14 @@ export default function NotificationsPage() {
   }, [notifs]);
 
   return (
-    <main className="min-h-screen bg-[#fafafa] text-slate-900">
+    <main className="min-h-screen bg-[#fafafa] dark:bg-[#0e1117] text-slate-900 dark:text-gray-100">
       <div className="mx-auto w-full max-w-2xl px-0 pb-24">
-        <div className="sticky top-0 z-20 border-b border-black/10 bg-white/90 backdrop-blur pt-[env(safe-area-inset-top)]">
+        <div className="sticky top-0 z-20 border-b border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#0e1117]/90 backdrop-blur pt-[env(safe-area-inset-top)]">
           <div className="flex h-12 items-center justify-between px-4">
             <h1 className="text-[16px] font-semibold tracking-tight">通知</h1>
             <Link
               href="/settings/notifications"
-              className="text-[12px] font-semibold text-slate-500 hover:text-slate-700"
+              className="text-[12px] font-semibold text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
             >
               通知設定
             </Link>
@@ -317,16 +317,16 @@ export default function NotificationsPage() {
         </div>
 
         {!notifs?.length ? (
-          <div className="flex min-h-[60vh] items-center justify-center px-4 text-[12px] text-slate-500">
+          <div className="flex min-h-[60vh] items-center justify-center px-4 text-[12px] text-slate-500 dark:text-gray-500">
             {emptyText}
           </div>
         ) : (
           <div className="pb-6">
             {grouped.map((g) => (
               <section key={g.key} className="pt-4">
-                <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900">{g.key}</div>
+                <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900 dark:text-gray-100">{g.key}</div>
 
-                <div className="divide-y divide-black/5 bg-white">
+                <div className="divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-[#16181e]">
                   {g.items.map((n) => {
                     const actor = n.actor;
                     const post = n.post;
@@ -381,8 +381,8 @@ export default function NotificationsPage() {
                         href={href}
                         className={[
                           "flex items-center gap-3 px-4 py-3",
-                          "active:bg-black/[.03] hover:bg-black/[.02]",
-                          isJustRead ? "bg-[#eef6ff]" : "bg-white",
+                          "active:bg-black/[.03] hover:bg-black/[.02] dark:active:bg-white/[.03] dark:hover:bg-white/[.02]",
+                          isJustRead ? "bg-[#eef6ff] dark:bg-blue-900/20" : "bg-white dark:bg-transparent",
                         ].join(" ")}
                       >
                         <div className="shrink-0">
@@ -391,40 +391,40 @@ export default function NotificationsPage() {
                             <img
                               src={actorAvatar}
                               alt=""
-                              className="h-10 w-10 rounded-full object-cover bg-slate-200"
+                              className="h-10 w-10 rounded-full object-cover bg-slate-200 dark:bg-white/10"
                               referrerPolicy="no-referrer"
                             />
                           ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-[12px] font-bold text-slate-700">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 dark:bg-white/10 text-[12px] font-bold text-slate-700 dark:text-gray-400">
                               {n.type === "detail_request" && !actor?.id ? "？" : initial}
                             </div>
                           )}
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="text-[13px] leading-snug text-slate-900">
+                          <div className="text-[13px] leading-snug text-slate-900 dark:text-gray-100">
                             <span className="inline-flex items-center gap-1.5">
                               {iconForType(n.type)}
                               <span className="font-semibold">{actorName}</span>
                             </span>{" "}
-                            <span className="text-slate-700">{labelForType(n.type)}</span>
+                            <span className="text-slate-700 dark:text-gray-300">{labelForType(n.type)}</span>
                           </div>
 
                           {commentPreview ? (
-                            <div className="mt-0.5 line-clamp-2 text-[12px] text-slate-500">
+                            <div className="mt-0.5 line-clamp-2 text-[12px] text-slate-500 dark:text-gray-400">
                               &ldquo;{commentPreview}&rdquo;
                             </div>
                           ) : null}
 
                           {reqPreview ? (
-                            <div className="mt-1 line-clamp-2 text-[12px] text-slate-500">
+                            <div className="mt-1 line-clamp-2 text-[12px] text-slate-500 dark:text-gray-400">
                               &ldquo;{reqPreview}&rdquo;
                             </div>
                           ) : null}
 
                           {post?.place_name ? (
-                            <div className="mt-0.5 flex items-center gap-1 text-[12px] text-slate-500">
-                              <MapPin size={12} className="text-slate-400" />
+                            <div className="mt-0.5 flex items-center gap-1 text-[12px] text-slate-500 dark:text-gray-400">
+                              <MapPin size={12} className="text-slate-400 dark:text-gray-500" />
                               {mapUrl ? (
                                 <button
                                   type="button"
@@ -453,9 +453,9 @@ export default function NotificationsPage() {
                                   e.stopPropagation();
                                   router.push(`/answers/${dr!.id}`);
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 px-3 py-1.5 text-[12px] font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
                               >
-                                <MessageCircle size={14} className="text-slate-500" />
+                                <MessageCircle size={14} className="text-slate-500 dark:text-gray-400" />
                                 直接答える
                               </button>
 
@@ -466,7 +466,7 @@ export default function NotificationsPage() {
                                   e.stopPropagation();
                                   router.push(`/posts/${post!.id}/edit`);
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[12px] font-semibold text-orange-700 hover:bg-orange-100"
+                                className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 dark:border-orange-800/40 bg-orange-50 dark:bg-orange-900/20 px-3 py-1.5 text-[12px] font-semibold text-orange-700 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/30"
                               >
                                 <Pencil size={14} className="text-orange-600" />
                                 追記で答える
@@ -474,7 +474,7 @@ export default function NotificationsPage() {
                             </div>
                           ) : null}
 
-                          <div className="mt-0.5 text-[11px] text-slate-400">{formatRelativeJp(n.created_at)}</div>
+                          <div className="mt-0.5 text-[11px] text-slate-400 dark:text-gray-500">{formatRelativeJp(n.created_at)}</div>
                         </div>
 
                         <div className="shrink-0">
@@ -483,7 +483,7 @@ export default function NotificationsPage() {
                             <img
                               src={thumb}
                               alt=""
-                              className="h-11 w-11 rounded-xl object-cover bg-slate-200"
+                              className="h-11 w-11 rounded-xl object-cover bg-slate-200 dark:bg-white/10"
                               loading="lazy"
                               decoding="async"
                             />

@@ -144,7 +144,7 @@ export default function NotificationsClient({ initial }: { initial: Notification
 
   if (!rows || rows.length === 0) {
     return (
-      <div className="px-4 py-10 text-center text-[12px] text-slate-500">
+      <div className="px-4 py-10 text-center text-[12px] text-slate-500 dark:text-gray-500">
         まだ通知はありません。
       </div>
     );
@@ -155,9 +155,9 @@ export default function NotificationsClient({ initial }: { initial: Notification
       {grouped.map((g) => (
         <section key={g.key} className="pt-4">
           {/* 見出し（IGっぽい） */}
-          <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900">{g.key}</div>
+          <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900 dark:text-gray-100">{g.key}</div>
 
-          <div className="divide-y divide-black/5 bg-white">
+          <div className="divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-[#16181e]">
             {g.items.map((n) => {
               const a = n.actor;
               const msg = messageFor(n);
@@ -184,8 +184,8 @@ export default function NotificationsClient({ initial }: { initial: Notification
                   href={rowHref}
                   className={[
                     "flex items-center gap-3 px-4 py-3",
-                    "active:bg-black/[.03] hover:bg-black/[.02]",
-                    unread ? "bg-[#eef6ff]" : "",
+                    "active:bg-black/[.03] hover:bg-black/[.02] dark:active:bg-white/[.03] dark:hover:bg-white/[.02]",
+                    unread ? "bg-[#eef6ff] dark:bg-blue-900/20" : "",
                   ].join(" ")}
                 >
                   {/* avatar */}
@@ -195,11 +195,11 @@ export default function NotificationsClient({ initial }: { initial: Notification
                       <img
                         src={avatar}
                         alt=""
-                        className="h-10 w-10 rounded-full object-cover bg-slate-200"
+                        className="h-10 w-10 rounded-full object-cover bg-slate-200 dark:bg-white/10"
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-[12px] font-bold text-slate-700">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 dark:bg-white/10 text-[12px] font-bold text-slate-700 dark:text-gray-400">
                         {initial}
                       </div>
                     )}
@@ -207,22 +207,22 @@ export default function NotificationsClient({ initial }: { initial: Notification
 
                   {/* text */}
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] leading-snug text-slate-900">
+                    <div className="text-[13px] leading-snug text-slate-900 dark:text-gray-100">
                       <span className="font-semibold">{actorName(a)}</span>{" "}
-                      <span className="font-normal">{msg.replace(actorName(a), "").trim()}</span>
+                      <span className="font-normal dark:text-gray-300">{msg.replace(actorName(a), "").trim()}</span>
                     </div>
-                    <div className="mt-0.5 text-[11px] text-slate-500">{time}</div>
+                    <div className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-500">{time}</div>
 
                     {/* ✅ post通知だけ “Maps” を小さく出す（IGの外部導線っぽく） */}
                     {n.type === "post" && mapUrl ? (
                       <div className="mt-1">
                         <a
                           href={mapUrl}
-                          className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                          className="inline-flex items-center gap-1 rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:text-gray-300"
                           onClick={(e) => e.stopPropagation()}
                         >
                           Google Maps
-                          <ChevronRight className="h-3 w-3 text-slate-400" />
+                          <ChevronRight className="h-3 w-3 text-slate-400 dark:text-gray-500" />
                         </a>
                       </div>
                     ) : null}
@@ -235,7 +235,7 @@ export default function NotificationsClient({ initial }: { initial: Notification
                       <img
                         src={postThumb}
                         alt=""
-                        className="h-11 w-11 rounded-xl object-cover bg-slate-200"
+                        className="h-11 w-11 rounded-xl object-cover bg-slate-200 dark:bg-white/10"
                         loading="lazy"
                         decoding="async"
                       />
