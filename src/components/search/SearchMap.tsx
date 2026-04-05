@@ -307,8 +307,8 @@ export default function SearchMap({
 
   if (!isLoaded) {
     return (
-      <div className="relative w-full flex items-center justify-center bg-slate-100 rounded-xl" style={{ height: "40vh", minHeight: 240 }}>
-        <div className="text-sm text-slate-400">{"\u5730\u56F3\u3092\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026"}</div>
+      <div className="relative w-full flex items-center justify-center bg-slate-100 dark:bg-[#1e2026] rounded-xl" style={{ height: "40vh", minHeight: 240 }}>
+        <div className="text-sm text-slate-400 dark:text-gray-500">{"\u5730\u56F3\u3092\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026"}</div>
       </div>
     );
   }
@@ -384,16 +384,16 @@ export default function SearchMap({
           type="button"
           onClick={areaSearchLoading ? undefined : handleSearchThisArea}
           disabled={areaSearchLoading}
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-slate-800 shadow-lg border border-slate-200 hover:bg-slate-50 active:scale-[0.97] transition disabled:opacity-70"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-[#1e2026] px-4 py-2 text-[13px] font-semibold text-slate-800 dark:text-gray-100 shadow-lg border border-slate-200 dark:border-white/15 hover:bg-slate-50 dark:hover:bg-white/10 active:scale-[0.97] transition disabled:opacity-70"
         >
           {areaSearchLoading ? (
             <>
-              <Loader2 size={13} className="text-slate-500 animate-spin" />
+              <Loader2 size={13} className="text-slate-500 dark:text-gray-400 animate-spin" />
               {"\u691C\u7D22\u4E2D\u2026"}
             </>
           ) : (
             <>
-              <Navigation size={13} className="text-slate-500" />
+              <Navigation size={13} className="text-slate-500 dark:text-gray-400" />
               {"\u3053\u306E\u30A8\u30EA\u30A2\u3067\u691C\u7D22"}
             </>
           )}
@@ -404,20 +404,20 @@ export default function SearchMap({
       {onScopedSearch && currentBounds && !isTooWide && (
         <div className="absolute bottom-3 left-3 right-3 z-[1000] flex items-center gap-2">
           <div className="relative flex-1">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-gray-500" />
             <input
               value={scopedQ}
               onChange={(e) => setScopedQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleScopedSearch(); }}
               placeholder={"\u3053\u306E\u30A8\u30EA\u30A2\u3067\u30E9\u30FC\u30E1\u30F3\u3001\u30AB\u30D5\u30A7\u2026"}
-              className="w-full rounded-full border border-slate-200 bg-white/95 backdrop-blur py-2 pl-8 pr-3 text-[13px] outline-none shadow-lg placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
+              className="w-full rounded-full border border-slate-200 dark:border-white/15 bg-white/95 dark:bg-[#1e2026]/95 backdrop-blur py-2 pl-8 pr-3 text-[13px] text-slate-900 dark:text-gray-100 outline-none shadow-lg placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-slate-300 dark:focus:border-white/25 focus:ring-2 focus:ring-slate-100 dark:focus:ring-white/10"
               inputMode="search"
               enterKeyHint="search"
             />
           </div>
           {/* Post count badge */}
           {mappablePosts.length > 0 && (
-            <div className="shrink-0 inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-2 text-[11px] font-medium text-slate-600 shadow border border-slate-100">
+            <div className="shrink-0 inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-[#1e2026]/90 backdrop-blur px-2.5 py-2 text-[11px] font-medium text-slate-600 dark:text-gray-300 shadow border border-slate-100 dark:border-white/15">
               <MapPin size={11} />
               {mappablePosts.length}
             </div>

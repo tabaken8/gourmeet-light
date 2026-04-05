@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Home,
-  Search,
+  Compass,
   Bell,
   Bookmark,
   Plus,
@@ -263,11 +263,11 @@ export default function Sidebar({ name }: { name?: string }) {
           iconClassName="text-blue-600"
         />
 
-        {/* ✅ 検索をオレンジに */}
+        {/* ✅ 発見（People Map） */}
         <NavItem
-          href={gate("/search", true)}
-          label="検索"
-          icon={Search}
+          href={gate("/discover", true)}
+          label="発見"
+          icon={Compass}
           iconClassName="text-orange-700"
         />
 

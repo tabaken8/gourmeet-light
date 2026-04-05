@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import {
   Home,
-  Search,
+  Compass,
   Bell,
   UserPlus,
   Plus,
@@ -273,15 +273,15 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
         </IconButton>
       </div>
 
-      {/* Search（中央） */}
+      {/* 発見（中央） */}
       <div className="justify-self-center">
         <IconButton
-          href={gate("/search", true)}
-          active={isActive("/search")}
-          ariaLabel="検索"
+          href={gate("/discover", true)}
+          active={isActive("/discover")}
+          ariaLabel="発見"
           activeClassName="bg-slate-200/70"
         >
-          <Search size={18} className={isActive("/search") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
+          <Compass size={18} className={isActive("/discover") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
         </IconButton>
       </div>
 
