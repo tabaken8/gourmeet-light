@@ -3,6 +3,61 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
+function metersToWalkMinCeil(m: number | null | undefined): number | null {
+  if (typeof m !== "number" || !Number.isFinite(m) || m < 0) return null;
+  return Math.max(1, Math.ceil(m / 80));
+}
+
+async function attachNearestStationsToPosts(supabase: any, posts: any[]) {
+  if (posts.length === 0) return posts;
+
+  const placeIds = Array.from(
+    new Set(posts.map((p: any) => p?.place_id).filter(Boolean).map((x: any) => String(x)))
+  );
+
+  if (placeIds.length === 0) {
+    return posts.map((p: any) => ({
+      ...p,
+      nearest_station_name: null,
+      nearest_station_distance_m: null,
+    }));
+  }
+
+  let rows: any[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("place_station_links")
+      .select("place_id, station_name, distance_m")
+      .in("place_id", placeIds)
+      .eq("rank", 1);
+
+    if (!error && Array.isArray(data)) rows = data;
+  } catch {
+    rows = [];
+  }
+
+  const map = new Map<string, { name: string | null; dist: number | null }>();
+  for (const r of rows) {
+    const pid = r?.place_id ? String(r.place_id) : null;
+    if (!pid) continue;
+    map.set(pid, {
+      name: (r?.station_name ?? null) as any,
+      dist: typeof r?.distance_m === "number" ? r.distance_m : null,
+    });
+  }
+
+  return posts.map((p: any) => {
+    const pid = p?.place_id ? String(p.place_id) : "";
+    const hit = pid ? map.get(pid) : null;
+    const nearestDist = hit?.dist ?? null;
+    return {
+      ...p,
+      nearest_station_name: hit?.name ?? null,
+      nearest_station_distance_m: nearestDist,
+    };
+  });
+}
+
 function toInt(x: string | null, d: number) {
   const n = Number(x);
   return Number.isFinite(n) ? Math.floor(n) : d;
@@ -177,7 +232,8 @@ export async function GET(req: Request) {
       };
     });
 
-    const arranged = enforceNoRepeatWithin(raw, 3).slice(0, limit);
+    let arranged = enforceNoRepeatWithin(raw, 3).slice(0, limit);
+    arranged = await attachNearestStationsToPosts(supabase, arranged);
     const nextCursorOut = arranged.length ? arranged[arranged.length - 1].created_at : null;
 
     const meta: Meta = cursor ? { followCount: 0, suggestOnce: false, suggestAtIndex: 1 } : await buildMetaForGuest(supabase);
@@ -194,7 +250,7 @@ export async function GET(req: Request) {
   const rows = (data ?? []) as any[];
   const nextCursor = rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
-  const posts = error
+  let posts = error
     ? []
     : rows.map((r) => ({
         id: r.id,
@@ -230,6 +286,8 @@ export async function GET(req: Request) {
         likedByMe: r.liked_by_me ?? r.likedByMe ?? false,
         initialLikers: r.initial_likers ?? r.initialLikers ?? [],
       }));
+
+  posts = await attachNearestStationsToPosts(supabase, posts);
 
   // ✅ meta は “初回ページ” だけ（cursor ありなら followCount だけ返す）
   const meta: Meta = cursor ? await buildMetaForLoggedIn(supabase, meId) : await buildMetaForLoggedIn(supabase, meId);

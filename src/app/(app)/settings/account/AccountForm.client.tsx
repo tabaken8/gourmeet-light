@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Mail, AtSign, Globe, Lock, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 const USERNAME_RE = /^[a-z0-9._]{3,30}$/;
 
@@ -14,6 +15,7 @@ type Props = {
 
 export default function AccountForm({ email, username: initUsername, isPublic: initIsPublic }: Props) {
   const supabase = createClientComponentClient();
+  const t = useTranslations("settings");
 
   const [username, setUsername] = useState(initUsername);
   const [isPublic, setIsPublic] = useState(initIsPublic);
@@ -26,7 +28,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
 
   const handleSave = async () => {
     if (saving || !hasChanges) return;
-    if (usernameBad) { setError("\u30E6\u30FC\u30B6\u30FCID\u306E\u5F62\u5F0F\u304C\u4E0D\u6B63\u3067\u3059"); return; }
+    if (usernameBad) { setError(t("usernameInvalid")); return; }
 
     setSaving(true);
     setError(null);
@@ -34,7 +36,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059");
+      if (!user) throw new Error(t("loginRequired"));
 
       // Check username availability if changed
       if (username !== initUsername && username) {
@@ -45,7 +47,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
           .neq("id", user.id)
           .maybeSingle();
         if (existing) {
-          setError(`@${username} \u306F\u65E2\u306B\u4F7F\u308F\u308C\u3066\u3044\u307E\u3059`);
+          setError(t("usernameTaken", { username }));
           setSaving(false);
           return;
         }
@@ -60,7 +62,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e: any) {
-      setError(e?.message ?? "\u4FDD\u5B58\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
+      setError(e?.message ?? t("saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -71,21 +73,21 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
       {/* Email (read-only) */}
       <div>
         <label className="text-[12px] font-medium text-slate-500 mb-1.5 block">
-          {"\u30E1\u30FC\u30EB\u30A2\u30C9\u30EC\u30B9"}
+          {t("email")}
         </label>
         <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
           <Mail size={16} className="text-slate-400 shrink-0" />
           <span className="text-[14px] text-slate-500">{email}</span>
         </div>
         <p className="text-[11px] text-slate-400 mt-1 px-1">
-          {"\u30E1\u30FC\u30EB\u30A2\u30C9\u30EC\u30B9\u306F\u5909\u66F4\u3067\u304D\u307E\u305B\u3093"}
+          {t("emailCannotChange")}
         </p>
       </div>
 
       {/* Username */}
       <div>
         <label className="text-[12px] font-medium text-slate-500 mb-1.5 block">
-          {"\u30E6\u30FC\u30B6\u30FCID"}
+          {t("userId")}
         </label>
         <div className={[
           "flex items-center gap-1 rounded-xl border px-3 py-2.5 transition",
@@ -101,7 +103,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
         </div>
         {usernameBad && (
           <p className="text-[11px] text-red-500 mt-1 px-1">
-            {"\u534A\u89D2\u82F1\u5C0F\u6587\u5B57\u30FB\u6570\u5B57\u30FB\u30D4\u30EA\u30AA\u30C9\u306E\u307F\u30013\u301C30\u6587\u5B57"}
+            {t("usernameRule")}
           </p>
         )}
       </div>
@@ -109,7 +111,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
       {/* Public/Private toggle */}
       <div>
         <label className="text-[12px] font-medium text-slate-500 mb-1.5 block">
-          {"\u30A2\u30AB\u30A6\u30F3\u30C8\u306E\u516C\u958B\u8A2D\u5B9A"}
+          {t("accountVisibility")}
         </label>
         <div className="rounded-xl border border-slate-200 overflow-hidden">
           <button
@@ -128,8 +130,8 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
             </div>
             <Globe size={15} className="text-slate-500" />
             <div>
-              <span className="text-[13px] font-medium text-slate-800">{"\u516C\u958B"}</span>
-              <span className="text-[11px] text-slate-400 ml-2">{"\u8AB0\u3067\u3082\u6295\u7A3F\u3092\u898B\u3089\u308C\u307E\u3059"}</span>
+              <span className="text-[13px] font-medium text-slate-800">{t("public")}</span>
+              <span className="text-[11px] text-slate-400 ml-2">{t("publicDesc")}</span>
             </div>
           </button>
           <div className="border-t border-slate-100" />
@@ -149,8 +151,8 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
             </div>
             <Lock size={15} className="text-slate-500" />
             <div>
-              <span className="text-[13px] font-medium text-slate-800">{"\u975E\u516C\u958B"}</span>
-              <span className="text-[11px] text-slate-400 ml-2">{"\u30D5\u30A9\u30ED\u30EF\u30FC\u306E\u307F"}</span>
+              <span className="text-[13px] font-medium text-slate-800">{t("private")}</span>
+              <span className="text-[11px] text-slate-400 ml-2">{t("privateDesc")}</span>
             </div>
           </button>
         </div>
@@ -167,7 +169,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
             saving ? "bg-slate-200 text-slate-400" : "bg-slate-900 text-white hover:bg-slate-800",
           ].join(" ")}
         >
-          {saving ? "\u4FDD\u5B58\u4E2D..." : "\u4FDD\u5B58\u3059\u308B"}
+          {saving ? t("saving") : t("save")}
         </button>
       )}
 
@@ -175,7 +177,7 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
         <p className="text-[12px] text-red-600 text-center">{error}</p>
       )}
       {saved && (
-        <p className="text-[12px] text-green-600 text-center">{"\u4FDD\u5B58\u3057\u307E\u3057\u305F"}</p>
+        <p className="text-[12px] text-green-600 text-center">{t("saved")}</p>
       )}
 
       {/* Danger zone */}
@@ -183,10 +185,10 @@ export default function AccountForm({ email, username: initUsername, isPublic: i
         <button
           type="button"
           className="flex items-center gap-2 text-[13px] text-red-500 hover:text-red-600 transition px-1"
-          onClick={() => alert("\u30A2\u30AB\u30A6\u30F3\u30C8\u524A\u9664\u306F\u304A\u554F\u3044\u5408\u308F\u305B\u304F\u3060\u3055\u3044\u3002")}
+          onClick={() => alert(t("deleteAccountAlert"))}
         >
           <Trash2 size={15} />
-          {"\u30A2\u30AB\u30A6\u30F3\u30C8\u3092\u524A\u9664"}
+          {t("deleteAccount")}
         </button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { Globe } from "lucide-react";
 
@@ -13,6 +13,7 @@ const LANG_OPTIONS = [
 export default function LanguageSwitcher() {
   const locale = useLocale();
   const router = useRouter();
+  const t = useTranslations("settings");
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value;
@@ -27,7 +28,7 @@ export default function LanguageSwitcher() {
           <Globe size={18} />
         </span>
         <div className="text-[14px] font-medium text-slate-800 dark:text-gray-200">
-          Language
+          {t("language")}
         </div>
       </div>
       <select

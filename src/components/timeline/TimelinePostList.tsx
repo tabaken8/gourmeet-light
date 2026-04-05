@@ -331,7 +331,19 @@ export default function TimelinePostList({
                       {locationLine && (
                         <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-gray-400 truncate">
                           <MapPin size={11} className="shrink-0 opacity-60" />
-                          <span className="truncate">{locationLine}</span>
+                          {mapsUrl ? (
+                            <a
+                              href={mapsUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="truncate hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {locationLine}
+                            </a>
+                          ) : (
+                            <span className="truncate">{locationLine}</span>
+                          )}
                           {mapsUrl && (
                             <a
                               href={mapsUrl}

@@ -9,6 +9,7 @@ import {
   Bell,
   Palette,
 } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import DarkModeToggle from "@/components/DarkModeToggle";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 
@@ -46,27 +47,29 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function SettingsIndexPage() {
+export default async function SettingsIndexPage() {
+  const t = await getTranslations("settings");
+
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-24 pt-6 md:pb-10">
       <h1 className="text-[17px] font-semibold tracking-tight text-slate-900 dark:text-gray-100 mb-6">
-        {"\u8A2D\u5B9A"}
+        {t("title")}
       </h1>
 
       <div className="space-y-6">
         {/* アカウント */}
         <section>
-          <SectionLabel>{"\u30A2\u30AB\u30A6\u30F3\u30C8"}</SectionLabel>
+          <SectionLabel>{t("account")}</SectionLabel>
           <div className="divide-y divide-slate-100 dark:divide-white/[.08]">
             <ItemRow
-              title={"\u30A2\u30AB\u30A6\u30F3\u30C8"}
-              desc={"\u30E6\u30FC\u30B6\u30FCID\u30FB\u30E1\u30FC\u30EB\u30FB\u516C\u958B\u8A2D\u5B9A"}
+              title={t("account")}
+              desc={t("accountDesc")}
               href="/settings/account"
               icon={<User size={18} />}
             />
             <ItemRow
-              title={"\u901A\u77E5\u8A2D\u5B9A"}
-              desc={"\u30E1\u30FC\u30EB\u901A\u77E5\u30FB\u30D9\u30EB\u901A\u77E5"}
+              title={t("notifications")}
+              desc={t("notificationsDesc")}
               href="/settings/notifications"
               icon={<Bell size={18} />}
             />
@@ -75,11 +78,11 @@ export default function SettingsIndexPage() {
 
         {/* 外観 */}
         <section>
-          <SectionLabel>外観</SectionLabel>
+          <SectionLabel>{t("appearance")}</SectionLabel>
           <div className="flex items-center justify-between gap-3 px-1 py-3">
             <div className="flex items-center gap-3 min-w-0">
               <span className="text-slate-400 dark:text-gray-500"><Palette size={18} /></span>
-              <div className="text-[14px] font-medium text-slate-800 dark:text-gray-200">テーマ</div>
+              <div className="text-[14px] font-medium text-slate-800 dark:text-gray-200">{t("theme")}</div>
             </div>
             <DarkModeToggle />
           </div>
@@ -88,15 +91,15 @@ export default function SettingsIndexPage() {
 
         {/* 規約 */}
         <section>
-          <SectionLabel>{"\u898F\u7D04\u30FB\u30DD\u30EA\u30B7\u30FC"}</SectionLabel>
+          <SectionLabel>{t("policies")}</SectionLabel>
           <div className="divide-y divide-slate-100 dark:divide-white/[.08]">
             <ItemRow
-              title={"\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u30DD\u30EA\u30B7\u30FC"}
+              title={t("privacyPolicy")}
               href="/legal/privacy"
               icon={<FileText size={18} />}
             />
             <ItemRow
-              title={"\u5229\u7528\u898F\u7D04"}
+              title={t("terms")}
               href="/legal/terms"
               icon={<Scale size={18} />}
             />
@@ -107,7 +110,7 @@ export default function SettingsIndexPage() {
         <section>
           <div className="divide-y divide-slate-100 dark:divide-white/[.08]">
             <ItemRow
-              title={"\u30ED\u30B0\u30A2\u30A6\u30C8"}
+              title={t("logout")}
               href="/settings/logout"
               icon={<LogOut size={18} />}
               danger

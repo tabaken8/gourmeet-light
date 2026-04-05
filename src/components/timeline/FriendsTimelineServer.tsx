@@ -112,6 +112,49 @@ async function buildMetaForGuest(supabase: any): Promise<Meta> {
   };
 }
 
+async function attachNearestStationsToPosts(supabase: any, posts: any[]) {
+  if (posts.length === 0) return posts;
+
+  const placeIds = Array.from(
+    new Set(posts.map((p: any) => p?.place_id).filter(Boolean).map((x: any) => String(x)))
+  );
+
+  if (placeIds.length === 0) return posts;
+
+  let rows: any[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("place_station_links")
+      .select("place_id, station_name, distance_m")
+      .in("place_id", placeIds)
+      .eq("rank", 1);
+
+    if (!error && Array.isArray(data)) rows = data;
+  } catch {
+    rows = [];
+  }
+
+  const map = new Map<string, { name: string | null; dist: number | null }>();
+  for (const r of rows) {
+    const pid = r?.place_id ? String(r.place_id) : null;
+    if (!pid) continue;
+    map.set(pid, {
+      name: (r?.station_name ?? null) as any,
+      dist: typeof r?.distance_m === "number" ? r.distance_m : null,
+    });
+  }
+
+  return posts.map((p: any) => {
+    const pid = p?.place_id ? String(p.place_id) : "";
+    const hit = pid ? map.get(pid) : null;
+    return {
+      ...p,
+      nearest_station_name: hit?.name ?? null,
+      nearest_station_distance_m: hit?.dist ?? null,
+    };
+  });
+}
+
 const LIMIT = 20;
 
 export default async function FriendsTimelineServer({ meId }: { meId: string | null }) {
@@ -139,7 +182,8 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
       };
     });
 
-    const arranged = enforceNoRepeatWithin(raw, 3).slice(0, LIMIT);
+    let arranged = enforceNoRepeatWithin(raw, 3).slice(0, LIMIT);
+    arranged = await attachNearestStationsToPosts(supabase, arranged);
     const nextCursor = arranged.length ? arranged[arranged.length - 1].created_at : null;
     const meta = await buildMetaForGuest(supabase);
 
@@ -165,7 +209,7 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
   const rows = (postsResult.data ?? []) as any[];
   const nextCursor = rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
-  const posts = postsResult.error
+  let posts = postsResult.error
     ? []
     : rows.map((r) => ({
         id: r.id,
@@ -195,6 +239,8 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
         likedByMe: r.liked_by_me ?? r.likedByMe ?? false,
         initialLikers: r.initial_likers ?? r.initialLikers ?? [],
       }));
+
+  posts = await attachNearestStationsToPosts(supabase, posts);
 
   return (
     <FriendsTimelineClient

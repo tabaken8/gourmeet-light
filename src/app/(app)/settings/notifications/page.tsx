@@ -5,6 +5,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Bell, Mail, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import XSwitch from "@/components/XSwitch";
+import { useTranslations } from "next-intl";
 
 type SettingsRow = {
   user_id: string;
@@ -48,6 +49,7 @@ function Row({
 
 export default function NotificationsSettingsPage() {
   const supabase = createClientComponentClient();
+  const t = useTranslations("settings");
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
@@ -138,7 +140,7 @@ export default function NotificationsSettingsPage() {
           <Link href="/settings" className="rounded-xl border border-black/10 bg-white p-2 shadow-sm">
             <ArrowLeft className="h-5 w-5 text-gray-700" />
           </Link>
-          <div className="text-lg font-bold">通知設定</div>
+          <div className="text-lg font-bold">{t("notifTitle")}</div>
         </div>
         {skeleton}
       </main>
@@ -149,7 +151,7 @@ export default function NotificationsSettingsPage() {
     return (
       <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
         <div className="rounded-2xl border border-black/10 bg-white p-6 text-sm text-gray-700 shadow-sm">
-          ログインが必要です。
+          {t("loginRequired")}
         </div>
       </main>
     );
@@ -165,8 +167,8 @@ export default function NotificationsSettingsPage() {
             <ArrowLeft className="h-5 w-5 text-gray-700" />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">通知設定</h1>
-            <p className="mt-1 text-sm text-gray-600">メール通知を管理します。</p>
+            <h1 className="text-2xl font-bold tracking-tight">{t("notifTitle")}</h1>
+            <p className="mt-1 text-sm text-gray-600">{t("notifDesc")}</p>
           </div>
         </div>
         <div className="mt-1 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
@@ -178,12 +180,12 @@ export default function NotificationsSettingsPage() {
       <section className="space-y-3">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
           <Mail className="h-4 w-4" />
-          メール通知
+          {t("emailNotifications")}
         </div>
 
         <Row
-          title="メール通知を有効にする"
-          desc="OFFにすると、すべてのメール通知が停止します。"
+          title={t("enableEmail")}
+          desc={t("enableEmailDesc")}
           checked={s.email_enabled}
           onChange={(v) => patch({ email_enabled: v }, "email_enabled")}
           disabled={busy("email_enabled")}
@@ -191,36 +193,36 @@ export default function NotificationsSettingsPage() {
 
         <div className="space-y-2">
           <Row
-            title="フォロー"
-            desc="フォローされたとき"
+            title={t("follow")}
+            desc={t("followDesc")}
             checked={s.email_follow && canEmail}
             onChange={(v) => patch({ email_follow: v }, "email_follow")}
             disabled={!canEmail || busy("email_follow")}
           />
           <Row
-            title="いいね"
-            desc="あなたの投稿にいいねされたとき"
+            title={t("like")}
+            desc={t("likeDesc")}
             checked={s.email_like && canEmail}
             onChange={(v) => patch({ email_like: v }, "email_like")}
             disabled={!canEmail || busy("email_like")}
           />
           <Row
-            title="コメント"
-            desc="コメントが付いたとき"
+            title={t("comment")}
+            desc={t("commentDesc")}
             checked={s.email_comment && canEmail}
             onChange={(v) => patch({ email_comment: v }, "email_comment")}
             disabled={!canEmail || busy("email_comment")}
           />
           <Row
-            title="返信"
-            desc="返信が来たとき"
+            title={t("reply")}
+            desc={t("replyDesc")}
             checked={s.email_reply && canEmail}
             onChange={(v) => patch({ email_reply: v }, "email_reply")}
             disabled={!canEmail || busy("email_reply")}
           />
           <Row
-            title="新規投稿（ベル）"
-            desc="あなたがベルONにしている人が投稿したとき"
+            title={t("newPost")}
+            desc={t("newPostDesc")}
             checked={s.email_post && canEmail}
             onChange={(v) => patch({ email_post: v }, "email_post")}
             disabled={!canEmail || busy("email_post")}
@@ -229,9 +231,9 @@ export default function NotificationsSettingsPage() {
       </section>
 
       <div className="mt-8 rounded-2xl border border-black/10 bg-white p-4 text-xs text-gray-600 shadow-sm">
-        <div className="font-semibold text-gray-900">メモ</div>
+        <div className="font-semibold text-gray-900">{t("note")}</div>
         <div className="mt-1 leading-relaxed">
-          「新規投稿（ベル）」は、プロフィールでベルをONにしている相手の投稿に対してのみメールが届きます。
+          {t("noteBody")}
         </div>
       </div>
     </main>

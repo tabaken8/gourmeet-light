@@ -2,14 +2,16 @@
 
 import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { useTranslations } from "next-intl";
 
 export default function DarkModeToggle() {
   const { theme, setTheme } = useTheme();
+  const t = useTranslations("settings");
 
   const options = [
-    { value: "light" as const, icon: Sun, label: "ライト" },
-    { value: "dark" as const, icon: Moon, label: "ダーク" },
-    { value: "system" as const, icon: Monitor, label: "システム" },
+    { value: "light" as const, icon: Sun, label: t("light") },
+    { value: "dark" as const, icon: Moon, label: t("dark") },
+    { value: "system" as const, icon: Monitor, label: t("system") },
   ];
 
   return (
