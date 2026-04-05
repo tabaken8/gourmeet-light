@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import {
   Home,
@@ -93,6 +94,7 @@ function getGourmeetDayKey(now = new Date()): string {
 
 export default function MobileHeaderNav({ name }: { name?: string }) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
   const supabase = createClientComponentClient();
 
   const { isAuthed, avatarUrl, notifCount, followReqCount, timelineDot, displayNameSafe } =
@@ -208,7 +210,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
             <IconButton
               href={gate("/notifications")}
               active={isActive("/notifications")}
-              ariaLabel="通知"
+              ariaLabel={t("notifications")}
               activeClassName="bg-slate-100"
             >
               <span className="relative inline-flex">
@@ -221,7 +223,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
             <IconButton
               href={gate("/follow-requests")}
               active={isActive("/follow-requests")}
-              ariaLabel="フォローリクエスト"
+              ariaLabel={t("followRequests")}
               activeClassName="bg-slate-100"
             >
               <span className="relative inline-flex">
@@ -234,7 +236,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
             <IconButton
               href={gate("/settings")}
               active={isActive("/settings")}
-              ariaLabel="設定"
+              ariaLabel={t("settings")}
               activeClassName="bg-slate-100"
             >
               <Settings size={18} className="text-slate-500 dark:text-gray-400" />
@@ -248,7 +250,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
     "bg-white dark:bg-[#1e2026] border border-black/10 dark:border-white/10",
     "hover:bg-black/[.03] dark:hover:bg-white/[.06] active:scale-[0.99] transition",
   ].join(" ")}
-  aria-label="投稿"
+  aria-label={t("post")}
 >
   <Plus size={16} className="text-slate-700 dark:text-gray-300" />
 </Link>
@@ -265,7 +267,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
         <IconButton
           href={gate(homeHref)}
           active={isActive("/timeline")}
-          ariaLabel="ホーム"
+          ariaLabel={t("home")}
           activeClassName="bg-slate-200/70"
         >
           <Home size={18} className={isActive("/timeline") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
@@ -278,7 +280,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
         <IconButton
           href={gate("/search", true)}
           active={isActive("/search")}
-          ariaLabel="発見"
+          ariaLabel={t("discover")}
           activeClassName="bg-slate-200/70"
         >
           <Compass size={18} className={isActive("/search") ? "text-slate-800 dark:text-gray-200" : "text-slate-500 dark:text-gray-400"} />
@@ -294,7 +296,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
             transition-colors
             ${isActive("/profile") ? "bg-slate-200/70 dark:bg-white/10" : "hover:bg-black/[.04] dark:hover:bg-white/[.06]"}
           `}
-          aria-label={displayNameSafe || "プロフィール"}
+          aria-label={displayNameSafe || t("profile")}
         >
           {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element

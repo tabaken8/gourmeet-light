@@ -1,7 +1,8 @@
 // src/components/Sidebar.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -95,6 +96,7 @@ function NavItem({
 
 export default function Sidebar({ name }: { name?: string }) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
   const { isAuthed, avatarUrl, displayNameSafe, notifCount, followReqCount, timelineDot } =
     useNavBadges(name);
 
@@ -142,7 +144,7 @@ export default function Sidebar({ name }: { name?: string }) {
       <nav className="flex flex-col gap-2 relative">
         <NavItem
           href={gate(homeHref)}
-          label="ホーム"
+          label={t("home")}
           icon={Home}
           dot={timelineDot}
           active={isActive("/timeline")}
@@ -150,14 +152,14 @@ export default function Sidebar({ name }: { name?: string }) {
 
         <NavItem
           href={gate("/search", true)}
-          label="発見"
+          label={t("discover")}
           icon={Compass}
           active={isActive("/search")}
         />
 
         <NavItem
           href={gate("/collection")}
-          label="コレクション"
+          label={t("collection")}
           icon={Bookmark}
           active={isActive("/collection")}
         />
@@ -166,7 +168,7 @@ export default function Sidebar({ name }: { name?: string }) {
 
         <NavItem
           href={gate("/notifications")}
-          label="通知"
+          label={t("notifications")}
           icon={Bell}
           count={notifCount}
           active={isActive("/notifications")}
@@ -174,7 +176,7 @@ export default function Sidebar({ name }: { name?: string }) {
 
         <NavItem
           href={gate("/follow-requests")}
-          label="フォローリクエスト"
+          label={t("followRequests")}
           icon={UserPlus}
           count={followReqCount}
           active={isActive("/follow-requests")}
@@ -182,14 +184,14 @@ export default function Sidebar({ name }: { name?: string }) {
 
         <NavItem
           href={gate("/settings")}
-          label="設定"
+          label={t("settings")}
           icon={Settings}
           active={isActive("/settings")}
         />
 
         <NavItem
           href={gate("/profile")}
-          label="プロフィール"
+          label={t("profile")}
           avatarUrl={avatarUrl}
           avatarAlt={displayNameMemo}
           active={isActive("/profile")}
@@ -210,7 +212,7 @@ export default function Sidebar({ name }: { name?: string }) {
                 group-hover:max-w-[140px] group-hover:opacity-100 group-hover:translate-x-0
               "
             >
-              Post
+              {t("post")}
             </span>
           </Link>
         </div>
@@ -245,7 +247,7 @@ export default function Sidebar({ name }: { name?: string }) {
                 group-hover:max-w-[140px] group-hover:opacity-100 group-hover:translate-x-0
               "
             >
-              ログアウト
+              {t("logout")}
             </span>
           </button>
         </form>

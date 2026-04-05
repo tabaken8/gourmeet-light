@@ -1,0 +1,41 @@
+{
+  "nav": {
+    "home": "Home",
+    "discover": "Discover",
+    "collection": "Collection",
+    "notifications": "Notifications",
+    "followRequests": "Follow Requests",
+    "settings": "Settings",
+    "profile": "Profile",
+    "post": "Post",
+    "logout": "Log out"
+  },
+  "timeline": {
+    "justNow": "just now",
+    "minutesAgo": "{count}m ago",
+    "hoursAgo": "{count}h ago",
+    "daysAgo": "{count}d ago",
+    "weeksAgo": "{count}w ago",
+    "recommend": "Recommend",
+    "score": "{score}/10",
+    "walkMin": "{min} min walk",
+    "user": "User",
+    "openInMaps": "Open in Google Maps",
+    "noPhotos": "Could not load photos",
+    "loading": "Loading...",
+    "noPosts": "No posts to show",
+    "noComments": "No comments yet.",
+    "writeComment": "Write a comment...",
+    "translatePost": "Translate post",
+    "showOriginal": "Show original",
+    "translating": "Translating…",
+    "friends": "Friends",
+    "discoverTab": "Discover",
+    "followToSee": "Follow friends to see their posts here.",
+    "findFriends": "Find friends"
+  },
+  "footer": {
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service"
+  }
+}

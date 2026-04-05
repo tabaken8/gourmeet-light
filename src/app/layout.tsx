@@ -6,6 +6,8 @@ import Link from "next/link";
 import ClientAuthNav from "../components/AuthNav";
 import QueryProvider from "@/components/providers/QueryProvider";
 import ThemeProvider from "@/components/providers/ThemeProvider";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages, getTranslations } from "next-intl/server";
 
 export const metadata: Metadata = {
   title: "Gourmeet",
@@ -36,9 +38,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+  const t = await getTranslations("footer");
+
   return (
-    <html lang="ja" className="dark" suppressHydrationWarning>
+    <html lang={locale} className="dark" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -52,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(){try{var t=localStorage.getItem("gourmeet_theme");if(t==="light")return;if(t==="system"&&!window.matchMedia("(prefers-color-scheme: dark)").matches)return;document.documentElement.classList.add("dark")}catch(e){}})()`,
           }}
         />
+        <NextIntlClientProvider locale={locale} messages={messages}>
         <ThemeProvider>
         <QueryProvider>
           {/* PC用ヘッダー（モバイルでは非表示） */}
@@ -70,11 +77,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <footer className="border-t border-black/[.06] dark:border-white/[.08] bg-white/70 dark:bg-[#12131a]/70 py-6 text-center text-xs text-black/60 dark:text-gray-400">
             <div className="mb-2 flex items-center justify-center gap-4">
               <Link href="/privacy" className="underline underline-offset-2">
-                プライバシーポリシー
+                {t("privacy")}
               </Link>
               <span className="opacity-40">|</span>
               <Link href="/terms" className="underline underline-offset-2">
-                利用規約
+                {t("terms")}
               </Link>
             </div>
 
@@ -82,6 +89,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </footer>
         </QueryProvider>
         </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

@@ -3,6 +3,7 @@
 
 import React, { useMemo } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { MapPin, Lock } from "lucide-react";
 
 import PostMoreMenu from "@/components/PostMoreMenu";
@@ -81,23 +82,22 @@ function formatJST(iso: any) {
   }).format(dt);
 }
 
-function formatRelativeTime(iso: any): string {
+function formatRelativeTime(iso: any, t: (key: string, values?: Record<string, any>) => string): string {
   if (!iso) return "";
   const dt = new Date(iso);
   if (!Number.isFinite(dt.getTime())) return String(iso);
   const now = Date.now();
   const diffMs = now - dt.getTime();
-  if (diffMs < 0) return "たった今";
+  if (diffMs < 0) return t("justNow");
   const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "たった今";
-  if (diffMin < 60) return `${diffMin}分前`;
+  if (diffMin < 1) return t("justNow");
+  if (diffMin < 60) return t("minutesAgo", { count: diffMin });
   const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH}時間前`;
+  if (diffH < 24) return t("hoursAgo", { count: diffH });
   const diffD = Math.floor(diffH / 24);
-  if (diffD < 7) return `${diffD}日前`;
-  if (diffD < 30) return `${Math.floor(diffD / 7)}週間前`;
-  if (diffD < 365) return `${Math.floor(diffD / 30)}ヶ月前`;
-  return `${Math.floor(diffD / 365)}年前`;
+  if (diffD < 7) return t("daysAgo", { count: diffD });
+  if (diffD < 30) return t("weeksAgo", { count: Math.floor(diffD / 7) });
+  return t("daysAgo", { count: diffD });
 }
 
 function formatYen(n: number) {
@@ -202,6 +202,8 @@ export default function TimelinePostList({
   revealImages?: boolean;
 }) {
 
+  const t = useTranslations("timeline");
+
   const normalized = useMemo(() => {
     return posts.map((p: any) => {
       // ✅ 互換：profile / user / profiles のどれでも拾う
@@ -253,7 +255,7 @@ export default function TimelinePostList({
         const key = p.id ? `${p.id}` : `row-${idx}`;
 
         const prof = p.profile;
-        const display = prof?.display_name ?? "ユーザー";
+        const display = prof?.display_name ?? t("user");
         const avatar = prof?.avatar_url ?? null;
         const isPublic = prof?.is_public ?? true;
         const initial = (display || "U").slice(0, 1).toUpperCase();
@@ -278,7 +280,7 @@ export default function TimelinePostList({
         const locationParts: string[] = [];
         if (areaLabel) locationParts.push(areaLabel);
         if (showNearestStation) {
-          locationParts.push(`${nearestName} ${"\u5F92\u6B69"}${nearestMin}${"\u5206"}`);
+          locationParts.push(`${nearestName} ${t("walkMin", { min: nearestMin })}`);
         }
         const locationLine = locationParts.join(" \u00B7 ");
 
@@ -324,7 +326,7 @@ export default function TimelinePostList({
                         </Link>
                         {!isPublic && <Lock size={12} className="shrink-0 text-slate-400 dark:text-gray-500" />}
                         <span className="text-[11px] text-slate-400 dark:text-gray-500">{"\u00B7"}</span>
-                        <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatRelativeTime(p.created_at)}</span>
+                        <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatRelativeTime(p.created_at, t)}</span>
                       </div>
                       {locationLine && (
                         <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-gray-400 truncate">
@@ -336,8 +338,8 @@ export default function TimelinePostList({
                               target="_blank"
                               rel="noreferrer"
                               className="shrink-0 ml-0.5 inline-flex items-center justify-center rounded-full p-0.5 text-slate-400 dark:text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-500/10 transition-colors"
-                              aria-label="Google Mapsで開く"
-                              title="Google Mapsで開く"
+                              aria-label={t("openInMaps")}
+                              title={t("openInMaps")}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <Navigation size={10} />

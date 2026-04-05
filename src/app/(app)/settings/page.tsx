@@ -10,6 +10,7 @@ import {
   Palette,
 } from "lucide-react";
 import DarkModeToggle from "@/components/DarkModeToggle";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 type Item = {
   title: string;
@@ -82,6 +83,7 @@ export default function SettingsIndexPage() {
             </div>
             <DarkModeToggle />
           </div>
+          <LanguageSwitcher />
         </section>
 
         {/* 規約 */}

@@ -1,0 +1,41 @@
+{
+  "nav": {
+    "home": "홈",
+    "discover": "탐색",
+    "collection": "컬렉션",
+    "notifications": "알림",
+    "followRequests": "팔로우 요청",
+    "settings": "설정",
+    "profile": "프로필",
+    "post": "게시",
+    "logout": "로그아웃"
+  },
+  "timeline": {
+    "justNow": "방금",
+    "minutesAgo": "{count}분 전",
+    "hoursAgo": "{count}시간 전",
+    "daysAgo": "{count}일 전",
+    "weeksAgo": "{count}주 전",
+    "recommend": "추천",
+    "score": "{score}/10",
+    "walkMin": "도보 {min}분",
+    "user": "사용자",
+    "openInMaps": "Google Maps에서 열기",
+    "noPhotos": "사진을 불러올 수 없습니다",
+    "loading": "로딩 중...",
+    "noPosts": "표시할 게시물이 없습니다",
+    "noComments": "아직 댓글이 없습니다.",
+    "writeComment": "댓글 쓰기...",
+    "translatePost": "Translate post",
+    "showOriginal": "Show original",
+    "translating": "Translating…",
+    "friends": "친구",
+    "discoverTab": "탐색",
+    "followToSee": "친구를 팔로우하면 여기에 게시물이 표시됩니다.",
+    "findFriends": "친구 찾기"
+  },
+  "footer": {
+    "privacy": "개인정보 처리방침",
+    "terms": "이용약관"
+  }
+}

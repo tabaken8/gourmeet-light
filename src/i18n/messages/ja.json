@@ -1,0 +1,41 @@
+{
+  "nav": {
+    "home": "ホーム",
+    "discover": "発見",
+    "collection": "コレクション",
+    "notifications": "通知",
+    "followRequests": "フォローリクエスト",
+    "settings": "設定",
+    "profile": "プロフィール",
+    "post": "投稿",
+    "logout": "ログアウト"
+  },
+  "timeline": {
+    "justNow": "たった今",
+    "minutesAgo": "{count}分前",
+    "hoursAgo": "{count}時間前",
+    "daysAgo": "{count}日前",
+    "weeksAgo": "{count}週間前",
+    "recommend": "おすすめ",
+    "score": "{score}/10",
+    "walkMin": "徒歩{min}分",
+    "user": "ユーザー",
+    "openInMaps": "Google Mapsで開く",
+    "noPhotos": "写真を取得できませんでした",
+    "loading": "読み込み中...",
+    "noPosts": "表示できる投稿がありません",
+    "noComments": "まだコメントはありません。",
+    "writeComment": "コメントを書く...",
+    "translatePost": "Translate post",
+    "showOriginal": "Show original",
+    "translating": "Translating…",
+    "friends": "友達",
+    "discoverTab": "発見",
+    "followToSee": "友達や気になる人をフォローすると、ここに投稿が表示されます。",
+    "findFriends": "友達を探す"
+  },
+  "footer": {
+    "privacy": "プライバシーポリシー",
+    "terms": "利用規約"
+  }
+}
