@@ -124,16 +124,22 @@ function AvatarPin({
   );
 }
 
-// ── Post Pin (territory mode — tap to expand thumbnail card) ──
+// ── Post Pin (territory mode — avatar icon, tap to expand thumbnail card) ──
 function PostPin({
   post,
   expanded,
   onTap,
+  avatarUrl,
+  displayName,
 }: {
   post: PersonMapItem["post_latlngs"][number];
   expanded: boolean;
   onTap: () => void;
+  avatarUrl: string | null;
+  displayName: string | null;
 }) {
+  const initial = (displayName || "U").slice(0, 1).toUpperCase();
+
   return (
     <div
       onClick={(e) => {
@@ -141,16 +147,16 @@ function PostPin({
         onTap();
       }}
       style={{
-        transform: "translate(-50%, -100%)",
+        transform: "translate(-50%, -50%)",
         cursor: "pointer",
         zIndex: expanded ? 90 : 50,
         filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.3))",
         transition: "z-index 0s",
       }}
     >
-      {expanded ? (
-        /* Expanded: thumbnail card */
-        <div>
+      {expanded && (
+        /* Expanded: thumbnail card above the avatar */
+        <div style={{ marginBottom: 4 }}>
           <div className="flex items-center gap-1.5 rounded-[10px] border-2 border-orange-500 bg-white dark:bg-[#1e2026] px-1.5 py-1 max-w-[180px]">
             {post.image_url && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -172,7 +178,7 @@ function PostPin({
               )}
             </div>
           </div>
-          {/* Arrow */}
+          {/* Arrow pointing down to avatar */}
           <div
             style={{
               width: 0,
@@ -184,53 +190,42 @@ function PostPin({
             }}
           />
         </div>
-      ) : (
-        /* Collapsed: pin icon */
-        <div>
-          <div
+      )}
+      {/* Avatar icon (always visible) */}
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: "50%",
+          border: expanded ? "3px solid #f97316" : "2.5px solid white",
+          overflow: "hidden",
+          backgroundColor: "#fed7aa",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          margin: "0 auto",
+        }}
+      >
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt={displayName || ""}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <span
             style={{
-              width: 24,
-              height: 32,
-              position: "relative",
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#c2410c",
             }}
           >
-            {/* Pin body */}
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: "50% 50% 50% 0",
-                backgroundColor: "#f97316",
-                border: "2px solid white",
-                transform: "rotate(-45deg)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: "white",
-                  transform: "rotate(45deg)",
-                }}
-              />
-            </div>
-            {/* Pin shadow */}
-            <div
-              style={{
-                width: 10,
-                height: 4,
-                borderRadius: "50%",
-                backgroundColor: "rgba(0,0,0,0.15)",
-                margin: "1px auto 0",
-              }}
-            />
-          </div>
-        </div>
-      )}
+            {initial}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -418,7 +413,7 @@ export default function PeopleMap({
             </OverlayViewF>
           ))}
 
-        {/* Territory: all post pins for selected person */}
+        {/* Territory: all post pins for selected person (avatar icons) */}
         {selectedPerson?.post_latlngs.map((post, i) => (
           <OverlayViewF
             key={`pin-${i}`}
@@ -429,6 +424,8 @@ export default function PeopleMap({
               post={post}
               expanded={expandedPinIdx === i}
               onTap={() => setExpandedPinIdx(expandedPinIdx === i ? null : i)}
+              avatarUrl={selectedPerson.avatar_url}
+              displayName={selectedPerson.display_name}
             />
           </OverlayViewF>
         ))}
