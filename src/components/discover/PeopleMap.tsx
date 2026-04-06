@@ -256,6 +256,8 @@ export default function PeopleMap({
   const mapRef = useRef<google.maps.Map | null>(null);
   const prevKeyRef = useRef<string>("");
   const [expandedPinIdx, setExpandedPinIdx] = useState<number | null>(null);
+  // Guard: suppress map click that fires right after a pin tap (mobile touch)
+  const pinTappedRef = useRef(false);
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
@@ -269,9 +271,19 @@ export default function PeopleMap({
   }, [theme]);
 
   const handleMapClick = useCallback(() => {
+    if (pinTappedRef.current) {
+      pinTappedRef.current = false;
+      return; // ignore — this click was caused by a pin tap
+    }
     setExpandedPinIdx(null);
     onSelectPerson(null);
   }, [onSelectPerson]);
+
+  const markPinTapped = useCallback(() => {
+    pinTappedRef.current = true;
+    // Reset after a short delay in case handleMapClick doesn't fire
+    setTimeout(() => { pinTappedRef.current = false; }, 300);
+  }, []);
 
   const selectedPerson = useMemo(
     () => (selectedUserId ? people.find((p) => p.user_id === selectedUserId) ?? null : null),
@@ -408,7 +420,10 @@ export default function PeopleMap({
             >
               <AvatarPin
                 person={person}
-                onClick={() => onSelectPerson(person.user_id)}
+                onClick={() => {
+                  markPinTapped();
+                  onSelectPerson(person.user_id);
+                }}
               />
             </OverlayViewF>
           ))}
@@ -423,7 +438,10 @@ export default function PeopleMap({
             <PostPin
               post={post}
               expanded={expandedPinIdx === i}
-              onTap={() => setExpandedPinIdx(expandedPinIdx === i ? null : i)}
+              onTap={() => {
+                markPinTapped();
+                setExpandedPinIdx(expandedPinIdx === i ? null : i);
+              }}
               avatarUrl={selectedPerson.avatar_url}
               displayName={selectedPerson.display_name}
             />
