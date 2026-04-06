@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 // =====================
 // username rules (same as profile edit)
@@ -33,6 +34,7 @@ export default function SignUpPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const t = useTranslations("auth");
 
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -119,23 +121,23 @@ export default function SignUpPage() {
     setPasting(true);
     try {
       if (!navigator.clipboard?.readText) {
-        setInviteMsg("このブラウザでは貼り付けが使えません。手入力してください。");
+        setInviteMsg(t("clipboardUnavailable"));
         return;
       }
       const text = await navigator.clipboard.readText();
       const normalized = normalizeInvite(text);
 
       if (!normalized) {
-        setInviteMsg("クリップボードに招待コードが見つかりませんでした。");
+        setInviteMsg(t("clipboardEmpty"));
         return;
       }
 
       setInvite(normalized);
       setInviteOpen(true);
-      setInviteMsg("貼り付けました。");
+      setInviteMsg(t("pasted"));
       window.setTimeout(() => setInviteMsg(null), 1200);
     } catch {
-      setInviteMsg("貼り付けに失敗しました。手入力してください。");
+      setInviteMsg(t("pasteFailed"));
     } finally {
       setPasting(false);
     }
@@ -171,7 +173,7 @@ export default function SignUpPage() {
         return;
       }
       if (data && data.length > 0) {
-        setUsernameMsg("このユーザーIDはすでに使われています。");
+        setUsernameMsg(t("usernameTaken"));
       } else {
         setUsernameMsg(null);
       }
@@ -207,7 +209,7 @@ export default function SignUpPage() {
 
     // hard guard
     if (!USERNAME_RE.test(trimmedUsername)) {
-      setMsg("ユーザーID（@〜）を正しい形式で入力してください。");
+      setMsg(t("usernameInvalid"));
       return;
     }
 
@@ -241,7 +243,7 @@ export default function SignUpPage() {
         localStorage.setItem("pending_username", trimmedUsername);
         if (trimmedInvite) localStorage.setItem("pending_invite", trimmedInvite);
       }
-      setMsg("確認メールを送信しました。受信ボックスをご確認ください。");
+      setMsg(t("confirmEmailSent"));
       return;
     }
 
@@ -258,7 +260,7 @@ export default function SignUpPage() {
 
     // ✅ Googleでも username を必須にする
     if (!USERNAME_RE.test(trimmedUsername)) {
-      setMsg("Googleで続ける前に、ユーザーID（@〜）を設定してください。");
+      setMsg(t("googleUsernameRequired"));
       return;
     }
     if (usernameMsg) {
@@ -290,13 +292,14 @@ export default function SignUpPage() {
 
   const inviteApplied = !!normalizeInvite(invite);
 
-  const emailConfirmNote =
-    "「登録する」を押すと、このメールアドレス宛に確認メールが届きます。友達にフォローされた時など、任意のアプリ内通知も受け取れるようになります。";
+  const emailConfirmNote = t("emailConfirmNote");
 
   return (
-    <main className="grid gap-8 md:grid-cols-2">
+    <main className="min-h-screen bg-[#fffaf5] dark:bg-transparent py-12">
+      <div className="mx-auto max-w-5xl px-4">
+      <div className="grid gap-8 md:grid-cols-2">
       <section className="rounded-2xl bg-white p-8 shadow-sm dark:bg-[#16181e] dark:border dark:border-white/[.08]">
-        <h1 className="mb-6 text-2xl font-bold tracking-tight dark:text-gray-100">会員登録</h1>
+        <h1 className="mb-6 text-2xl font-bold tracking-tight dark:text-gray-100">{t("register")}</h1>
 
         {/* ✅ 招待コード */}
         <div className="mb-5">
@@ -304,12 +307,12 @@ export default function SignUpPage() {
             <div className="rounded-2xl border border-black/10 bg-black/[.02] p-4 dark:bg-white/[.04] dark:border-white/10">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold dark:text-gray-100">✅ 招待コードを適用しました</div>
+                  <div className="text-sm font-semibold dark:text-gray-100">✅ {t("inviteApplied")}</div>
                   <div className="mt-1 font-mono text-lg tracking-widest break-all dark:text-gray-100">
                     {normalizeInvite(invite)}
                   </div>
                   <p className="mt-1 text-xs text-gray-600 dark:text-gray-500">
-                    変更したい場合は「変更する」から編集できます。
+                    {t("inviteChangeNote")}
                   </p>
                 </div>
 
@@ -318,21 +321,21 @@ export default function SignUpPage() {
                   onClick={() => setInviteOpen((v) => !v)}
                   className="shrink-0 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03] dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                 >
-                  {inviteOpen ? "閉じる" : "変更する"}
+                  {inviteOpen ? t("close") : t("change")}
                 </button>
               </div>
 
               {inviteOpen && (
                 <div className="mt-3">
                   <label className="block">
-                    <span className="mb-1 block text-sm dark:text-gray-300">招待コード（任意）</span>
+                    <span className="mb-1 block text-sm dark:text-gray-300">{t("inviteCode")}</span>
 
                     <div className="flex gap-2">
                       <input
                         className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
                         value={invite}
                         onChange={(e) => setInvite(e.target.value)}
-                        placeholder="例: ABCDEFGH12"
+                        placeholder={t("inviteExample")}
                         autoComplete="off"
                         inputMode="text"
                       />
@@ -342,13 +345,13 @@ export default function SignUpPage() {
                         disabled={pasting}
                         className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                       >
-                        {pasting ? "…" : "貼り付け"}
+                        {pasting ? "…" : t("paste")}
                       </button>
                     </div>
                   </label>
 
                   <div className="mt-1 flex items-center justify-between gap-2">
-                    <p className="text-xs text-gray-600 dark:text-gray-500">招待コードがなくても登録できます。</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-500">{t("inviteOptional")}</p>
                     {inviteMsg && <p className="text-xs text-gray-600 dark:text-gray-500">{inviteMsg}</p>}
                   </div>
                 </div>
@@ -361,7 +364,7 @@ export default function SignUpPage() {
                 onClick={() => setInviteOpen((v) => !v)}
                 className="text-sm font-semibold text-gray-700 underline decoration-black/20 underline-offset-4 hover:text-black dark:text-gray-400 dark:hover:text-gray-200"
               >
-                招待コードをお持ちの方はこちら
+                {t("invitePrompt")}
               </button>
 
               <button
@@ -369,9 +372,9 @@ export default function SignUpPage() {
                 onClick={pasteInviteFromClipboard}
                 disabled={pasting}
                 className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:bg-black/[.03] disabled:opacity-50 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
-                title="クリップボードから貼り付け"
+                title={t("paste")}
               >
-                {pasting ? "…" : "貼り付け"}
+                {pasting ? "…" : t("paste")}
               </button>
             </div>
           )}
@@ -379,14 +382,14 @@ export default function SignUpPage() {
           {!inviteApplied && inviteOpen && (
             <div className="mt-3 rounded-2xl border border-black/10 bg-black/[.02] p-4 dark:bg-white/[.04] dark:border-white/10">
               <label className="block">
-                <span className="mb-1 block text-sm dark:text-gray-300">招待コード（任意）</span>
+                <span className="mb-1 block text-sm dark:text-gray-300">{t("inviteCode")}</span>
 
                 <div className="flex gap-2">
                   <input
                     className="w-full rounded-lg border border-black/10 px-3 py-2 font-mono tracking-widest outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
                     value={invite}
                     onChange={(e) => setInvite(e.target.value)}
-                    placeholder="例: ABCDEFGH12"
+                    placeholder={t("inviteExample")}
                     autoComplete="off"
                     inputMode="text"
                   />
@@ -396,13 +399,13 @@ export default function SignUpPage() {
                     disabled={pasting}
                     className="shrink-0 rounded-lg border border-black/10 px-3 text-sm font-semibold hover:bg-black/[.04] disabled:opacity-50 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                   >
-                    {pasting ? "…" : "貼り付け"}
+                    {pasting ? "…" : t("paste")}
                   </button>
                 </div>
               </label>
 
               <div className="mt-1 flex items-center justify-between gap-2">
-                <p className="text-xs text-gray-600 dark:text-gray-500">招待コードがなくても登録できます。</p>
+                <p className="text-xs text-gray-600 dark:text-gray-500">{t("inviteOptional")}</p>
                 {inviteMsg && <p className="text-xs text-gray-600 dark:text-gray-500">{inviteMsg}</p>}
               </div>
             </div>
@@ -412,7 +415,7 @@ export default function SignUpPage() {
         <form onSubmit={submit} className="space-y-4">
           {/* メールアドレス */}
           <label className="block">
-            <span className="mb-1 block text-sm dark:text-gray-300">メールアドレス</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">{t("email")}</span>
             <input
               className="w-full rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
               type="email"
@@ -427,7 +430,7 @@ export default function SignUpPage() {
 
           {/* ✅ ユーザーID（必須） */}
           <label className="block">
-            <span className="mb-1 block text-sm dark:text-gray-300">ユーザーID（あとから変更できます）</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">{t("userId")}</span>
 
             <div
               className={[
@@ -462,12 +465,12 @@ export default function SignUpPage() {
 
             {usernameClean.length > 0 && !usernameOk ? (
               <p className="mt-1 text-xs text-red-600">
-                3〜30文字、英小文字/数字/「.」「_」のみで入力してください。
+                {t("usernameFormatHint")}
               </p>
             ) : null}
 
             {usernameOk && checkingUsername ? (
-              <p className="mt-1 text-xs text-black/60 dark:text-gray-500">利用可能か確認中...</p>
+              <p className="mt-1 text-xs text-black/60 dark:text-gray-500">{t("checkingAvailability")}</p>
             ) : null}
 
             {usernameOk && usernameMsg ? (
@@ -476,14 +479,14 @@ export default function SignUpPage() {
 
             {usernameOk && !checkingUsername && !usernameMsg ? (
               <p className="mt-1 text-xs text-black/60 dark:text-gray-500">
-                URLや検索で使われるIDです（後から変更も可能）。
+                {t("usernameHint")}
               </p>
             ) : null}
           </label>
 
           {/* 表示名 */}
           <label className="block">
-            <span className="mb-1 block text-sm dark:text-gray-300">表示名（ハンドルネーム）</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">{t("displayName")}</span>
             <input
               className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
               type="text"
@@ -492,13 +495,13 @@ export default function SignUpPage() {
               placeholder="グルミート太郎"
             />
             <p className="mt-1 text-xs text-black/60 dark:text-gray-500">
-              タイムラインなどに表示される名前です(@つきユーザーIDとは別)。
+              {t("displayNameNote")}
             </p>
           </label>
 
           {/* パスワード */}
           <label className="block">
-            <span className="mb-1 block text-sm dark:text-gray-300">パスワード</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">{t("password")}</span>
             <div className="flex gap-2">
               <input
                 className="w-full rounded-lg border border-black/10 px-3 py-2 outline-none focus:border-orange-600 dark:border-white/15 dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-white/25"
@@ -514,7 +517,7 @@ export default function SignUpPage() {
                 onClick={() => setShow((v) => !v)}
                 className="rounded-lg border border-black/10 px-3 text-sm hover:bg-black/[.04] dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
               >
-                {show ? "隠す" : "表示"}
+                {show ? t("hide") : t("show")}
               </button>
             </div>
             {pw && (
@@ -528,14 +531,14 @@ export default function SignUpPage() {
                     : "text-red-600")
                 }
               >
-                強度: {strength}
+                {t("strengthLabel", { level: t(strength === "strong" ? "strengthStrong" : strength === "medium" ? "strengthMedium" : "strengthWeak") })}
               </p>
             )}
           </label>
 
           {/* パスワード確認 */}
           <label className="block">
-            <span className="mb-1 block text-sm dark:text-gray-300">パスワード（確認）</span>
+            <span className="mb-1 block text-sm dark:text-gray-300">{t("passwordConfirm")}</span>
             <input
               className={
                 "w-full rounded-lg border px-3 py-2 outline-none dark:bg-white/[.06] dark:text-gray-100 dark:placeholder:text-gray-500 " +
@@ -547,7 +550,7 @@ export default function SignUpPage() {
               required
               autoComplete="new-password"
             />
-            {pw2 && !match && <p className="mt-1 text-xs text-red-600">一致しません。</p>}
+            {pw2 && !match && <p className="mt-1 text-xs text-red-600">{t("passwordMismatch")}</p>}
           </label>
 
           <p className="text-xs text-black/60 dark:text-gray-500">{emailConfirmNote}</p>
@@ -561,7 +564,7 @@ export default function SignUpPage() {
               (canSubmit ? "bg-orange-700 hover:bg-orange-800" : "cursor-not-allowed bg-orange-700/60")
             }
           >
-            {loading ? "作成中..." : "登録する"}
+            {loading ? t("creating") : t("submit")}
           </button>
         </form>
 
@@ -589,24 +592,26 @@ export default function SignUpPage() {
               d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
             />
           </svg>
-          <span>Googleで続ける</span>
+          <span>{t("googleContinue")}</span>
         </button>
       </section>
 
       <aside className="rounded-2xl border border-orange-100 bg-[#fff7ed] p-8 dark:bg-[#1e1510] dark:border-orange-900/30">
-        <h2 className="mb-2 text-lg font-bold dark:text-gray-100">会員特典</h2>
+        <h2 className="mb-2 text-lg font-bold dark:text-gray-100">{t("benefits")}</h2>
         <ul className="list-disc pl-5 text-sm leading-6 text-black/75 dark:text-gray-300">
-          <li>投稿の作成・保存ができます</li>
-          <li>お気に入りの管理ができます</li>
-          <li>通知やメール連携（今後）</li>
+          <li>{t("benefitPost")}</li>
+          <li>{t("benefitFavorite")}</li>
+          <li>{t("benefitNotify")}</li>
         </ul>
         <a
           href="/auth/login"
           className="mt-6 inline-flex h-11 items-center rounded-full border border-orange-800 px-6 font-medium text-orange-900 hover:bg-orange-800 hover:text-white dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-800 dark:hover:text-white"
         >
-          すでにアカウントをお持ちの方
+          {t("alreadyHaveAccount")}
         </a>
       </aside>
+      </div>
+      </div>
     </main>
   );
 }

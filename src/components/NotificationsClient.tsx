@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { ChevronRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export type NotificationRow = {
   id: string;
@@ -26,9 +27,9 @@ export type NotificationRow = {
   } | null;
 };
 
-function actorName(a: NotificationRow["actor"]) {
-  if (!a) return "だれか";
-  return a.display_name ?? a.username ?? "だれか";
+function actorNameFn(a: NotificationRow["actor"], t: (key: string) => string) {
+  if (!a) return t("someone");
+  return a.display_name ?? a.username ?? t("someone");
 }
 
 function thumbFromPost(p: NotificationRow["post"]): string | null {
@@ -40,21 +41,20 @@ function thumbFromPost(p: NotificationRow["post"]): string | null {
   return null;
 }
 
-function fmtRelativeJp(iso: string) {
-  const t = new Date(iso).getTime();
+function fmtRelative(iso: string, t: (key: string, values?: any) => string) {
+  const ts = new Date(iso).getTime();
   const now = Date.now();
-  const s = Math.max(0, Math.floor((now - t) / 1000));
-  if (s < 60) return "たった今";
+  const s = Math.max(0, Math.floor((now - ts) / 1000));
+  if (s < 60) return t("justNow");
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}分`;
+  if (m < 60) return t("minutesAgo", { count: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}時間`;
+  if (h < 24) return t("hoursAgo", { count: h });
   const d = Math.floor(h / 24);
-  return `${d}日`;
+  return t("daysAgo", { count: d });
 }
 
-function dayBucket(iso: string) {
-  // JSTで今日/昨日/過去7日/それ以前
+function dayBucketKey(iso: string) {
   const dtf = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -67,28 +67,32 @@ function dayBucket(iso: string) {
   const curDate = new Date(`${d}T00:00:00+09:00`).getTime();
   const diffDays = Math.floor((todayDate - curDate) / (24 * 60 * 60 * 1000));
 
-  if (diffDays === 0) return "今日";
-  if (diffDays === 1) return "昨日";
-  if (diffDays <= 7) return "過去7日間";
-  return "それ以前";
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays <= 7) return "past7days";
+  return "older";
 }
 
-function messageFor(n: NotificationRow) {
-  const name = actorName(n.actor);
+function messageFor(n: NotificationRow, t: (key: string, values?: any) => string) {
+  const name = actorNameFn(n.actor, t);
   const place = n.post?.place_name ? `「${n.post.place_name}」` : "";
   switch (n.type) {
     case "follow":
-      return `${name} があなたをフォローしました。`;
+      return `${name}${t("followedFull")}`;
     case "like":
-      return `${name} が ${place || "あなたの投稿"} にいいねしました。`;
+      return place
+        ? `${name}${t("likedPost", { place })}`
+        : `${name}${t("likedPostDefault")}`;
     case "comment":
-      return `${name} が ${place || "あなたの投稿"} にコメントしました。`;
+      return place
+        ? `${name}${t("commentedPost", { place })}`
+        : `${name}${t("commentedPostDefault")}`;
     case "reply":
-      return `${name} が返信しました。`;
+      return `${name}${t("repliedFull")}`;
     case "post":
-      return `${name} が新しい投稿をしました。${place ? ` ${place}` : ""}`;
+      return `${name}${t("newPostFull")}${place ? ` ${place}` : ""}`;
     default:
-      return `${name} から通知があります。`;
+      return `${name}${t("genericNotification")}`;
   }
 }
 
@@ -106,21 +110,22 @@ function mapsUrlFromPost(p: NotificationRow["post"]) {
 
 export default function NotificationsClient({ initial }: { initial: NotificationRow[] }) {
   const supabase = createClientComponentClient();
+  const t = useTranslations("notifications");
   const [rows, setRows] = useState<NotificationRow[]>(initial ?? []);
 
   const grouped = useMemo(() => {
     const m = new Map<string, NotificationRow[]>();
     for (const r of rows) {
-      const b = dayBucket(r.created_at);
+      const b = dayBucketKey(r.created_at);
       const arr = m.get(b) ?? [];
       arr.push(r);
       m.set(b, arr);
     }
-    const order = ["今日", "昨日", "過去7日間", "それ以前"];
+    const order = ["today", "yesterday", "past7days", "older"];
     return order
       .filter((k) => m.has(k))
-      .map((k) => ({ key: k, items: m.get(k)! }));
-  }, [rows]);
+      .map((k) => ({ key: k, label: t(k), items: m.get(k)! }));
+  }, [rows, t]);
 
   // ✅ 初回に未読をまとめて既読化（軽く）
   useEffect(() => {
@@ -145,7 +150,7 @@ export default function NotificationsClient({ initial }: { initial: Notification
   if (!rows || rows.length === 0) {
     return (
       <div className="px-4 py-10 text-center text-[12px] text-slate-500 dark:text-gray-500">
-        まだ通知はありません。
+        {t("empty")}
       </div>
     );
   }
@@ -155,16 +160,16 @@ export default function NotificationsClient({ initial }: { initial: Notification
       {grouped.map((g) => (
         <section key={g.key} className="pt-4">
           {/* 見出し（IGっぽい） */}
-          <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900 dark:text-gray-100">{g.key}</div>
+          <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900 dark:text-gray-100">{g.label}</div>
 
           <div className="divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-[#16181e]">
             {g.items.map((n) => {
               const a = n.actor;
-              const msg = messageFor(n);
-              const time = fmtRelativeJp(n.created_at);
+              const msg = messageFor(n, t);
+              const time = fmtRelative(n.created_at, t);
 
               const avatar = a?.avatar_url ?? null;
-              const initial = (actorName(a) || "U").slice(0, 1).toUpperCase();
+              const initial = (actorNameFn(a, t) || "U").slice(0, 1).toUpperCase();
 
               const postThumb = thumbFromPost(n.post);
               const postHref = n.post?.id ? `/posts/${encodeURIComponent(n.post.id)}` : null;
@@ -208,8 +213,8 @@ export default function NotificationsClient({ initial }: { initial: Notification
                   {/* text */}
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] leading-snug text-slate-900 dark:text-gray-100">
-                      <span className="font-semibold">{actorName(a)}</span>{" "}
-                      <span className="font-normal dark:text-gray-300">{msg.replace(actorName(a), "").trim()}</span>
+                      <span className="font-semibold">{actorNameFn(a, t)}</span>{" "}
+                      <span className="font-normal dark:text-gray-300">{msg.replace(actorNameFn(a, t), "").trim()}</span>
                     </div>
                     <div className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-500">{time}</div>
 

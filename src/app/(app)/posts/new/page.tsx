@@ -14,6 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { useTranslations } from "next-intl";
 import { optimisticPost } from "@/lib/optimisticPost";
 import {
   type Draft,
@@ -348,6 +349,8 @@ function Section({
   children,
   right,
   noPadding,
+  requiredLabel,
+  optionalLabel,
 }: {
   title?: string;
   required?: boolean;
@@ -355,21 +358,23 @@ function Section({
   right?: React.ReactNode;
   children: React.ReactNode;
   noPadding?: boolean;
+  requiredLabel?: string;
+  optionalLabel?: string;
 }) {
   return (
     <section>
       {title && (
         <div className="flex items-center justify-between gap-3 px-4 pt-5 pb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-[13px] font-bold text-slate-900 tracking-wide">{title}</h2>
+            <h2 className="text-[13px] font-bold text-slate-900 dark:text-gray-100 tracking-wide">{title}</h2>
             {required && (
               <span className="rounded bg-orange-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-                {"\u5FC5\u9808"}
+                {requiredLabel ?? "\u5FC5\u9808"}
               </span>
             )}
             {optional && (
-              <span className="text-[11px] text-slate-400 font-medium">
-                {"\u4EFB\u610F"}
+              <span className="text-[11px] text-slate-400 dark:text-gray-500 font-medium">
+                {optionalLabel ?? "\u4EFB\u610F"}
               </span>
             )}
           </div>
@@ -387,6 +392,7 @@ function Section({
 export default function NewPostPage() {
   const supabase = createClientComponentClient();
   const router = useRouter();
+  const t = useTranslations("post");
   const [uid, setUid] = useState<string | null>(null);
 
   // core
@@ -675,7 +681,7 @@ export default function NewPostPage() {
         }
       }
     } catch (e: any) {
-      setMsg(e?.message ?? "画像の前処理に失敗しました");
+      setMsg(e?.message ?? t("imagePreprocessFailed"));
     } finally {
       setProcessing(false);
     }
@@ -719,10 +725,10 @@ export default function NewPostPage() {
     imgs.length > 0 && !!selectedPlace?.place_id && isPriceComplete && content.trim().length > 0 && recommendSelected;
 
   const priceModeSwitch = (
-    <div className="inline-flex rounded-full border border-orange-100 bg-orange-50/60 p-1">
+    <div className="inline-flex rounded-full border border-orange-100 dark:border-orange-900/40 bg-orange-50/60 dark:bg-orange-900/20 p-1">
       {[
-        { v: "exact", label: "実額" },
-        { v: "range", label: "レンジ" },
+        { v: "exact", label: t("exact") },
+        { v: "range", label: t("range") },
       ].map((x) => {
         const active = priceMode === (x.v as PriceMode);
         return (
@@ -732,7 +738,7 @@ export default function NewPostPage() {
             onClick={() => setPriceMode(x.v as PriceMode)}
             className={[
               "h-8 rounded-full px-4 text-xs font-semibold transition",
-              active ? "bg-white shadow-sm text-slate-900" : "text-slate-600 hover:text-slate-800",
+              active ? "bg-white dark:bg-[#16181e] shadow-sm text-slate-900 dark:text-gray-100" : "text-slate-600 dark:text-gray-400 hover:text-slate-800 dark:hover:text-gray-200",
             ].join(" ")}
           >
             {x.label}
@@ -744,7 +750,7 @@ export default function NewPostPage() {
 
   // ensure places lat/lng
   const ensurePlaceWithLatLng = async (): Promise<string> => {
-    if (!selectedPlace?.place_id) throw new Error("お店を選んでください。");
+    if (!selectedPlace?.place_id) throw new Error("select place required");
 
     const res = await fetch("/api/places/ensure", {
       method: "POST",
@@ -754,7 +760,7 @@ export default function NewPostPage() {
 
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      throw new Error(j?.error ?? "places の ensure に失敗しました");
+      throw new Error(j?.error ?? "Failed to ensure place");
     }
 
     return selectedPlace.place_id;
@@ -763,14 +769,14 @@ export default function NewPostPage() {
   const submit = async () => {
     setAttempted(true);
 
-    if (!uid) return setMsg("ログインしてください。");
-    if (processing) return setMsg("画像を処理中です。少し待ってください。");
-    if (!imgs.length) return setMsg("写真を追加してください。");
-    if (!selectedPlace?.place_id) return setMsg("お店を選んでください。");
+    if (!uid) return setMsg(t("loginRequired"));
+    if (processing) return setMsg(t("waitForProcessing"));
+    if (!imgs.length) return setMsg(t("addPhotos"));
+    if (!selectedPlace?.place_id) return setMsg(t("selectPlaceRequired"));
     if (!isPriceComplete)
-      return setMsg(priceMode === "exact" ? "価格（実額）を入力してください。" : "価格を選んでください。");
-    if (!content.trim()) return setMsg("本文を入力してください。");
-    if (!recommendSelected) return setMsg("おすすめ度を選んでください。");
+      return setMsg(priceMode === "exact" ? t("exactPriceRequired") : t("selectPriceRequired"));
+    if (!content.trim()) return setMsg(t("bodyRequired"));
+    if (!recommendSelected) return setMsg(t("recommendRequired"));
 
     setBusy(true);
     setMsg(null);
@@ -896,50 +902,50 @@ export default function NewPostPage() {
   };
 
   return (
-    <main className="min-h-screen bg-white text-slate-800 -mb-6">
+    <main className="min-h-screen bg-white dark:bg-[#0e1117] text-slate-800 dark:text-gray-200 -mb-6">
       <div className="w-full">
         {/* ── header ── */}
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-lg">
+        <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-white/[.08] bg-white/80 dark:bg-[#0e1117]/80 backdrop-blur-lg">
           <div className="flex h-12 items-center justify-between px-4">
             <button
               type="button"
               onClick={() => router.back()}
-              className="text-sm font-medium text-slate-500 hover:text-slate-700 transition"
+              className="text-sm font-medium text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 transition"
             >
-              {"\u30AD\u30E3\u30F3\u30BB\u30EB"}
+              {t("cancel")}
             </button>
-            <h1 className="text-sm font-bold text-slate-900">New Post</h1>
+            <h1 className="text-sm font-bold text-slate-900 dark:text-gray-100">{t("newPost")}</h1>
             <div className="w-[60px]" />{/* spacer for centering */}
           </div>
         </header>
 
         {/* draft restore */}
         {draftRestorePrompt === "ask" && (
-          <div className="bg-amber-50 px-4 py-3 border-b border-amber-200">
+          <div className="bg-amber-50 dark:bg-amber-900/20 px-4 py-3 border-b border-amber-200 dark:border-amber-800/40">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-amber-900">{"\u4E0B\u66F8\u304D\u304C\u3042\u308A\u307E\u3059"}</p>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{t("draftFound")}</p>
               <div className="flex shrink-0 gap-2">
                 <button type="button" onClick={restoreDraft}
                   className="rounded-full bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700 transition">
-                  {"\u5FA9\u5143"}
+                  {t("restore")}
                 </button>
                 <button type="button" onClick={async () => { setDraftRestorePrompt("none"); pendingDraftRef.current = null; await clearDraft(); }}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition">
-                  {"\u7834\u68C4"}
+                  className="rounded-full border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-1 text-xs font-semibold text-slate-500 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-white/[.1] transition">
+                  {t("discard")}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="divide-y divide-slate-100 pb-40">
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="divide-y divide-slate-100 dark:divide-white/[.06] pb-40">
 
           {/* ── 写真 ── */}
-          <Section title={"\u5199\u771F"} required right={
+          <Section title={t("photos")} required requiredLabel={t("required")} right={
             imgs.length > 0 ? (
               <button type="button" onClick={() => fileInputRef.current?.click()}
                 className="text-xs font-bold text-orange-600 hover:text-orange-700 transition">
-                + {"\u8FFD\u52A0"}
+                + {t("add")}
               </button>
             ) : null
           }>
@@ -951,24 +957,24 @@ export default function NewPostPage() {
                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 onDrop={onDropZone as any}
                 onClick={() => fileInputRef.current?.click()}
-                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-50 py-10 transition hover:bg-slate-100 active:bg-slate-100"
+                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-50 dark:bg-white/[.04] py-10 transition hover:bg-slate-100 dark:hover:bg-white/[.06] active:bg-slate-100 dark:active:bg-white/[.06]"
               >
                 {processing ? (
                   <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
                 ) : (
-                  <ImageIcon className="h-6 w-6 text-slate-400" />
+                  <ImageIcon className="h-6 w-6 text-slate-400 dark:text-gray-500" />
                 )}
-                <span className="text-sm font-semibold text-slate-500">
-                  {processing ? "\u51E6\u7406\u4E2D\u2026" : "\u30BF\u30C3\u30D7\u3057\u3066\u5199\u771F\u3092\u8FFD\u52A0"}
+                <span className="text-sm font-semibold text-slate-500 dark:text-gray-400">
+                  {processing ? t("processing") : t("tapToAddPhoto")}
                 </span>
               </button>
             ) : (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[12px] font-semibold text-slate-500">{imgs.length} / 9</span>
+                  <span className="text-[12px] font-semibold text-slate-500 dark:text-gray-400">{imgs.length} / 9</span>
                   <button type="button" onClick={() => { imgs.forEach((x) => URL.revokeObjectURL(x.previewUrl)); setImgs([]); }}
-                    className="text-[12px] font-medium text-slate-400 hover:text-red-500 transition">
-                    {"\u5168\u3066\u524A\u9664"}
+                    className="text-[12px] font-medium text-slate-400 dark:text-gray-500 hover:text-red-500 transition">
+                    {t("deleteAll")}
                   </button>
                 </div>
                 <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1"
@@ -986,7 +992,7 @@ export default function NewPostPage() {
                   ))}
                   {/* add more */}
                   <button type="button" onClick={() => fileInputRef.current?.click()}
-                    className="grid h-20 w-20 shrink-0 place-items-center rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 transition">
+                    className="grid h-20 w-20 shrink-0 place-items-center rounded-xl bg-slate-50 dark:bg-white/[.04] text-slate-400 dark:text-gray-500 hover:bg-slate-100 dark:hover:bg-white/[.06] transition">
                     <ImageIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -995,84 +1001,84 @@ export default function NewPostPage() {
           </Section>
 
           {/* ── お店 ── */}
-          <Section title={"\u304A\u5E97"} required right={
+          <Section title={t("place")} required requiredLabel={t("required")} right={
             isSearchingPlace ? <Loader2 className="h-4 w-4 animate-spin text-orange-500" /> : null
           }>
             {selectedPlace ? (
-              <div className="flex items-center justify-between rounded-xl bg-orange-50 px-3 py-2.5">
+              <div className="flex items-center justify-between rounded-xl bg-orange-50 dark:bg-orange-900/20 px-3 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
                   <MapPin className="h-4 w-4 shrink-0 text-orange-500" />
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-slate-900">{selectedPlace.name}</div>
-                    <div className="truncate text-[11px] text-slate-500">{selectedPlace.formatted_address}</div>
+                    <div className="truncate text-sm font-bold text-slate-900 dark:text-gray-100">{selectedPlace.name}</div>
+                    <div className="truncate text-[11px] text-slate-500 dark:text-gray-400">{selectedPlace.formatted_address}</div>
                   </div>
                 </div>
                 <button type="button" onClick={() => { setSelectedPlace(null); setPlaceQuery(""); setPlaceResults([]); }}
-                  className="ml-2 shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-orange-100 hover:text-slate-600"><X className="h-4 w-4" /></button>
+                  className="ml-2 shrink-0 rounded-full p-1 text-slate-400 dark:text-gray-500 transition hover:bg-orange-100 dark:hover:bg-orange-900/30 hover:text-slate-600 dark:hover:text-gray-300"><X className="h-4 w-4" /></button>
               </div>
             ) : (
               <div className="space-y-2">
                 <div className="relative">
-                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 transition">
-                    <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2.5 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 dark:focus-within:ring-orange-900/30 transition">
+                    <MapPin className="h-4 w-4 shrink-0 text-slate-400 dark:text-gray-500" />
                     <input type="text" value={placeQuery} onChange={(e) => setPlaceQuery(e.target.value)}
-                      placeholder={"\u4F8B: \u6E0B\u8C37 \u30AB\u30D5\u30A7 / \u713C\u8089"}
-                      className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400" aria-label="store search" />
+                      placeholder={t("placePlaceholder")}
+                      className="w-full bg-transparent text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500" aria-label="store search" />
                   </div>
                   {placeQuery.trim().length >= 2 && (
                     <div className="absolute left-0 right-0 top-full z-20 mt-1">
                       {placeResults.length > 0 ? (
-                        <ul className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                        <ul className="overflow-hidden rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-[#16181e] shadow-lg">
                           {placeResults.map((p) => (
-                            <li key={p.place_id} className="cursor-pointer px-3 py-2.5 transition hover:bg-orange-50"
+                            <li key={p.place_id} className="cursor-pointer px-3 py-2.5 transition hover:bg-orange-50 dark:hover:bg-orange-900/20"
                               onClick={() => { setSelectedPlace(p); setPlaceQuery(""); setPlaceResults([]);
                                 fetch("/api/places/ensure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ placeId: p.place_id }) }).catch(() => {}); }}>
-                              <div className="truncate text-sm font-semibold text-slate-900">{p.name}</div>
-                              <div className="truncate text-[11px] text-slate-500">{p.formatted_address}</div>
+                              <div className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100">{p.name}</div>
+                              <div className="truncate text-[11px] text-slate-500 dark:text-gray-400">{p.formatted_address}</div>
                             </li>
                           ))}
                         </ul>
                       ) : !isSearchingPlace && (
-                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-500 shadow-sm">
-                          {"\u5019\u88DC\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002"}
+                        <div className="rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-[#16181e] px-3 py-2 text-[12px] text-slate-500 dark:text-gray-400 shadow-sm">
+                          {t("noResults")}
                         </div>
                       )}
                     </div>
                   )}
                 </div>
                 {attempted && (
-                  <p className="text-[12px] font-semibold text-red-500">{"\u5019\u88DC\u304B\u3089\u304A\u5E97\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044\u3002"}</p>
+                  <p className="text-[12px] font-semibold text-red-500">{t("selectPlace")}</p>
                 )}
               </div>
             )}
           </Section>
 
           {/* ── 本文 ── */}
-          <Section title={"\u672C\u6587"} required>
+          <Section title={t("body")} required requiredLabel={t("required")}>
             <textarea
-              className="h-28 w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition md:h-36"
-              placeholder={"\u3044\u307E\u4F55\u98DF\u3079\u3066\u308B\uFF1F"}
+              className="h-28 w-full resize-none rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-4 py-3 text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 dark:focus:ring-orange-900/30 transition md:h-36"
+              placeholder={t("bodyPlaceholder")}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); submit(); } }}
               aria-label="content"
             />
             {attempted && !content.trim() && (
-              <p className="mt-1 text-[12px] font-semibold text-red-500">{"\u672C\u6587\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002"}</p>
+              <p className="mt-1 text-[12px] font-semibold text-red-500">{t("bodyRequired")}</p>
             )}
           </Section>
 
           {/* ── おすすめ度 ── */}
-          <Section title={"\u304A\u3059\u3059\u3081\u5EA6"} required right={
+          <Section title={t("recommend")} required requiredLabel={t("required")} right={
             recommendSelected ? (
-              <span className="text-sm font-bold text-orange-600">{recommendScore.toFixed(1)}<span className="text-slate-400 font-normal"> / 10</span></span>
+              <span className="text-sm font-bold text-orange-600">{recommendScore.toFixed(1)}<span className="text-slate-400 dark:text-gray-500 font-normal"> / 10</span></span>
             ) : null
           }>
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <input type="range" min={0} max={10} step={0.1} value={recommendScore}
                   onChange={(e) => { setRecommendSelected(true); setRecommendScore(Number(e.target.value)); }}
-                  className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-300"].join(" ")}
+                  className={["w-full", recommendSelected ? "accent-orange-600" : "accent-slate-300 dark:accent-gray-600"].join(" ")}
                   aria-label="recommend" />
                 <input type="number" min={0} max={10} step={0.1} inputMode="decimal"
                   value={recommendSelected ? recommendScore.toFixed(1) : ""} placeholder="0.0"
@@ -1082,51 +1088,51 @@ export default function NewPostPage() {
                     const n = Number(v); if (!Number.isFinite(n)) return;
                     setRecommendSelected(true); setRecommendScore(Math.round(Math.min(10, Math.max(0, n)) * 10) / 10);
                   }}
-                  className="w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm font-bold text-slate-900 outline-none focus:border-orange-400"
+                  className="w-16 rounded-lg border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-2 py-1.5 text-center text-sm font-bold text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400"
                   aria-label="recommend number" />
               </div>
-              <div className="flex justify-between text-[11px] text-slate-400"><span>0</span><span>10</span></div>
+              <div className="flex justify-between text-[11px] text-slate-400 dark:text-gray-500"><span>0</span><span>10</span></div>
               {attempted && !recommendSelected && (
-                <p className="text-[12px] font-semibold text-red-500">{"\u304A\u3059\u3059\u3081\u5EA6\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044\u3002"}</p>
+                <p className="text-[12px] font-semibold text-red-500">{t("recommendRequired")}</p>
               )}
             </div>
           </Section>
 
           {/* ── 料金 ── */}
-          <Section title={"\u6599\u91D1"} required right={priceModeSwitch}>
+          <Section title={t("price")} required requiredLabel={t("required")} right={priceModeSwitch}>
             <div className="space-y-2">
               {priceMode === "exact" ? (
-                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 transition">
-                  <span className="text-sm font-medium text-slate-400">&yen;</span>
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2.5 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 dark:focus-within:ring-orange-900/30 transition">
+                  <span className="text-sm font-medium text-slate-400 dark:text-gray-500">&yen;</span>
                   <input inputMode="numeric" value={priceYenText} onChange={(e) => setPriceYenText(onlyDigits(e.target.value))}
-                    placeholder={"\u4F8B: 3500"} className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400" aria-label="price" />
-                  {priceYenValue ? <span className="shrink-0 text-[12px] text-slate-400">&yen;{formatYen(priceYenValue)}</span> : null}
+                    placeholder={t("pricePlaceholder")} className="w-full bg-transparent text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500" aria-label="price" />
+                  {priceYenValue ? <span className="shrink-0 text-[12px] text-slate-400 dark:text-gray-500">&yen;{formatYen(priceYenValue)}</span> : null}
                 </div>
               ) : (
                 <select value={priceRange} onChange={(e) => setPriceRange(e.target.value as any)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-orange-400" aria-label="price range">
+                  className="w-full rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2.5 text-sm text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400" aria-label="price range">
                   {PRICE_RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               )}
               {attempted && priceMode === "exact" && !isPriceComplete && (
-                <p className="text-[12px] font-semibold text-red-500">{"\u5B9F\u984D\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002"}</p>
+                <p className="text-[12px] font-semibold text-red-500">{t("exactRequired")}</p>
               )}
             </div>
           </Section>
 
           {/* ── 来店日 + 昼/夜（1行にまとめる） ── */}
-          <Section title={"\u6765\u5E97\u65E5"} optional>
+          <Section title={t("visitedOn")} optional optionalLabel={t("optional")}>
             <div className="flex items-center gap-3">
               <input type="date" name="visited_on" value={visitedOn} onChange={(e) => setVisitedOn(e.target.value)}
                 max={new Date().toISOString().slice(0, 10)}
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-orange-400 transition"
+                className="flex-1 rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2 text-sm text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400 transition"
                 style={{ WebkitAppearance: "none" } as any} aria-label="visited date" />
-              <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
-                {([{ v: "day" as const, l: "\u663C" }, { v: "night" as const, l: "\u591C" }]).map((x) => (
+              <div className="inline-flex rounded-lg border border-slate-200 dark:border-white/[.08] p-0.5">
+                {([{ v: "day" as const, l: t("day") }, { v: "night" as const, l: t("night") }]).map((x) => (
                   <button key={x.v} type="button"
                     onClick={() => { setTimeOfDayTouched(true); setTimeOfDay(timeOfDay === x.v ? null : x.v); }}
                     className={["rounded-md px-3 py-1.5 text-xs font-semibold transition",
-                      timeOfDay === x.v ? "bg-orange-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                      timeOfDay === x.v ? "bg-orange-600 text-white shadow-sm" : "text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
                     ].join(" ")} aria-pressed={timeOfDay === x.v}>
                     {x.l}
                   </button>
@@ -1140,15 +1146,15 @@ export default function NewPostPage() {
             <button type="button" onClick={() => setShowDetails((v) => !v)}
               className="flex w-full items-center justify-between px-4 pt-5 pb-2">
               <div className="flex items-center gap-2">
-                <h2 className="text-[13px] font-bold text-slate-900 tracking-wide">{"\u30BF\u30B0"}</h2>
-                <span className="text-[11px] text-slate-400 font-medium">{"\u4EFB\u610F"}</span>
+                <h2 className="text-[13px] font-bold text-slate-900 dark:text-gray-100 tracking-wide">{t("tags")}</h2>
+                <span className="text-[11px] text-slate-400 dark:text-gray-500 font-medium">{t("optional")}</span>
                 {selectedTagIds.length > 0 && (
                   <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white">
                     {selectedTagIds.length}
                   </span>
                 )}
               </div>
-              {showDetails ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+              {showDetails ? <ChevronUp className="h-4 w-4 text-slate-400 dark:text-gray-500" /> : <ChevronDown className="h-4 w-4 text-slate-400 dark:text-gray-500" />}
             </button>
 
             {/* collapsed state */}
@@ -1157,17 +1163,17 @@ export default function NewPostPage() {
                 {selectedTagIds.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {selectedTagIds.map((id) => {
-                      const t = findTagById(id); if (!t) return null;
+                      const tag = findTagById(id); if (!tag) return null;
                       return (
-                        <span key={id} className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-700">
-                          {t.label}
+                        <span key={id} className="inline-flex items-center gap-1 rounded-full bg-orange-50 dark:bg-orange-900/20 px-2 py-1 text-[11px] font-semibold text-orange-700 dark:text-orange-300">
+                          {tag.label}
                           <button type="button" onClick={() => removeTag(id)} className="text-orange-400 hover:text-orange-600"><X size={10} /></button>
                         </span>
                       );
                     })}
                   </div>
                 ) : (
-                  <p className="text-[12px] text-slate-400">{"\u30BF\u30C3\u30D7\u3057\u3066\u30BF\u30B0\u3092\u8FFD\u52A0"}</p>
+                  <p className="text-[12px] text-slate-400 dark:text-gray-500">{t("tapToAddTag")}</p>
                 )}
               </div>
             )}
@@ -1178,11 +1184,11 @@ export default function NewPostPage() {
                 {selectedTagIds.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {selectedTagIds.map((id) => {
-                      const t = findTagById(id); if (!t) return null;
+                      const tag = findTagById(id); if (!tag) return null;
                       return (
                         <button key={id} type="button" onClick={() => removeTag(id)}
-                          className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-200 transition">
-                          {t.label}<X size={10} />
+                          className="inline-flex items-center gap-1 rounded-full bg-orange-100 dark:bg-orange-900/30 px-2.5 py-1 text-[11px] font-semibold text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition">
+                          {tag.label}<X size={10} />
                         </button>
                       );
                     })}
@@ -1198,32 +1204,32 @@ export default function NewPostPage() {
                         return (
                           <button key={c.id} type="button" onClick={() => setTagCategory(c.id)}
                             className={["shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
-                              active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                              active ? "bg-slate-900 dark:bg-gray-100 text-white dark:text-gray-900" : "bg-slate-100 dark:bg-white/[.06] text-slate-500 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/[.1]"
                             ].join(" ")}>{c.label}</button>
                         );
                       })}
                     </div>
                   </div>
                   <div className="relative w-28 shrink-0">
-                    <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-slate-400" />
-                    <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={"\u691C\u7D22"}
-                      className="w-full rounded-full border border-slate-200 bg-white py-1 pl-7 pr-2 text-[11px] text-slate-800 outline-none focus:border-orange-400" aria-label="tag search" />
+                    <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-slate-400 dark:text-gray-500" />
+                    <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={t("search")}
+                      className="w-full rounded-full border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] py-1 pl-7 pr-2 text-[11px] text-slate-800 dark:text-gray-200 outline-none focus:border-orange-400" aria-label="tag search" />
                   </div>
                 </div>
 
                 {/* tag list */}
                 <div className="flex flex-wrap gap-1.5">
-                  {visibleTags.map((t) => {
-                    const on = selectedTagIdSet.has(t.id);
+                  {visibleTags.map((tg) => {
+                    const on = selectedTagIdSet.has(tg.id);
                     return (
-                      <button key={t.id} type="button" onClick={() => toggleTag(t.id)}
+                      <button key={tg.id} type="button" onClick={() => toggleTag(tg.id)}
                         className={["rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
-                          on ? "bg-orange-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        ].join(" ")} aria-pressed={on}>{t.label}</button>
+                          on ? "bg-orange-600 text-white" : "bg-slate-100 dark:bg-white/[.06] text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/[.1]"
+                        ].join(" ")} aria-pressed={on}>{tg.label}</button>
                     );
                   })}
                   {visibleTags.length === 0 && (
-                    <p className="text-[11px] text-slate-400">{"\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002"}</p>
+                    <p className="text-[11px] text-slate-400 dark:text-gray-500">{t("notFound")}</p>
                   )}
                 </div>
               </div>
@@ -1237,16 +1243,16 @@ export default function NewPostPage() {
       {/* ── bottom CTA ── */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         {/* white fill to cover any layout background peeking above */}
-        <div className="absolute inset-x-0 -top-16 h-16 bg-white pointer-events-none" />
-        <div className="border-t border-slate-100 bg-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
+        <div className="absolute inset-x-0 -top-16 h-16 bg-white dark:bg-[#0e1117] pointer-events-none" />
+        <div className="border-t border-slate-100 dark:border-white/[.08] bg-white dark:bg-[#0e1117] px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
           style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom))" }}>
           <button type="button" onClick={() => submit()} disabled={busy || processing || !isAllRequiredComplete}
             className={["flex h-12 w-full items-center justify-center rounded-2xl text-[15px] font-bold transition",
               busy || processing || !isAllRequiredComplete
-                ? "bg-slate-100 text-slate-400"
+                ? "bg-slate-100 dark:bg-white/[.06] text-slate-400 dark:text-gray-500"
                 : "bg-orange-600 text-white shadow-lg shadow-orange-600/25 hover:bg-orange-700 active:scale-[0.98]"
             ].join(" ")}>
-            {processing ? "\u753B\u50CF\u51E6\u7406\u4E2D\u2026" : busy ? "\u6295\u7A3F\u4E2D\u2026" : "\u6295\u7A3F\u3059\u308B"}
+            {processing ? t("processingImages") : busy ? t("posting") : t("submit")}
           </button>
         </div>
       </div>

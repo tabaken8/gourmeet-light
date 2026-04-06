@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 export default function ResetPage() {
   const supabase = createClientComponentClient();
+  const t = useTranslations("auth");
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -15,19 +17,19 @@ export default function ResetPage() {
       redirectTo: `${location.origin}/auth/update`,
     });
     setLoading(false);
-    setMsg(error ? error.message : "パスワード再設定用のメールを送信しました。");
+    setMsg(error ? error.message : t("resetEmailSent"));
   };
 
   return (
     <main className="rounded-2xl bg-white dark:bg-[#16181e] dark:border dark:border-white/[.08] p-8 shadow-sm max-w-md">
-      <h1 className="mb-4 text-2xl font-bold dark:text-gray-100">パスワードをリセット</h1>
+      <h1 className="mb-4 text-2xl font-bold dark:text-gray-100">{t("resetPassword")}</h1>
       <form onSubmit={submit} className="space-y-3">
         <input className="w-full rounded border border-black/10 dark:border-white/15 bg-white dark:bg-white/[.06] px-3 py-2 text-slate-900 dark:text-gray-100 outline-none focus:border-orange-600 dark:focus:border-white/25 placeholder:text-slate-400 dark:placeholder:text-gray-500"
                type="email" required placeholder="you@example.com"
                value={email} onChange={e=>setEmail(e.target.value)} />
         <button disabled={loading}
           className="inline-flex h-11 items-center rounded-full bg-orange-700 px-6 text-white disabled:opacity-60">
-          {loading ? "送信中..." : "メールを送る"}
+          {loading ? t("sending") : t("sendEmail")}
         </button>
       </form>
       {msg && <p className="mt-3 text-sm dark:text-gray-300">{msg}</p>}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MapPin, MessageCircle, Heart, UserPlus, HelpCircle, Pencil } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 /** template id -> label（通知プレビュー用） */
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -138,20 +139,20 @@ type Notification = {
   detail_request: DetailRequest | null;
 };
 
-function formatRelativeJp(iso: string) {
-  const t = new Date(iso).getTime();
+function formatRelative(iso: string, t: (key: string, values?: any) => string) {
+  const ts = new Date(iso).getTime();
   const now = Date.now();
-  const s = Math.max(0, Math.floor((now - t) / 1000));
-  if (s < 60) return "たった今";
+  const s = Math.max(0, Math.floor((now - ts) / 1000));
+  if (s < 60) return t("justNow");
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}分`;
+  if (m < 60) return t("minutesAgo", { count: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}時間`;
+  if (h < 24) return t("hoursAgo", { count: h });
   const d = Math.floor(h / 24);
-  return `${d}日`;
+  return t("daysAgo", { count: d });
 }
 
-function dayBucket(iso: string) {
+function dayBucketKey(iso: string) {
   const dtf = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -164,32 +165,22 @@ function dayBucket(iso: string) {
   const curDate = new Date(`${d}T00:00:00+09:00`).getTime();
   const diffDays = Math.floor((todayDate - curDate) / (24 * 60 * 60 * 1000));
 
-  if (diffDays === 0) return "今日";
-  if (diffDays === 1) return "昨日";
-  if (diffDays <= 7) return "過去7日間";
-  return "それ以前";
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays <= 7) return "past7days";
+  return "older";
 }
 
-function labelForType(t: NotificationType) {
-  switch (t) {
-    case "like":
-      return "がいいねしました";
-    case "want":
-      return "が「行きたい！」しました";
-    case "comment":
-      return "がコメントしました";
-    case "reply":
-      return "が返信しました";
-    case "follow":
-      return "があなたをフォローしました";
-    case "comment_like":
-      return "があなたのコメントにいいねしました";
-    case "detail_request":
-      return "があなたの投稿にリクエストしました";
-    case "detail_answer":
-      return "があなたのリクエストに回答しました";
-  }
-}
+const LABEL_KEY_FOR_TYPE: Record<NotificationType, string> = {
+  like: "liked",
+  want: "wanted",
+  comment: "commented",
+  reply: "replied",
+  follow: "followed",
+  comment_like: "commentLiked",
+  detail_request: "requested",
+  detail_answer: "answered",
+};
 
 function iconForType(t: NotificationType) {
   switch (t) {
@@ -220,14 +211,14 @@ function prettyTemplateLabel(id: string) {
   return TEMPLATE_LABELS[id] ?? id;
 }
 
-function buildRequestPreview(dr: DetailRequest | null) {
+function buildRequestPreview(dr: DetailRequest | null, t: (key: string, values?: any) => string) {
   if (!dr) return null;
   const parts: string[] = [];
 
   if (Array.isArray(dr.template_ids) && dr.template_ids.length) {
     const head = dr.template_ids.slice(0, 3).map(prettyTemplateLabel);
     parts.push(...head);
-    if (dr.template_ids.length > 3) parts.push(`他${dr.template_ids.length - 3}件`);
+    if (dr.template_ids.length > 3) parts.push(t("otherCount", { count: dr.template_ids.length - 3 }));
   }
   if (dr.free_text && dr.free_text.trim()) parts.push(dr.free_text.trim());
 
@@ -238,15 +229,16 @@ function buildRequestPreview(dr: DetailRequest | null) {
 export default function NotificationsPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
+  const t = useTranslations("notifications");
 
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [justReadIds, setJustReadIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const emptyText = useMemo(() => {
-    if (loading) return "読み込み中…";
-    return "まだ通知はありません";
-  }, [loading]);
+    if (loading) return t("loading");
+    return t("empty");
+  }, [loading, t]);
 
   useEffect(() => {
     const load = async () => {
@@ -292,26 +284,26 @@ export default function NotificationsPage() {
   const grouped = useMemo(() => {
     const m = new Map<string, Notification[]>();
     for (const n of notifs) {
-      const b = dayBucket(n.created_at);
+      const b = dayBucketKey(n.created_at);
       const arr = m.get(b) ?? [];
       arr.push(n);
       m.set(b, arr);
     }
-    const order = ["今日", "昨日", "過去7日間", "それ以前"];
-    return order.filter((k) => m.has(k)).map((k) => ({ key: k, items: m.get(k)! }));
-  }, [notifs]);
+    const order = ["today", "yesterday", "past7days", "older"];
+    return order.filter((k) => m.has(k)).map((k) => ({ key: k, label: t(k), items: m.get(k)! }));
+  }, [notifs, t]);
 
   return (
     <main className="min-h-screen bg-[#fafafa] dark:bg-[#0e1117] text-slate-900 dark:text-gray-100">
       <div className="mx-auto w-full max-w-2xl px-0 pb-24">
         <div className="sticky top-0 z-20 border-b border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#0e1117]/90 backdrop-blur pt-[env(safe-area-inset-top)]">
           <div className="flex h-12 items-center justify-between px-4">
-            <h1 className="text-[16px] font-semibold tracking-tight">通知</h1>
+            <h1 className="text-[16px] font-semibold tracking-tight">{t("title")}</h1>
             <Link
               href="/settings/notifications"
               className="text-[12px] font-semibold text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
             >
-              通知設定
+              {t("settings")}
             </Link>
           </div>
         </div>
@@ -324,7 +316,7 @@ export default function NotificationsPage() {
           <div className="pb-6">
             {grouped.map((g) => (
               <section key={g.key} className="pt-4">
-                <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900 dark:text-gray-100">{g.key}</div>
+                <div className="px-4 pb-2 text-[13px] font-semibold text-slate-900 dark:text-gray-100">{g.label}</div>
 
                 <div className="divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-[#16181e]">
                   {g.items.map((n) => {
@@ -354,7 +346,7 @@ export default function NotificationsPage() {
                     const actorName =
                       actor?.display_name ??
                       actor?.username ??
-                      (n.type === "detail_request" ? "匿名" : "ユーザー");
+                      (n.type === "detail_request" ? t("anonymous") : t("user"));
 
                     const actorAvatar = actor?.avatar_url ?? null;
                     const initial = (actorName || "U").slice(0, 1).toUpperCase();
@@ -367,7 +359,7 @@ export default function NotificationsPage() {
 
                     const reqPreview =
                       n.type === "detail_request" || n.type === "detail_answer"
-                        ? buildRequestPreview(dr)
+                        ? buildRequestPreview(dr, t)
                         : null;
 
                     const thumb = getThumbUrl(post);
@@ -407,7 +399,7 @@ export default function NotificationsPage() {
                               {iconForType(n.type)}
                               <span className="font-semibold">{actorName}</span>
                             </span>{" "}
-                            <span className="text-slate-700 dark:text-gray-300">{labelForType(n.type)}</span>
+                            <span className="text-slate-700 dark:text-gray-300">{t(LABEL_KEY_FOR_TYPE[n.type])}</span>
                           </div>
 
                           {commentPreview ? (
@@ -456,7 +448,7 @@ export default function NotificationsPage() {
                                 className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 px-3 py-1.5 text-[12px] font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
                               >
                                 <MessageCircle size={14} className="text-slate-500 dark:text-gray-400" />
-                                直接答える
+                                {t("answerDirectly")}
                               </button>
 
                               <button
@@ -469,12 +461,12 @@ export default function NotificationsPage() {
                                 className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 dark:border-orange-800/40 bg-orange-50 dark:bg-orange-900/20 px-3 py-1.5 text-[12px] font-semibold text-orange-700 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/30"
                               >
                                 <Pencil size={14} className="text-orange-600" />
-                                追記で答える
+                                {t("answerByEdit")}
                               </button>
                             </div>
                           ) : null}
 
-                          <div className="mt-0.5 text-[11px] text-slate-400 dark:text-gray-500">{formatRelativeJp(n.created_at)}</div>
+                          <div className="mt-0.5 text-[11px] text-slate-400 dark:text-gray-500">{formatRelative(n.created_at, t)}</div>
                         </div>
 
                         <div className="shrink-0">

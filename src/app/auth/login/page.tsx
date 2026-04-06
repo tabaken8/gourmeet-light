@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const t = useTranslations("auth");
 
   const supabase = createClientComponentClient();
 
@@ -54,14 +56,14 @@ const handleGoogleLogin = async () => {
         <div className="grid gap-8 md:grid-cols-2">
           {/* 左：ログインフォーム */}
           <section
-            aria-label="ログイン"
+            aria-label={t("login")}
             className="rounded-2xl bg-white p-8 shadow-sm dark:bg-[#16181e] dark:border dark:border-white/[.08]"
           >
-            <h2 className="mb-6 text-2xl font-bold tracking-tight dark:text-gray-100">ログイン</h2>
+            <h2 className="mb-6 text-2xl font-bold tracking-tight dark:text-gray-100">{t("login")}</h2>
 
             <form onSubmit={onSubmit} className="space-y-4">
               <label className="block">
-                <span className="mb-1 block text-sm dark:text-gray-300">メールアドレス</span>
+                <span className="mb-1 block text-sm dark:text-gray-300">{t("email")}</span>
                 <input
                   type="email"
                   value={email}
@@ -73,7 +75,7 @@ const handleGoogleLogin = async () => {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-sm dark:text-gray-300">パスワード</span>
+                <span className="mb-1 block text-sm dark:text-gray-300">{t("password")}</span>
                 <div className="flex items-stretch gap-2">
                   <input
                     type={show ? "text" : "password"}
@@ -89,7 +91,7 @@ const handleGoogleLogin = async () => {
                     className="whitespace-nowrap rounded-lg border border-black/10 px-3 text-sm hover:bg-black/[.04] dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
                     aria-pressed={show}
                   >
-                    {show ? "隠す" : "表示"}
+                    {show ? t("hide") : t("show")}
                   </button>
                 </div>
               </label>
@@ -101,7 +103,7 @@ const handleGoogleLogin = async () => {
                   onChange={(e) => setRemember(e.target.checked)}
                   className="h-4 w-4 accent-orange-700"
                 />
-                <span className="text-sm dark:text-gray-300">ログイン状態を保持する</span>
+                <span className="text-sm dark:text-gray-300">{t("rememberMe")}</span>
               </label>
 
               {msg && <p className="text-sm text-red-600">{msg}</p>}
@@ -110,7 +112,7 @@ const handleGoogleLogin = async () => {
                 disabled={loading}
                 className="inline-flex h-11 items-center justify-center rounded-full bg-orange-700 px-6 text-white transition-colors hover:bg-orange-800 disabled:opacity-60"
               >
-                {loading ? "ログイン中..." : "ログイン"}
+                {loading ? t("loggingIn") : t("login")}
               </button>
 
               <div className="mt-2">
@@ -118,7 +120,7 @@ const handleGoogleLogin = async () => {
                   href="/auth/reset"
                   className="text-sm text-orange-800 underline dark:text-orange-400"
                 >
-                  パスワードをお忘れの方はこちら
+                  {t("forgotPassword")}
                 </a>
               </div>
             </form>
@@ -152,36 +154,36 @@ const handleGoogleLogin = async () => {
                   d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.3-5.4c-2 1.4-4.6 2.3-7.9 2.3-6.2 0-11.6-3.6-14-8.8l-7.9 6.2C6.7 42.9 14.8 48 24 48z"
                 />
               </svg>
-              <span>Googleでログイン</span>
+              <span>{t("googleLogin")}</span>
             </button>
           </section>
 
           {/* 右：新規登録カード */}
           <aside
-            aria-label="新規会員登録"
+            aria-label={t("signupFree")}
             className="rounded-2xl border border-orange-100 bg-[#fff7ed] p-8 dark:bg-[#1e1510] dark:border-orange-900/30"
           >
-            <h2 className="mb-2 text-lg font-bold dark:text-gray-100">新規会員登録（無料）</h2>
+            <h2 className="mb-2 text-lg font-bold dark:text-gray-100">{t("signupFree")}</h2>
             <p className="mb-6 text-sm leading-6 text-black/70 dark:text-gray-400">
-              おいしいを友達とシェアしよう。
+              {t("shareDelicious")}
             </p>
             <a
               href="/auth/signup"
               className="inline-flex h-11 items-center justify-center rounded-full border border-orange-800 px-6 font-medium text-orange-900 hover:bg-orange-800 hover:text-white dark:border-white/15 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10"
             >
-              会員登録する
+              {t("signup")}
             </a>
 
             <div className="mt-6 text-sm">
               <a href="/auth/signup" className="text-orange-800 underline dark:text-orange-400">
-                くわしく見る
+                {t("learnMore")}
               </a>
             </div>
           </aside>
         </div>
 
         <p className="mt-8 text-center text-xs text-black/60 dark:text-gray-500">
-          セキュリティ保護のため、他サイトと同じパスワードの使い回しはお控えください。
+          {t("securityNote")}
         </p>
       </div>
     </main>
