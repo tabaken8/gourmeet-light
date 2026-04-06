@@ -44,7 +44,11 @@ export async function GET() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // ── Guest: return public users ──
+  if (!user) {
+    return handleGuestPeopleMap(supabase);
+  }
 
   // ──────────────────────────────────────────────
   // 1. Get my followee IDs + my own posts (for centroid)
@@ -139,7 +143,11 @@ export async function GET() {
   // ──────────────────────────────────────────────
   const allUserIds = [...new Set([...followeeIds, ...twoHopIds])];
   if (allUserIds.length === 0) {
-    return NextResponse.json({ people: [], my_centroid: myCentroid } satisfies PeopleMapResponse);
+    // No followees and no 2-hop candidates → show public users (same as guest)
+    const guestRes = await handleGuestPeopleMap(supabase);
+    const guestData = await guestRes.json();
+    // Inject the user's own centroid
+    return NextResponse.json({ ...guestData, my_centroid: myCentroid } satisfies PeopleMapResponse);
   }
 
   const [profilesRes, postsRes] = await Promise.all([
@@ -398,6 +406,158 @@ export async function GET() {
   }
 
   return NextResponse.json({ people, my_centroid: myCentroid } satisfies PeopleMapResponse);
+}
+
+// ── Guest handler: show public users with posts ──
+
+async function handleGuestPeopleMap(supabase: any) {
+  // Fetch public profiles with recent activity
+  const { data: publicProfiles, error: profErr } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, username, is_public")
+    .eq("is_public", true)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  if (profErr || !publicProfiles || publicProfiles.length === 0) {
+    return NextResponse.json({ people: [], my_centroid: null } satisfies PeopleMapResponse);
+  }
+
+  const allUserIds = publicProfiles.map((p: any) => p.id);
+
+  // Fetch posts for these users
+  const { data: posts, error: postsErr } = await supabase
+    .from("posts")
+    .select(`
+      id, user_id, recommend_score, created_at,
+      place_name, place_id, content, image_urls,
+      image_assets, image_variants, cover_square_url
+    `)
+    .in("user_id", allUserIds)
+    .order("created_at", { ascending: false })
+    .limit(3000);
+
+  if (postsErr || !posts || posts.length === 0) {
+    return NextResponse.json({ people: [], my_centroid: null } satisfies PeopleMapResponse);
+  }
+
+  // Resolve place coordinates
+  const placeIds = [...new Set(posts.map((p: any) => p.place_id).filter(Boolean))];
+  const placeMap = new Map<string, { lat: number; lng: number; genre: string | null; area: string | null }>();
+
+  for (let i = 0; i < placeIds.length; i += 200) {
+    const chunk = placeIds.slice(i, i + 200);
+    const { data: places } = await supabase
+      .from("places")
+      .select("place_id, lat, lng, primary_genre, area_label_ja")
+      .in("place_id", chunk);
+    if (places) {
+      for (const p of places) {
+        if (p.lat != null && p.lng != null) {
+          placeMap.set(p.place_id, { lat: p.lat, lng: p.lng, genre: p.primary_genre ?? null, area: p.area_label_ja ?? null });
+        }
+      }
+    }
+  }
+
+  // Group posts by user
+  const profileMap = new Map(publicProfiles.map((p: any) => [p.id, p]));
+
+  type PostEntry = { lat: number; lng: number; place_name: string; recommend_score: number | null; image_url: string | null; created_at: string };
+  type UserGroup = { scores: number[]; lats: number[]; lngs: number[]; genres: string[]; areas: string[]; allPosts: PostEntry[] };
+  const userGroups = new Map<string, UserGroup>();
+
+  for (const post of posts) {
+    const place = post.place_id ? placeMap.get(post.place_id) : null;
+    if (!place) continue;
+
+    let group = userGroups.get(post.user_id);
+    if (!group) {
+      group = { scores: [], lats: [], lngs: [], genres: [], areas: [], allPosts: [] };
+      userGroups.set(post.user_id, group);
+    }
+
+    group.lats.push(place.lat);
+    group.lngs.push(place.lng);
+    if (typeof post.recommend_score === "number") group.scores.push(post.recommend_score);
+    if (place.genre) group.genres.push(place.genre);
+    if (place.area) group.areas.push(place.area);
+
+    const imageUrl = post.cover_square_url
+      ?? post.image_assets?.[0]?.square
+      ?? post.image_variants?.[0]?.thumb
+      ?? (Array.isArray(post.image_urls) ? post.image_urls[0] : null);
+
+    group.allPosts.push({
+      lat: place.lat, lng: place.lng,
+      place_name: post.place_name ?? "お店",
+      recommend_score: post.recommend_score,
+      image_url: imageUrl,
+      created_at: post.created_at,
+    });
+  }
+
+  // Build PersonMapItems
+  const people: PersonMapItem[] = [];
+  for (const userId of allUserIds) {
+    const group = userGroups.get(userId);
+    const profile = profileMap.get(userId) as any;
+    if (!profile || !group || group.lats.length === 0) continue;
+
+    const centroid = computeDensestClusterCenter(group.lats, group.lngs);
+    const avgScore = group.scores.length > 0
+      ? Math.round((group.scores.reduce((a, b) => a + b, 0) / group.scores.length) * 10) / 10
+      : 0;
+
+    const filtered = removeOutliers(group.lats, group.lngs);
+    const filteredSet = new Set(filtered.lats.map((lat, i) => `${lat},${filtered.lngs[i]}`));
+    const seenPlaces = new Set<string>();
+    const postLatlngs: PersonMapItem["post_latlngs"] = [];
+    for (const p of group.allPosts) {
+      const key = `${p.lat},${p.lng}`;
+      if (filteredSet.has(key) && !seenPlaces.has(key)) {
+        seenPlaces.add(key);
+        postLatlngs.push({ lat: p.lat, lng: p.lng, place_name: p.place_name, image_url: p.image_url, recommend_score: p.recommend_score });
+      }
+    }
+
+    let bounds: PersonMapItem["bounds"] = null;
+    if (postLatlngs.length > 0) {
+      let swLat = Infinity, swLng = Infinity, neLat = -Infinity, neLng = -Infinity;
+      for (const p of postLatlngs) {
+        if (p.lat < swLat) swLat = p.lat;
+        if (p.lng < swLng) swLng = p.lng;
+        if (p.lat > neLat) neLat = p.lat;
+        if (p.lng > neLng) neLng = p.lng;
+      }
+      bounds = { sw: { lat: swLat, lng: swLng }, ne: { lat: neLat, lng: neLng } };
+    }
+
+    const topPosts = pickTopPosts(group.allPosts);
+
+    people.push({
+      user_id: userId,
+      display_name: profile.display_name,
+      avatar_url: profile.avatar_url,
+      username: profile.username,
+      post_count: group.lats.length,
+      avg_score: avgScore,
+      centroid_lat: centroid.lat,
+      centroid_lng: centroid.lng,
+      post_latlngs: postLatlngs,
+      bounds,
+      top_posts: topPosts,
+      top_genre: mode(group.genres),
+      area_name: mode(group.areas),
+      is_following: false,
+      mutual_context: null,
+    });
+  }
+
+  // Sort by post count (most active first)
+  people.sort((a, b) => b.post_count - a.post_count);
+
+  return NextResponse.json({ people, my_centroid: null } satisfies PeopleMapResponse);
 }
 
 // ── Utilities ──

@@ -16,13 +16,11 @@ export default async function TimelinePage() {
   return (
     <main className="min-h-screen text-slate-800 dark:text-gray-200 bg-white dark:bg-transparent">
       <div className="mx-auto w-full max-w-6xl px-2 py-3 md:px-6 md:py-6">
-        <section className="rounded-2xl bg-white dark:bg-[#16181e]">
-          <Suspense fallback={<PostsSkeleton />}>
-            {/* 投稿者本人にだけ: DBへの保存が完了するまで仮表示 */}
-            <OptimisticPostCard />
-            <FriendsTimelineServer meId={user?.id ?? null} />
-          </Suspense>
-        </section>
+        <Suspense fallback={<div className="rounded-2xl bg-white dark:bg-[#16181e]"><PostsSkeleton /></div>}>
+          {/* 投稿者本人にだけ: DBへの保存が完了するまで仮表示 */}
+          <OptimisticPostCard />
+          <FriendsTimelineServer meId={user?.id ?? null} />
+        </Suspense>
       </div>
     </main>
   );
