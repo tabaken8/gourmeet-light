@@ -162,22 +162,22 @@ export default function GenreVoteInline({ placeId }: Props) {
           w-full
           text-left
           rounded-2xl
-          border border-black/[.06]
-          bg-white/60
+          border border-black/[.06] dark:border-white/[.08]
+          bg-white/60 dark:bg-white/[.06]
           px-3 py-2
           text-[12px]
-          text-slate-600
-          hover:bg-white/75
+          text-slate-600 dark:text-gray-400
+          hover:bg-white/75 dark:hover:bg-white/[.10]
         "
         aria-label="ジャンルを選ぶ"
       >
         {myGenre ? (
           <span className="truncate">
-            ジャンル: <span className="text-slate-800 font-medium">{myGenre}</span>{" "}
-            <span className="text-slate-400"></span>
+            ジャンル: <span className="text-slate-800 dark:text-gray-100 font-medium">{myGenre}</span>{" "}
+            <span className="text-slate-400 dark:text-gray-500"></span>
           </span>
         ) : (
-          <span className="text-slate-500">ジャンルを選ぶ</span>
+          <span className="text-slate-500 dark:text-gray-500">ジャンルを選ぶ</span>
         )}
       </button>
 
@@ -204,23 +204,23 @@ export default function GenreVoteInline({ placeId }: Props) {
               mx-auto
               max-w-lg
               rounded-t-3xl
-              border border-black/[.08]
-              bg-white
+              border border-black/[.08] dark:border-white/[.10]
+              bg-white dark:bg-[#1e2026]
               shadow-2xl
             "
           >
             <div className="px-4 pt-4 pb-3">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">ジャンルを選択</div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">ジャンルを選択</div>
                 <button
                   type="button"
                   onClick={() => (loading ? null : setOpen(false))}
-                  className="gm-press rounded-full px-3 py-1 text-[12px] text-slate-500 hover:text-slate-800"
+                  className="gm-press rounded-full px-3 py-1 text-[12px] text-slate-500 dark:text-gray-400 hover:text-slate-800 dark:hover:text-gray-200"
                 >
                   閉じる
                 </button>
               </div>
-              <div className="mt-1 text-[11px] text-slate-500">
+              <div className="mt-1 text-[11px] text-slate-500 dark:text-gray-500">
 
               </div>
             </div>
@@ -234,7 +234,7 @@ export default function GenreVoteInline({ placeId }: Props) {
 
             {/* 追加 */}
             <div className="px-4 pt-3">
-              <div className="text-[11px] font-medium text-slate-700">新しいジャンルを追加</div>
+              <div className="text-[11px] font-medium text-slate-700 dark:text-gray-300">新しいジャンルを追加</div>
               <div className="mt-2 flex gap-2">
                 <input
                   value={custom}
@@ -243,12 +243,14 @@ export default function GenreVoteInline({ placeId }: Props) {
                   className="
                     flex-1
                     rounded-2xl
-                    border border-black/[.10]
-                    bg-white
+                    border border-black/[.10] dark:border-white/[.10]
+                    bg-white dark:bg-white/[.06]
                     px-3 py-2
                     text-sm
+                    text-slate-900 dark:text-gray-100
+                    placeholder:text-slate-400 dark:placeholder:text-gray-500
                     outline-none
-                    focus:ring-2 focus:ring-orange-200
+                    focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-500/30
                   "
                 />
                 <button
@@ -257,10 +259,11 @@ export default function GenreVoteInline({ placeId }: Props) {
                   className="
                     gm-press
                     rounded-2xl
-                    border border-black/[.10]
-                    bg-white
+                    border border-black/[.10] dark:border-white/[.10]
+                    bg-white dark:bg-white/[.06]
                     px-3 py-2
                     text-sm
+                    text-slate-900 dark:text-gray-200
                   "
                 >
                   追加
@@ -268,11 +271,11 @@ export default function GenreVoteInline({ placeId }: Props) {
               </div>
 
               {/* みんなの投票（見える場合のみ） */}
-              <div className="mt-4 rounded-2xl border border-black/[.06] bg-slate-50 p-3">
-                <div className="text-[11px] font-semibold text-slate-700">みんなの傾向</div>
+              <div className="mt-4 rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-slate-50 dark:bg-white/[.04] p-3">
+                <div className="text-[11px] font-semibold text-slate-700 dark:text-gray-300">みんなの傾向</div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {Object.keys(counts).length === 0 ? (
-                    <span className="text-[11px] text-slate-500">
+                    <span className="text-[11px] text-slate-500 dark:text-gray-500">
                       （他ユーザーの投票が見えない設定の場合は表示されません）
                     </span>
                   ) : (
@@ -282,9 +285,9 @@ export default function GenreVoteInline({ placeId }: Props) {
                       .map(([g, c]) => (
                         <span
                           key={g}
-                          className="rounded-full bg-white px-2 py-1 text-[11px] text-slate-700 border border-black/[.06]"
+                          className="rounded-full bg-white dark:bg-white/[.06] px-2 py-1 text-[11px] text-slate-700 dark:text-gray-300 border border-black/[.06] dark:border-white/[.08]"
                         >
-                          {g} <span className="text-slate-400">{c}</span>
+                          {g} <span className="text-slate-400 dark:text-gray-500">{c}</span>
                         </span>
                       ))
                   )}
@@ -301,11 +304,11 @@ export default function GenreVoteInline({ placeId }: Props) {
                 className="
                   gm-press
                   rounded-2xl
-                  border border-black/[.10]
-                  bg-white
+                  border border-black/[.10] dark:border-white/[.10]
+                  bg-white dark:bg-white/[.06]
                   px-3 py-2
                   text-sm
-                  text-slate-600
+                  text-slate-600 dark:text-gray-400
                 "
               >
                 未設定に戻す
@@ -410,19 +413,19 @@ function WheelLikePicker({
         className="
           relative
           rounded-3xl
-          border border-black/[.08]
-          bg-white
+          border border-black/[.08] dark:border-white/[.08]
+          bg-white dark:bg-white/[.04]
           overflow-hidden
         "
         style={{ height: itemH * visible }}
       >
         {/* フェード（ホイールっぽさ） */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white dark:from-[#1e2026] to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white dark:from-[#1e2026] to-transparent" />
 
         {/* センターのハイライト帯 */}
         <div
-          className="pointer-events-none absolute inset-x-2 rounded-2xl border border-orange-200 bg-orange-50/60"
+          className="pointer-events-none absolute inset-x-2 rounded-2xl border border-orange-200 dark:border-orange-500/30 bg-orange-50/60 dark:bg-orange-500/10"
           style={{
             top: itemH * pad,
             height: itemH,
@@ -451,7 +454,7 @@ function WheelLikePicker({
                   px-3
                   text-left
                   text-sm
-                  ${active ? "text-slate-900 font-semibold" : "text-slate-600"}
+                  ${active ? "text-slate-900 dark:text-gray-100 font-semibold" : "text-slate-600 dark:text-gray-400"}
                 `}
                 style={{
                   height: itemH,

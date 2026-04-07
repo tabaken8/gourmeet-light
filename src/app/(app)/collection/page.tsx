@@ -6,6 +6,7 @@ import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions from "@/components/PostActions";
 import CollectionListClient from "@/components/CollectionListClient";
 import UncollectButton from "@/components/UncollectButton";
+import { getTranslations } from "next-intl/server";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function CollectionPage({
 
   if (!user) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-orange-50 text-slate-700">
+      <main className="flex min-h-screen items-center justify-center bg-orange-50 dark:bg-transparent text-slate-700 dark:text-gray-400">
         <p className="text-sm">ログインが必要です。</p>
       </main>
     );
@@ -191,20 +192,17 @@ export default async function CollectionPage({
     (c) => c.id === activeCollectionId
   );
 
-  // 4. UI レイアウト（ホワイト＋淡オレンジ）
+  const t = await getTranslations("nav");
+
+  // 4. UI レイアウト
   return (
-    <main className="min-h-screen bg-orange-50 text-slate-800">
+    <main className="min-h-screen bg-orange-50 dark:bg-transparent text-slate-800 dark:text-gray-200">
       {/* 上部ヘッダー */}
-      <div className="border-b border-orange-100 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex w-full items-center justify-between px-4 py-4 md:px-6">
-          <div>
-            <h1 className="text-xs font-semibold tracking-[0.18em] text-orange-500 uppercase">
-              Collections
-            </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              自分だけの“行きたい”リストを、やわらかいボードみたいに並べて眺める場所。
-            </p>
-          </div>
+      <div className="border-b border-orange-100 dark:border-white/[.08] bg-white/90 dark:bg-[#16181e]/90 backdrop-blur">
+        <div className="mx-auto flex w-full items-center px-4 py-4 md:px-6">
+          <h1 className="text-base font-semibold text-slate-800 dark:text-gray-100">
+            {t("collection")}
+          </h1>
         </div>
       </div>
 
@@ -235,7 +233,7 @@ export default async function CollectionPage({
                       "whitespace-nowrap rounded-full border px-3 py-1.5 text-xs transition",
                       isActive
                         ? "border-orange-400 bg-orange-400 !text-white"
-                        : "border-orange-100 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-500",
+                        : "border-orange-100 dark:border-white/[.10] bg-white dark:bg-white/[.06] text-slate-600 dark:text-gray-300 hover:border-orange-300 hover:text-orange-500",
                     ].join(" ")}
                   >
                     {c.name}
@@ -248,31 +246,26 @@ export default async function CollectionPage({
           {/* タイトル行 */}
           <div className="mb-4 flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold tracking-tight text-slate-800">
+              <h2 className="text-base font-semibold tracking-tight text-slate-800 dark:text-gray-100">
                 {activeCollection
                   ? activeCollection.name
                   : "コレクションが選択されていません"}
               </h2>
               {activeCollection && (
-                <span className="rounded-full border border-orange-100 bg-white px-2 py-0.5 text-[11px] text-slate-500">
+                <span className="rounded-full border border-orange-100 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-2 py-0.5 text-[11px] text-slate-500 dark:text-gray-400">
                   {posts.length} posts
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-500">
-              {activeCollection
-                ? "保存した投稿を、スクラップブックのように一覧できます。"
-                : "左のコレクション一覧から、表示したいリストを選択してください。"}
-            </p>
           </div>
 
           {/* 中身 */}
           {!activeCollectionId ? (
-            <div className="flex flex-1 items-center justify-center text-xs text-slate-500">
+            <div className="flex flex-1 items-center justify-center text-xs text-slate-500 dark:text-gray-500">
               コレクションを選択すると、ここに投稿が表示されます。
             </div>
           ) : posts.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center text-xs text-slate-500">
+            <div className="flex flex-1 flex-col items-center justify-center text-xs text-slate-500 dark:text-gray-500">
               <span className="mb-2 text-lg">☕</span>
               まだこのコレクションには投稿がありません。
             </div>
@@ -295,14 +288,14 @@ export default async function CollectionPage({
                 return (
                   <article
                     key={p.id}
-                    className="flex h-full flex-col overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm transition-shadow hover:shadow-md"
+                    className="flex h-full flex-col overflow-hidden rounded-2xl border border-orange-100 dark:border-white/[.08] bg-white dark:bg-[#16181e] shadow-sm transition-shadow hover:shadow-md"
                   >
                     {/* 投稿者ヘッダー */}
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Link
                           href={`/u/${prof?.username ?? p.user_id}`}
-                          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-orange-100 text-xs font-semibold text-orange-600 ring-1 ring-orange-200"
+                          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-500/20 text-xs font-semibold text-orange-600 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-500/30"
                         >
                           {avatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -318,11 +311,11 @@ export default async function CollectionPage({
                         <div className="min-w-0">
                           <Link
                             href={`/u/${prof?.username ?? p.user_id}`}
-                            className="truncate text-xs font-medium text-slate-800 hover:underline"
+                            className="truncate text-xs font-medium text-slate-800 dark:text-gray-200 hover:underline"
                           >
                             {display}
                           </Link>
-                          <div className="text-[10px] text-slate-500">
+                          <div className="text-[10px] text-slate-500 dark:text-gray-500">
                             {new Date(p.created_at!).toLocaleString()}
                           </div>
                         </div>
@@ -345,7 +338,7 @@ export default async function CollectionPage({
                     {/* 本文 + 店舗情報 */}
                     <div className="flex flex-1 flex-col gap-2 px-4 py-3">
                       {p.content && (
-                        <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-800">
+                        <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-800 dark:text-gray-200">
                           {p.content}
                         </p>
                       )}

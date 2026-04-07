@@ -424,17 +424,17 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
           <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm">
             {/* sheet layout */}
             <div className="absolute inset-0 flex items-end justify-center sm:items-center px-3 pb-3 sm:pb-0">
-              <div className="w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white shadow-xl overflow-hidden">
+              <div className="w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white dark:bg-[#1e2026] shadow-xl overflow-hidden">
                 {/* header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-black/10">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/[.08]">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold">
+                    <div className="text-sm font-semibold dark:text-gray-100">
                       {step === "collections" ? "コレクションに追加" : "ジャンルを選ぶ"}
                     </div>
                     {step === "emoji" && (
-                      <div className="mt-0.5 text-[12px] text-black/50">
+                      <div className="mt-0.5 text-[12px] text-black/50 dark:text-gray-400">
                         現在：{" "}
-                        <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-black/[.03] px-2 py-0.5">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-black/10 dark:border-white/[.10] bg-black/[.03] dark:bg-white/[.06] px-2 py-0.5">
                           <span className="text-base">{emojiChoice ?? "—"}</span>
                           <span>{choiceLabel ? choiceLabel : emojiChoice ? "（未ラベル）" : "未選択"}</span>
                         </span>
@@ -444,7 +444,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                   <button
                     type="button"
                     onClick={closeAll}
-                    className="rounded-full p-2 text-black/50 hover:bg-black/5"
+                    className="rounded-full p-2 text-black/50 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/[.08]"
                     aria-label="閉じる"
                   >
                     <X className="h-4 w-4" />
@@ -452,7 +452,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                 </div>
 
                 {error && (
-                  <div className="mx-4 mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <div className="mx-4 mt-3 rounded-lg bg-red-50 dark:bg-red-900/30 px-3 py-2 text-xs text-red-700 dark:text-red-300">
                     {error}
                   </div>
                 )}
@@ -462,9 +462,9 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                   <div className="p-4">
                     <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
                       {loading ? (
-                        <p className="text-xs text-black/50">読み込み中...</p>
+                        <p className="text-xs text-black/50 dark:text-gray-500">読み込み中...</p>
                       ) : collections.length === 0 ? (
-                        <p className="text-xs text-black/50">まだコレクションがありません。</p>
+                        <p className="text-xs text-black/50 dark:text-gray-500">まだコレクションがありません。</p>
                       ) : (
                         collections.map((c) => {
                           const included = includedSet.has(c.id);
@@ -479,13 +479,13 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                               className={[
                                 "flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm transition-colors",
                                 included
-                                  ? "border-orange-300 bg-orange-50 text-orange-700 cursor-default"
-                                  : "border-black/10 hover:bg-black/5",
+                                  ? "border-orange-300 dark:border-orange-500/40 bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300 cursor-default"
+                                  : "border-black/10 dark:border-white/[.10] hover:bg-black/5 dark:hover:bg-white/[.06] dark:text-gray-200",
                                 disabled && !included ? "opacity-60 cursor-not-allowed" : "",
                               ].join(" ")}
                             >
                               <span className="truncate">{c.name}</span>
-                              <span className={included ? "text-xs font-semibold" : "text-xs text-black/40"}>
+                              <span className={included ? "text-xs font-semibold" : "text-xs text-black/40 dark:text-gray-500"}>
                                 {included ? "追加済み" : suggestLoading ? "準備中..." : "追加"}
                               </span>
                             </button>
@@ -494,8 +494,8 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                       )}
                     </div>
 
-                    <div className="mt-4 space-y-2 border-t border-black/10 pt-3">
-                      <label className="block text-xs font-medium text-black/60">
+                    <div className="mt-4 space-y-2 border-t border-black/10 dark:border-white/[.08] pt-3">
+                      <label className="block text-xs font-medium text-black/60 dark:text-gray-400">
                         新しいコレクションを作成
                       </label>
                       <input
@@ -503,7 +503,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder="コレクション名"
-                        className="w-full rounded-xl border border-black/20 px-3 py-3 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                        className="w-full rounded-xl border border-black/20 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 py-3 text-sm dark:text-gray-100 dark:placeholder:text-gray-500 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                       />
                       <button
                         type="button"
@@ -520,19 +520,19 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                 {/* Step 2: emoji */}
                 {step === "emoji" && (
                   <div className="p-4">
-                    <div className="rounded-2xl border border-black/10 bg-black/[.02] p-3">
-                      <div className="text-xs text-black/60">
+                    <div className="rounded-2xl border border-black/10 dark:border-white/[.08] bg-black/[.02] dark:bg-white/[.04] p-3">
+                      <div className="text-xs text-black/60 dark:text-gray-400">
                         Googleのカテゴリから提案します。違ったらすぐ直せます。
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold">
+                          <div className="text-sm font-semibold dark:text-gray-100">
                             {suggest?.suggestedEmoji ? (
                               <span className="inline-flex items-center gap-2">
                                 <span className="text-xl">{suggest.suggestedEmoji}</span>
                                 <span>
                                   おすすめ{" "}
-                                  <span className="text-black/45 font-normal">
+                                  <span className="text-black/45 dark:text-gray-500 font-normal">
                                     {labelForEmoji(suggest.suggestedEmoji) ? `（${labelForEmoji(suggest.suggestedEmoji)}）` : ""}
                                   </span>
                                 </span>
@@ -542,16 +542,16 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                             )}
                           </div>
                           {suggest?.suggestedType ? (
-                            <div className="mt-0.5 text-[11px] text-black/45">type: {suggest.suggestedType}</div>
+                            <div className="mt-0.5 text-[11px] text-black/45 dark:text-gray-500">type: {suggest.suggestedType}</div>
                           ) : (
-                            <div className="mt-0.5 text-[11px] text-black/45">判別できない店もあるので手動で。</div>
+                            <div className="mt-0.5 text-[11px] text-black/45 dark:text-gray-500">判別できない店もあるので手動で。</div>
                           )}
                         </div>
 
                         <button
                           type="button"
                           onClick={() => setEmojiChoice(null)}
-                          className="shrink-0 rounded-xl border border-black/10 bg-white px-3 py-2 text-xs hover:bg-black/5"
+                          className="shrink-0 rounded-xl border border-black/10 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 py-2 text-xs dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/[.10]"
                         >
                           なし
                         </button>
@@ -563,7 +563,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                         value={genreQuery}
                         onChange={(e) => setGenreQuery(e.target.value)}
                         placeholder="ジャンルを検索（例: 焼肉, 寿司）"
-                        className="w-full rounded-xl border border-black/20 px-3 py-3 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                        className="w-full rounded-xl border border-black/20 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 py-3 text-sm dark:text-gray-100 dark:placeholder:text-gray-500 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                       />
                     </div>
 
@@ -580,18 +580,18 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                             className={[
                               "w-full rounded-2xl border px-3 py-3 text-left transition",
                               active
-                                ? "border-orange-400 bg-orange-50"
-                                : "border-black/10 bg-white hover:bg-black/5",
+                                ? "border-orange-400 dark:border-orange-500/40 bg-orange-50 dark:bg-orange-500/10"
+                                : "border-black/10 dark:border-white/[.10] bg-white dark:bg-white/[.04] hover:bg-black/5 dark:hover:bg-white/[.08]",
                             ].join(" ")}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-3 min-w-0">
-                                <div className="h-10 w-10 rounded-2xl border border-black/10 bg-white flex items-center justify-center text-2xl">
+                                <div className="h-10 w-10 rounded-2xl border border-black/10 dark:border-white/[.10] bg-white dark:bg-white/[.06] flex items-center justify-center text-2xl">
                                   {g.emoji}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-sm font-semibold truncate">{g.label}</div>
-                                  <div className="text-[11px] text-black/45">
+                                  <div className="text-sm font-semibold dark:text-gray-100 truncate">{g.label}</div>
+                                  <div className="text-[11px] text-black/45 dark:text-gray-500">
                                     {isSuggested ? "おすすめ" : " "}
                                   </div>
                                 </div>
@@ -599,12 +599,12 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
 
                               <div className="shrink-0">
                                 {active ? (
-                                  <span className="inline-flex items-center gap-1 text-orange-700 text-xs font-semibold">
+                                  <span className="inline-flex items-center gap-1 text-orange-700 dark:text-orange-400 text-xs font-semibold">
                                     <Check className="h-4 w-4" />
                                     選択中
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-black/35">選ぶ</span>
+                                  <span className="text-xs text-black/35 dark:text-gray-500">選ぶ</span>
                                 )}
                               </div>
                             </div>
@@ -613,7 +613,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                       })}
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-black/10 pt-3">
+                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-black/10 dark:border-white/[.08] pt-3">
                       <button
                         type="button"
                         onClick={() => {
@@ -625,7 +625,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                           setGenreQuery("");
                           setError(null);
                         }}
-                        className="rounded-xl border border-black/10 px-4 py-3 text-sm hover:bg-black/5"
+                        className="rounded-xl border border-black/10 dark:border-white/[.10] px-4 py-3 text-sm dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/[.08]"
                       >
                         戻る
                       </button>

@@ -91,25 +91,25 @@ export default function CollectionListClient({
   };
 
   return (
-    <div className="rounded-3xl border border-orange-100 bg-white/95 px-4 py-4 shadow-sm">
+    <div className="rounded-3xl border border-orange-100 dark:border-white/[.08] bg-white/95 dark:bg-[#16181e] px-4 py-4 shadow-sm">
       {/* 見出し */}
       <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-slate-700 tracking-wide">
+        <p className="text-xs font-semibold text-slate-700 dark:text-gray-300 tracking-wide">
           コレクション
         </p>
-        <span className="text-[11px] text-slate-400">
+        <span className="text-[11px] text-slate-400 dark:text-gray-500">
           {collections.length} lists
         </span>
       </div>
 
-      {/* 追加フォーム（真っ黒→白ベースに変更） */}
+      {/* 追加フォーム */}
       <div className="mb-3 flex items-center gap-2">
         <input
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="新しいコレクション名"
-          className="h-9 flex-1 rounded-full border border-orange-100 bg-white px-3 text-xs text-slate-800 placeholder:text-slate-300 outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+          className="h-9 flex-1 rounded-full border border-orange-100 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 text-xs text-slate-800 dark:text-gray-200 placeholder:text-slate-300 dark:placeholder:text-gray-500 outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
         />
         <button
           type="button"
@@ -124,7 +124,7 @@ export default function CollectionListClient({
 
       {/* リスト */}
       {collections.length === 0 ? (
-        <div className="mt-4 text-xs leading-relaxed text-slate-400">
+        <div className="mt-4 text-xs leading-relaxed text-slate-400 dark:text-gray-500">
           まだコレクションがありません。
           <br />
           上のフォームから新しく作成できます。
@@ -140,8 +140,8 @@ export default function CollectionListClient({
                 className={[
                   "group flex items-center justify-between rounded-2xl px-2 py-1.5 text-xs transition",
                   isActive
-                    ? "bg-orange-50 text-orange-700 border border-orange-200"
-                    : "bg-transparent text-slate-700 border border-transparent hover:bg-orange-50",
+                    ? "bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30"
+                    : "bg-transparent text-slate-700 dark:text-gray-300 border border-transparent hover:bg-orange-50 dark:hover:bg-white/[.06]",
                 ].join(" ")}
               >
                 <Link
@@ -160,7 +160,7 @@ export default function CollectionListClient({
                   type="button"
                   onClick={() => handleDelete(c.id)}
                   disabled={isDeleting}
-                  className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-orange-50 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 dark:text-gray-500 hover:bg-orange-50 dark:hover:bg-white/[.08] hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="コレクションを削除"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
