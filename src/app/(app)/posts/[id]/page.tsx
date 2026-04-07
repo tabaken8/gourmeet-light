@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { QueryClient, dehydrate } from "@tanstack/react-query";
 import { HydrationBoundary } from "@tanstack/react-query";
 import { queryKeys, type PostDetailData } from "@/lib/queries";
+import type { Metadata } from "next";
 
 import PostActions, { type LikerLite } from "@/components/PostActions";
 import PostCommentsBlock from "./parts/PostCommentsBlock";
@@ -12,6 +13,70 @@ import MoreDiscoverBlock from "./parts/MoreDiscoverBlock";
 import PostMainContent from "./PostMainContent";
 
 export const dynamic = "force-dynamic";
+
+// ── OGP metadata ──
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("posts")
+    .select(
+      `place_name, content, recommend_score, image_urls, image_variants,
+       profiles (display_name)`
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!data) return {};
+
+  const post = data as any;
+  const authorName = post.profiles?.display_name ?? "ユーザー";
+  const placeName = post.place_name ?? "";
+  const score = post.recommend_score != null ? `${Number(post.recommend_score).toFixed(1)}` : null;
+
+  // Title: "店名 - 著者名のレビュー | Gourmeet"
+  const title = placeName
+    ? `${placeName} - ${authorName}のレビュー | Gourmeet`
+    : `${authorName}の投稿 | Gourmeet`;
+
+  // Description: score + content preview
+  const contentPreview = (post.content ?? "").slice(0, 100).replace(/\n/g, " ");
+  const description = [
+    score ? `おすすめ度 ${score}` : null,
+    contentPreview || null,
+  ].filter(Boolean).join(" — ") || `${authorName}さんのグルメレビュー`;
+
+  // OGP image: full → thumb → legacy image_urls[0] → site default
+  const variants = Array.isArray(post.image_variants) ? post.image_variants : [];
+  const legacyUrls = Array.isArray(post.image_urls) ? post.image_urls : [];
+  const ogImage =
+    variants[0]?.full ??
+    variants[0]?.thumb ??
+    legacyUrls[0] ??
+    "/ogp.png";
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: [{ url: ogImage }],
+      type: "article",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
 
 export default async function PostPage({
   params,

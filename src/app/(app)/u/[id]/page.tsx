@@ -5,6 +5,7 @@ import { QueryClient, dehydrate } from "@tanstack/react-query";
 import { HydrationBoundary } from "@tanstack/react-query";
 import type { HeatmapDay } from "@/components/VisitHeatmap";
 import type { AlbumPost } from "@/components/AlbumBrowser";
+import type { Metadata } from "next";
 import {
   queryKeys,
   subtractDaysKeyJST,
@@ -14,6 +15,90 @@ import {
 import UserProfileContent from "./UserProfileContent";
 
 export const dynamic = "force-dynamic";
+
+// ── OGP metadata ──
+export async function generateMetadata({
+  params,
+}: {
+  params: { id: string };
+}): Promise<Metadata> {
+  const supabase = await createClient();
+  const paramId = params.id;
+
+  // resolve username → UUID if needed
+  let userId: string;
+  if (UUID_RE.test(paramId)) {
+    userId = paramId;
+  } else {
+    const { data: resolved } = await supabase
+      .from("profiles")
+      .select("id")
+      .ilike("username", paramId)
+      .maybeSingle();
+    if (!resolved) return {};
+    userId = resolved.id;
+  }
+
+  // fetch profile + post count + top post image
+  const [profileRes, countRes, topPostRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("display_name, username, avatar_url, bio")
+      .eq("id", userId)
+      .maybeSingle(),
+    supabase
+      .from("posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
+    supabase
+      .from("posts")
+      .select("image_urls, image_variants")
+      .eq("user_id", userId)
+      .order("recommend_score", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (!profileRes.data) return {};
+
+  const p = profileRes.data;
+  const name = p.display_name || p.username || "ユーザー";
+  const postCount = countRes.count ?? 0;
+
+  const title = `${name} | Gourmeet`;
+  const bio = (p.bio ?? "").slice(0, 100).replace(/\n/g, " ");
+  const description = bio
+    ? `${bio} — ${postCount}件のレビュー`
+    : `${name}さんのグルメプロフィール — ${postCount}件のレビュー`;
+
+  // OGP image: top post image → avatar → site default
+  const topPost = topPostRes.data as any;
+  const variants = Array.isArray(topPost?.image_variants) ? topPost.image_variants : [];
+  const legacyUrls = Array.isArray(topPost?.image_urls) ? topPost.image_urls : [];
+  const ogImage =
+    variants[0]?.full ??
+    variants[0]?.thumb ??
+    legacyUrls[0] ??
+    p.avatar_url ??
+    "/ogp.png";
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: [{ url: ogImage }],
+      type: "profile",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
 
 function normalizePlacesShape(row: any) {
   const pl = row?.places;
