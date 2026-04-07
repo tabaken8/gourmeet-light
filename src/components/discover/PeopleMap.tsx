@@ -67,14 +67,18 @@ const MAP_CONTAINER: React.CSSProperties = {
 function AvatarPin({
   person,
   onClick,
+  onInteractionStart,
 }: {
   person: PersonMapItem;
   onClick: () => void;
+  onInteractionStart: () => void;
 }) {
   const initial = (person.display_name || person.username || "U").slice(0, 1).toUpperCase();
 
   return (
     <div
+      onPointerDown={onInteractionStart}
+      onTouchStart={onInteractionStart}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -84,7 +88,9 @@ function AvatarPin({
         cursor: "pointer",
         transition: "transform 0.2s ease, filter 0.2s ease",
         zIndex: 1,
-        filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.25))",
+        /* invisible padding for larger touch target (44 + 20*2 = 84px) */
+        padding: 20,
+        margin: -20,
       }}
     >
       <div
@@ -98,6 +104,7 @@ function AvatarPin({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.25))",
         }}
       >
         {person.avatar_url ? (
@@ -131,32 +138,51 @@ function PostPin({
   onTap,
   avatarUrl,
   displayName,
+  onInteractionStart,
 }: {
   post: PersonMapItem["post_latlngs"][number];
   expanded: boolean;
   onTap: () => void;
   avatarUrl: string | null;
   displayName: string | null;
+  onInteractionStart: () => void;
 }) {
   const initial = (displayName || "U").slice(0, 1).toUpperCase();
 
   return (
     <div
+      onPointerDown={onInteractionStart}
+      onTouchStart={onInteractionStart}
       onClick={(e) => {
         e.stopPropagation();
         onTap();
       }}
       style={{
+        /* avatar always centered on the lat/lng anchor */
         transform: "translate(-50%, -50%)",
         cursor: "pointer",
         zIndex: expanded ? 90 : 50,
-        filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.3))",
-        transition: "z-index 0s",
+        /* fixed size = avatar only; card floats above via absolute */
+        width: 72,
+        height: 72,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
       }}
     >
+      {/* Expanded: thumbnail card floats above the avatar */}
       {expanded && (
-        /* Expanded: thumbnail card above the avatar */
-        <div style={{ marginBottom: 4 }}>
+        <div
+          style={{
+            position: "absolute",
+            bottom: "100%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            marginBottom: -2,
+            filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.3))",
+          }}
+        >
           <div className="flex items-center gap-1.5 rounded-[10px] border-2 border-orange-500 bg-white dark:bg-[#1e2026] px-1.5 py-1 max-w-[180px]">
             {post.image_url && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -191,7 +217,7 @@ function PostPin({
           />
         </div>
       )}
-      {/* Avatar icon (always visible) */}
+      {/* Avatar icon (always centered, never moves) */}
       <div
         style={{
           width: 36,
@@ -203,7 +229,8 @@ function PostPin({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          margin: "0 auto",
+          flexShrink: 0,
+          filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.3))",
         }}
       >
         {avatarUrl ? (
@@ -420,10 +447,8 @@ export default function PeopleMap({
             >
               <AvatarPin
                 person={person}
-                onClick={() => {
-                  markPinTapped();
-                  onSelectPerson(person.user_id);
-                }}
+                onInteractionStart={markPinTapped}
+                onClick={() => onSelectPerson(person.user_id)}
               />
             </OverlayViewF>
           ))}
@@ -438,10 +463,8 @@ export default function PeopleMap({
             <PostPin
               post={post}
               expanded={expandedPinIdx === i}
-              onTap={() => {
-                markPinTapped();
-                setExpandedPinIdx(expandedPinIdx === i ? null : i);
-              }}
+              onInteractionStart={markPinTapped}
+              onTap={() => setExpandedPinIdx(expandedPinIdx === i ? null : i)}
               avatarUrl={selectedPerson.avatar_url}
               displayName={selectedPerson.display_name}
             />
