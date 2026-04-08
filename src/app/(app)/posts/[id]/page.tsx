@@ -136,6 +136,7 @@ export default async function PostPage({
     pdrRes,
     recentByUserRes,
     sameGenreRes,
+    stationRes,
   ] = await Promise.all([
     supabase.from("post_likes").select("*", { count: "exact", head: true }).eq("post_id", post.id),
     user
@@ -153,6 +154,9 @@ export default async function PostPage({
     currentGenre
       ? supabase.from("posts").select(baseSelect).eq("user_id", post.user_id).eq("places.primary_genre", currentGenre).neq("id", post.id).order("created_at", { ascending: false }).limit(12)
       : Promise.resolve({ data: [] as any[] }),
+    post.place_id
+      ? supabase.from("place_station_links").select("station_name, distance_m").eq("place_id", post.place_id).eq("rank", 1).maybeSingle()
+      : Promise.resolve({ data: null } as any),
   ]);
 
   const likeCount = likeCountRes.count ?? 0;
@@ -180,6 +184,12 @@ export default async function PostPage({
   const showFollowButton = !!(user?.id && !isMine && !iFollow && !requested);
   const isFollowedByThem = !!incomingFollowRes.data;
   const followCtaLabel = isFollowedByThem ? "フォローバックする" : "フォローする";
+
+  // ---- nearest station ----
+  const stationRow = stationRes.data as { station_name: string; distance_m: number } | null;
+  const nearestStation = stationRow?.station_name
+    ? { name: stationRow.station_name, distance_m: stationRow.distance_m }
+    : null;
 
   // ---- Q&A のデータを整形 ----
   const reqs = (pdrRes.data ?? []) as any[];
@@ -248,6 +258,7 @@ export default async function PostPage({
         initialLikers={initialLikers}
         showFollowButton={showFollowButton}
         followCtaLabel={followCtaLabel}
+        nearestStation={nearestStation}
         commentsSlot={
           <Suspense fallback={<div className="text-xs text-slate-500">コメントを読み込み中...</div>}>
             <PostCommentsBlock postId={id} postUserId={post.user_id} meId={user?.id ?? null} />

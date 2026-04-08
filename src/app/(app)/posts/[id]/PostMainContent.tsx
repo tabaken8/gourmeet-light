@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Suspense } from "react";
-import { MapPin } from "lucide-react";
+import { MapPin, Navigation } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import PostImageCarousel from "@/components/PostImageCarousel";
@@ -104,6 +104,11 @@ function timeOfDayLabel(v: string | null | undefined, t: (key: string) => string
   return null;
 }
 
+function metersToWalkMin(m: number | null): number | null {
+  if (m == null || !Number.isFinite(m)) return null;
+  return Math.max(1, Math.round(m / 80));
+}
+
 function buildDetailsRows(tagIds: string[] | null | undefined) {
   const ids = Array.isArray(tagIds) ? tagIds : [];
   const byCat = new Map<Exclude<TagCategory, "all">, string[]>();
@@ -142,6 +147,7 @@ type Props = {
   initialLikers: LikerLite[];
   showFollowButton: boolean;
   followCtaLabel: string;
+  nearestStation: { name: string; distance_m: number } | null;
   commentsSlot: React.ReactNode;
   placePhotosSlot: React.ReactNode;
   discoverSlot: React.ReactNode;
@@ -157,6 +163,7 @@ export default function PostMainContent({
   initialLikers,
   showFollowButton,
   followCtaLabel,
+  nearestStation,
   commentsSlot,
   placePhotosSlot,
   discoverSlot,
@@ -206,36 +213,29 @@ export default function PostMainContent({
   const hasDetails = detailRows.length > 0;
   const currentGenre = (post.places?.primary_genre ?? "").trim() || null;
 
+  const stationMin = metersToWalkMin(nearestStation?.distance_m ?? null);
+
   return (
     <>
       <main className="mx-auto max-w-5xl py-0 md:py-6">
         <article className="overflow-hidden">
 
-          {/* 1. Hero Image Section - full bleed */}
-          {imageUrls.length > 0 ? (
-            <div className="w-full">
-              <div className="block w-full aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
-                <PostImageCarousel
-                  postId={post.id}
-                  imageUrls={imageUrls}
-                  initialIndex={safeIndex}
-                  syncUrl={false}
-                  eager={false as any}
-                  preloadNeighbors={true as any}
-                  fit={"cover" as any}
-                  aspect={"square" as any}
-                />
-              </div>
-              <div className="gm-brand-line" />
-            </div>
-          ) : null}
-
-          {/* 2. Place Header */}
-          <section className="px-4 md:px-6 pt-5 pb-2">
+          {/* 1. Place Header — text info first */}
+          <section className="px-4 md:px-6 pt-5 pb-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h1 className="text-xl font-extrabold text-slate-900 dark:text-gray-100 leading-tight">{post.place_name ?? t("unknownPlace")}</h1>
-                {areaLabel ? <p className="mt-1 text-[13px] text-slate-500 dark:text-gray-500">{areaLabel}</p> : null}
+
+                {/* Location line: area + nearest station */}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-slate-500 dark:text-gray-500">
+                  {areaLabel ? <span>{areaLabel}</span> : null}
+                  {nearestStation ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Navigation size={11} className="text-slate-400 dark:text-gray-500" />
+                      {nearestStation.name}{stationMin ? ` 徒歩${stationMin}分` : ""}
+                    </span>
+                  ) : null}
+                </div>
 
                 {/* Score + metadata inline */}
                 <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -252,10 +252,10 @@ export default function PostMainContent({
                   </span>
                 </div>
 
-                {/* Map link - subtle text link */}
+                {/* Google Maps link (above image) */}
                 {mapUrl ? (
-                  <a href={mapUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-orange-500 dark:text-orange-400 hover:underline">
-                    <MapPin size={13} />{t("map")}
+                  <a href={mapUrl} target="_blank" rel="noreferrer" className="mt-2.5 inline-flex items-center gap-1 text-[12px] font-medium text-orange-500 dark:text-orange-400 hover:underline">
+                    <MapPin size={13} />Google Maps
                   </a>
                 ) : null}
               </div>
@@ -263,30 +263,57 @@ export default function PostMainContent({
             </div>
           </section>
 
-          {/* 3. Author Row */}
-          <section className="px-4 md:px-6 pt-3 pb-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="gm-press flex h-9 w-9 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-black/[.06] dark:ring-white/[.08]">
-                {avatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatar} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  initial
-                )}
-              </Link>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
+          {/* 2. Image Section */}
+          {imageUrls.length > 0 ? (
+            <div className="w-full">
+              <div className="block w-full aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
+                <PostImageCarousel
+                  postId={post.id}
+                  imageUrls={imageUrls}
+                  initialIndex={safeIndex}
+                  syncUrl={false}
+                  eager={false as any}
+                  preloadNeighbors={true as any}
+                  fit={"cover" as any}
+                  aspect={"square" as any}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {/* 3. Below-image bar: Google Maps + Author */}
+          <section className="px-4 md:px-6 pt-3 pb-3">
+            <div className="flex items-center justify-between gap-3">
+              {/* Author */}
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="gm-press flex h-9 w-9 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-black/[.06] dark:ring-white/[.08]">
+                  {avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatar} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    initial
+                  )}
+                </Link>
+                <div className="min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100 hover:underline">
                       {display}
                     </Link>
                     {!isPublic ? <span className="text-[11px] text-slate-400 dark:text-gray-500">🔒</span> : null}
-                    <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatJST(post.created_at)}</span>
                   </div>
-                  {showFollowButton ? (
-                    <FollowButton targetUserId={post.user_id} initiallyFollowing={false} initiallyRequested={false} label={followCtaLabel} />
-                  ) : null}
+                  <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatJST(post.created_at)}</span>
                 </div>
+              </div>
+              {/* Right side: follow + map */}
+              <div className="flex items-center gap-2 shrink-0">
+                {showFollowButton ? (
+                  <FollowButton targetUserId={post.user_id} initiallyFollowing={false} initiallyRequested={false} label={followCtaLabel} />
+                ) : null}
+                {mapUrl ? (
+                  <a href={mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10 transition-colors">
+                    <MapPin size={12} />Maps
+                  </a>
+                ) : null}
               </div>
             </div>
           </section>

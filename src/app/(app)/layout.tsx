@@ -7,12 +7,14 @@ import MobileHeaderNav from "@/components/MobileHeaderNav";
 import InviteReserveOnAuth from "@/components/InviteReserveOnAuth";
 import AnalyticsTracker from "@/components/AnalyticsTracker";
 import TopLoaderProvider from "@/components/TopLoaderProvider";
+import SplashHide from "@/components/SplashHide";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     // ✅ ページ全体の背景はここ（外側）に付ける
     <div className="min-h-screen bg-[#fffaf5] dark:bg-[#0b0c0f]">
       <TopLoaderProvider />
+      <SplashHide />
 
       <InviteReserveOnAuth />
       <AnalyticsTracker />
