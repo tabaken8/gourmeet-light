@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getTranslations } from "next-intl/server";
 
 type ImageVariant = { thumb?: string | null; full?: string | null };
 type ProfileLite = { id: string; display_name: string | null; avatar_url: string | null; is_public?: boolean | null };
@@ -104,27 +105,28 @@ export default async function MoreDiscoverBlock({
 
   const { data: rData } = await q;
   const recPosts = (rData as any[])?.filter(Boolean) as PostRowLite[];
+  const t = await getTranslations("postDetail");
 
   return (
     <section>
       <div className="mb-3 flex items-end justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">もっと見つける</div>
-          <div className="text-[11px] text-slate-500 dark:text-gray-500">テイストが似ているお店</div>
+          <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">{t("moreDiscover")}</div>
+          <div className="text-[11px] text-slate-500 dark:text-gray-500">{t("similarTaste")}</div>
         </div>
         <Link href="/timeline?tab=discover" className="gm-chip gm-press inline-flex items-center px-2 py-1 text-[11px] text-orange-700 dark:text-orange-400 hover:underline">
-          もっと見る
+          {t("seeMore")}
         </Link>
       </div>
 
       {recPosts.length === 0 ? (
         <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white/70 dark:bg-white/[.04] p-6 text-center text-xs text-slate-500 dark:text-gray-500">
-          まだおすすめがありません。
+          {t("noRecommendations")}
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {recPosts.map((rp) => {
-            const rdisplay = rp.profiles?.display_name ?? "ユーザー";
+            const rdisplay = rp.profiles?.display_name ?? t("user");
             const rthumb = getFirstThumb(rp);
             const rscore = typeof rp.recommend_score === "number" && rp.recommend_score >= 1 && rp.recommend_score <= 10 ? rp.recommend_score : null;
             const rprice = formatPrice(rp);

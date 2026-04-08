@@ -20,10 +20,10 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const supabase = await createClient();
-  const paramId = params.id;
+  const { id: paramId } = await params;
 
   // resolve username → UUID if needed
   let userId: string;
@@ -109,15 +109,14 @@ function normalizePlacesShape(row: any) {
 // UUID v4 pattern
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function UserPublicPage({ params }: { params: { id: string } }) {
+export default async function UserPublicPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: paramId } = await params;
   const supabase = await createClient();
 
   const {
     data: { user: me },
   } = await supabase.auth.getUser();
   if (!me) redirect("/auth/login");
-
-  const paramId = params.id;
 
   // --- resolve paramId → UUID ---
   let userId: string;

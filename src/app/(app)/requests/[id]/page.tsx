@@ -135,7 +135,8 @@ function formatJp(iso: string) {
   }
 }
 
-export default async function RequestPage({ params }: { params: { id: string } }) {
+export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
 
   const { data: auth } = await supabase.auth.getUser();
@@ -145,7 +146,7 @@ export default async function RequestPage({ params }: { params: { id: string } }
   const { data: pdr, error: pdrErr } = await supabase
     .from("post_detail_requests")
     .select("id, post_id, requester_user_id, category, template_ids, free_text, reveal_name, status, created_at")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (pdrErr || !pdr) notFound();

@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { Tag, Clock, Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 type PlaceRow = {
   place_id: string;
@@ -67,6 +68,7 @@ export default function UserOtherPostsStrip({
   recent: MiniPost[];
   sameGenre: MiniPost[];
 }) {
+  const t = useTranslations("postDetail");
   const [tab, setTab] = useState<Tab>(initialTab);
 
   const items = useMemo(() => {
@@ -110,18 +112,18 @@ export default function UserOtherPostsStrip({
 
           {/* ✅ 右側は縮まない。入り切らなければ横スクロール */}
           <div className="flex shrink-0 items-center gap-2 overflow-x-auto">
-            {tabChip("genre", "同じジャンル", <Tag size={14} />, !genreLabel)}
-            {tabChip("recent", "最近", <Clock size={14} />)}
+            {tabChip("genre", t("sameGenre"), <Tag size={14} />, !genreLabel)}
+            {tabChip("recent", t("recent"), <Clock size={14} />)}
           </div>
         </div>
 
         {tab === "genre" && genreLabel ? (
-          <div className="mt-1 truncate text-[12px] text-slate-500 dark:text-gray-500">ジャンル: {genreLabel}</div>
+          <div className="mt-1 truncate text-[12px] text-slate-500 dark:text-gray-500">{t("genre")}: {genreLabel}</div>
         ) : null}
       </div>
 
       {items.length === 0 ? (
-        <div className="px-4 py-6 text-[12px] text-slate-500 dark:text-gray-500">まだ表示できる投稿がありません。</div>
+        <div className="px-4 py-6 text-[12px] text-slate-500 dark:text-gray-500">{t("noPostsYet")}</div>
       ) : (
         <div className="px-4 py-4">
           <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1">

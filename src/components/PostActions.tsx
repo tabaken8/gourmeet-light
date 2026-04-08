@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Heart, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 export type LikerLite = {
   id: string;
@@ -99,6 +100,7 @@ function LikeListModal({
   postId: string;
   meId: string | null | undefined;
 }) {
+  const t = useTranslations("timeline");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<LikerRow[]>([]);
@@ -118,7 +120,7 @@ function LikeListModal({
         if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
         setRows(Array.isArray(data?.likers) ? data.likers : []);
       } catch (e: any) {
-        setError(e?.message ?? "読み込みに失敗しました");
+        setError(e?.message ?? t("likeListLoadError"));
       } finally {
         setLoading(false);
       }
@@ -140,18 +142,18 @@ function LikeListModal({
         type="button"
         onClick={onClose}
         className="absolute inset-0 bg-black/35"
-        aria-label="閉じる"
+        aria-label={t("closeLabel")}
       />
 
       {/* bottom sheet */}
       <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white dark:bg-[#16181e] shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3">
-          <div className="text-sm font-semibold dark:text-gray-100">いいね！</div>
+          <div className="text-sm font-semibold dark:text-gray-100">{t("likersTitle")}</div>
           <button
             type="button"
             onClick={onClose}
             className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-white/10 dark:text-gray-300"
-            aria-label="閉じる"
+            aria-label={t("closeLabel")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -162,7 +164,7 @@ function LikeListModal({
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="検索"
+              placeholder={t("searchPlaceholder")}
               className="w-full bg-transparent text-sm outline-none dark:text-gray-200 dark:placeholder:text-gray-500"
             />
           </div>
@@ -170,11 +172,11 @@ function LikeListModal({
 
         <div className="max-h-[55vh] overflow-y-auto px-2 pb-4">
           {loading ? (
-            <div className="px-4 py-8 text-center text-xs text-slate-500 dark:text-gray-400">読み込み中...</div>
+            <div className="px-4 py-8 text-center text-xs text-slate-500 dark:text-gray-400">{t("likeListLoading")}</div>
           ) : error ? (
             <div className="px-4 py-8 text-center text-xs text-red-600 dark:text-red-400">{error}</div>
           ) : filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-xs text-slate-500 dark:text-gray-400">該当なし</div>
+            <div className="px-4 py-8 text-center text-xs text-slate-500 dark:text-gray-400">{t("likeListNoMatch")}</div>
           ) : (
             filtered.map((u) => {
               const initial = (u.display_name ?? "U").slice(0, 1).toUpperCase();
@@ -203,7 +205,7 @@ function LikeListModal({
 
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100">
-                        {u.display_name ?? "ユーザー"}
+                        {u.display_name ?? t("defaultUserName")}
                       </div>
                       <div className="truncate text-xs text-slate-500 dark:text-gray-500">@{u.id.slice(0, 10)}…</div>
                     </div>
@@ -212,15 +214,15 @@ function LikeListModal({
                   <div className="shrink-0">
                     {isMe ? (
                       <span className="rounded-full bg-slate-100 dark:bg-white/10 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-gray-300">
-                        あなた
+                        {t("likeListYou")}
                       </span>
                     ) : u.is_following ? (
                       <span className="rounded-full bg-slate-100 dark:bg-white/10 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-gray-300">
-                        フォロー中
+                        {t("likeListFollowing")}
                       </span>
                     ) : (
                       <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
-                        フォロー
+                        {t("likeListFollow")}
                       </span>
                     )}
                   </div>
@@ -242,6 +244,7 @@ export default function PostActions({
   initialLikers = [],
   meId,
 }: PostActionsProps) {
+  const t = useTranslations("timeline");
   const supabase = createClientComponentClient();
 
   const [liked, setLiked] = useState<boolean>(initialLiked);
@@ -284,13 +287,13 @@ export default function PostActions({
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr) {
       console.error(authErr);
-      alert("ユーザー情報の取得に失敗しました");
+      alert(t("userFetchFailed"));
       setLoading(false);
       return;
     }
     const user = auth.user;
     if (!user) {
-      alert("ログインが必要です");
+      alert(t("loginRequired"));
       setLoading(false);
       return;
     }
@@ -363,7 +366,7 @@ export default function PostActions({
         onClick={toggleLike}
         disabled={loading}
         className="inline-flex h-8 w-8 items-center justify-center rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:cursor-not-allowed"
-        aria-label={liked ? "いいねを取り消す" : "いいね"}
+        aria-label={liked ? t("unlikePost") : t("likePost")}
       >
         <Heart className="h-5 w-5" fill={liked ? "currentColor" : "none"} strokeWidth={1.8} />
       </button>
@@ -378,7 +381,7 @@ export default function PostActions({
                 key={u.id}
                 href={`/u/${u.username ?? u.id}`}
                 className={["inline-flex", idx === 0 ? "" : "-ml-1.5"].join(" ")}
-                aria-label={`${u.display_name ?? "ユーザー"}のプロフィールへ`}
+                aria-label={t("profileOf", { name: u.display_name ?? t("defaultUserName") })}
                 title={u.display_name ?? undefined}
               >
                 <AvatarBubble user={u} size={18} />
@@ -391,14 +394,14 @@ export default function PostActions({
 <div className="min-w-0 text-[12px] text-slate-700 dark:text-gray-300">
   {likeCount <= 0 ? null : (
     <span className="truncate">
-      <span className="font-semibold">いいね！</span>{" "}
+      <span className="font-semibold">{t("likeExclaim")}</span>{" "}
       {displayRow.first ? (
         <>
           <Link
             href={`/u/${displayRow.first.username ?? displayRow.first.id}`}
             className="font-semibold text-slate-900 dark:text-gray-100 hover:underline"
           >
-            {displayRow.first.display_name ?? "ユーザー"}
+            {displayRow.first.display_name ?? t("defaultUserName")}
           </Link>
 
           {displayRow.showOthers ? (
@@ -409,7 +412,7 @@ export default function PostActions({
                 onClick={() => setOpenList(true)}
                 className="font-semibold text-slate-900 dark:text-gray-100 hover:underline"
               >
-                他
+                {t("likeOthers")}
               </button>
             </>
           ) : null}
@@ -420,7 +423,7 @@ export default function PostActions({
           onClick={() => setOpenList(true)}
           className="font-semibold text-slate-900 dark:text-gray-100 hover:underline"
         >
-          {likeCount}人
+          {t("likeCountPeople", { count: likeCount })}
         </button>
       )}
     </span>

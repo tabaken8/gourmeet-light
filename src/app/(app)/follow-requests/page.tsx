@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import Link from "next/link";
 import { Check, X, UserPlus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 type FollowRequestRow = {
   follower_id: string;
@@ -19,6 +20,7 @@ type FollowRequestRow = {
 };
 
 export default function FollowRequestsPage() {
+  const t = useTranslations("profile");
   const supabase = createClientComponentClient();
   const [requests, setRequests] = useState<FollowRequestRow[]>([]);
   const [justReadIds, setJustReadIds] = useState<string[]>([]);
@@ -112,26 +114,26 @@ export default function FollowRequestsPage() {
     <main className="max-w-2xl mx-auto p-6 space-y-4">
       <header className="flex items-center gap-2 mb-2">
         <UserPlus className="text-orange-600" />
-        <h1 className="text-2xl font-bold">フォローリクエスト</h1>
+        <h1 className="text-2xl font-bold">{t("followRequestsTitle")}</h1>
       </header>
       <p className="text-sm text-gray-600 mb-4">
-        あなたをフォローしたいユーザーの一覧です。承認すると、あなたの非公開投稿も見られるようになります。
+        {t("followRequestsDesc")}
       </p>
 
       {loading && (
-        <p className="text-sm text-gray-500">読み込み中...</p>
+        <p className="text-sm text-gray-500">{t("loading")}</p>
       )}
 
       {!loading && !requests.length && (
         <p className="text-sm text-gray-500">
-          現在、フォローリクエストはありません。
+          {t("noFollowRequests")}
         </p>
       )}
 
       {requests.map((r) => {
         const f = r.follower;
         const display =
-          f?.display_name ?? (f?.username ? `@${f.username}` : "ユーザー");
+          f?.display_name ?? (f?.username ? `@${f.username}` : t("user"));
         const initial = display[0]?.toUpperCase() ?? "U";
 
         return (
@@ -171,7 +173,7 @@ export default function FollowRequestsPage() {
                 >
                   {display}
                 </Link>{" "}
-                さんからフォローリクエストが届いています。
+                {t("followRequestMessage")}
               </p>
               {f?.username && (
                 <p className="text-xs text-gray-500">@{f.username}</p>
@@ -189,7 +191,7 @@ export default function FollowRequestsPage() {
                 className="inline-flex items-center gap-1 rounded-full bg-orange-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-800"
               >
                 <Check size={14} />
-                承認
+                {t("approve")}
               </button>
               <button
                 type="button"
@@ -197,7 +199,7 @@ export default function FollowRequestsPage() {
                 className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100"
               >
                 <X size={14} />
-                削除
+                {t("reject")}
               </button>
             </div>
           </div>

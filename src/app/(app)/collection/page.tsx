@@ -20,6 +20,7 @@ export default async function CollectionPage({
   searchParams: Promise<SearchParams>;
 }) {
   const supabase = await createClient();;
+  const tc = await getTranslations("collection");
 
   const {
     data: { user },
@@ -28,7 +29,7 @@ export default async function CollectionPage({
   if (!user) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-orange-50 dark:bg-transparent text-slate-700 dark:text-gray-400">
-        <p className="text-sm">ログインが必要です。</p>
+        <p className="text-sm">{tc("loginRequired")}</p>
       </main>
     );
   }
@@ -249,7 +250,7 @@ export default async function CollectionPage({
               <h2 className="text-base font-semibold tracking-tight text-slate-800 dark:text-gray-100">
                 {activeCollection
                   ? activeCollection.name
-                  : "コレクションが選択されていません"}
+                  : tc("noCollectionSelected")}
               </h2>
               {activeCollection && (
                 <span className="rounded-full border border-orange-100 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-2 py-0.5 text-[11px] text-slate-500 dark:text-gray-400">
@@ -262,18 +263,18 @@ export default async function CollectionPage({
           {/* 中身 */}
           {!activeCollectionId ? (
             <div className="flex flex-1 items-center justify-center text-xs text-slate-500 dark:text-gray-500">
-              コレクションを選択すると、ここに投稿が表示されます。
+              {tc("selectToShowPosts")}
             </div>
           ) : posts.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center text-xs text-slate-500 dark:text-gray-500">
               <span className="mb-2 text-lg">☕</span>
-              まだこのコレクションには投稿がありません。
+              {tc("emptyCollection")}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               {posts.map((p) => {
                 const prof = profiles[p.user_id] ?? null;
-                const display = prof?.display_name ?? "ユーザー";
+                const display = prof?.display_name ?? tc("user");
                 const avatar = prof?.avatar_url ?? null;
                 const initial = (display || "U").slice(0, 1).toUpperCase();
 

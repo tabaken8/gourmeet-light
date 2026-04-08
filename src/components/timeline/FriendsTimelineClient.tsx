@@ -13,6 +13,7 @@ import {
   useReducedMotion,
 } from "framer-motion";
 import { Lock, ChevronDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 type PostLite = any;
 
@@ -132,81 +133,16 @@ function CTASection({
 // =========================
 function GuestFAQ() {
   const reduceMotion = useReducedMotion();
+  const t = useTranslations("timeline");
 
-  const items = [
-    {
-      q: "Gourmeetってなに？",
-      a: "Gourmeetは、遠くの誰だかわからない人の口コミよりも、あなたの大切な人たちの「ここ良かった」で店に出会える、グルメSNSです。写真だけの投稿でもOK。気軽にシェアして、あとから自分のコレクションとして見返せます。",
-    },
-    {
-      q: "投稿を見るだけでも使える？",
-      a: "はい。ログインなしでも一部の公開投稿はプレビューできます。ログインすると、フォローした人の投稿や非公開投稿（承認制）など、より自分向けのタイムラインが使えるようになります。",
-    },
-    {
-      q: "ほんとに無料？後から課金ある？",
-      a: "いまは完全無料です。後から急に課金されることはありません。",
-    },
-    {
-      q: "アカウント作成に必要なものはなに？",
-      a: "メールアドレスまたはGoogleアカウントでサインアップできます。だれでも数秒（体感5秒）で始められます。",
-    },
-    {
-      q: "店選びにどう役立つ？",
-      a: "写真・店名に加えて、雰囲気や価格感などが投稿にまとまっているので、候補の比較がスムーズになります。",
-    },
-    {
-      q: "どんな人に向いてる？",
-      a: "「友達のお気に入りを知りたい」「自分のお気に入りを友達に勧めたい」「次どこ行くか一緒に考えたい」そんな人に合います。",
-    },
-    {
-      q: "友達がいなくても楽しめる？",
-      a: "発見タブで雰囲気は掴めます。友達や家族、恋人と一緒に使うとさらに楽しくなります。",
-    },
-    {
-      q: "フォローすると相手に通知される？",
-      a: "はい。フォローしたことは相手に分かります。相手が非公開アカウントの場合、フォローリクエストが承認されると投稿が見えるようになります。",
-    },
-    {
-      q: "非公開アカウントってなに？",
-      a: "フォローが承認された人だけに投稿を見せる設定です。友達だけに共有したい人向けです。",
-    },
-    {
-      q: "ブロックはできる？",
-      a: "できます。ブロックすると、お互いの投稿やプロフィールが表示されなくなります。",
-    },
-    {
-      q: "投稿にはなにを書けばいい？",
-      a: "イチオシポイントやおすすめ度、タグなどを自由に書けます。もちろん一言でもOK。写真＋店名だけでも十分おすすめになります。",
-    },
-    {
-      q: "投稿するとき、店情報はどうやって入れるの？",
-      a: "店名を入力すると、Googleマップの店舗情報（店名・住所など）を自動で取得して表示します。",
-    },
-    {
-      q: "詳細リクエスト機能ってなに？",
-      a: "気になる投稿に「詳細リクエスト」を送って、雰囲気やおすすめポイントを追加で聞ける機能です。匿名でも送れるので、気軽に質問できます。",
-    },
-    {
-      q: "発見タブってなに？",
-      a: "全国の公開投稿から、新しい店やユーザーを見つけるためのタブです。",
-    },
-    {
-      q: "お店検索はできる？",
-      a: "できます。エリアや駅名、ジャンルやタグなど、条件を組み合わせて絞り込めます。",
-    },
-    {
-      q: "コレクションってなに？",
-      a: "「行きたい」「あとで見返したい」投稿やお店を、自分専用のリストとして保存できる機能です。",
-    },
-    {
-      q: "保存した店をあとから見返せる？",
-      a: "はい。自分のコレクションからいつでも見返せます。",
-    },
-  ];
+  const items = Array.from({ length: 17 }, (_, i) => ({
+    q: t(`faqQ${i + 1}` as any),
+    a: t(`faqA${i + 1}` as any),
+  }));
 
   const [openSet, setOpenSet] = useState<Set<number>>(() => new Set([0]));
 
-  const t = reduceMotion
+  const trans = reduceMotion
     ? { duration: 0 }
     : { duration: 0.22, ease: [0.2, 0.9, 0.2, 1] as any };
 
@@ -222,7 +158,7 @@ function GuestFAQ() {
   return (
     <div className="overflow-hidden rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-[#16181e]">
       <div className="px-4 pb-2 pt-4">
-        <div className="text-base font-semibold text-slate-900 dark:text-gray-100">よくある質問</div>
+        <div className="text-base font-semibold text-slate-900 dark:text-gray-100">{t("faqTitle")}</div>
       </div>
 
       <div className="divide-y divide-black/[.06] dark:divide-white/[.08]">
@@ -252,7 +188,7 @@ function GuestFAQ() {
 
                   <motion.span
                     animate={{ rotate: isOpen ? 180 : 0 }}
-                    transition={t}
+                    transition={trans}
                     className="shrink-0 text-slate-500 dark:text-gray-400"
                     aria-hidden="true"
                   >
@@ -270,7 +206,7 @@ function GuestFAQ() {
                   gridTemplateRows: isOpen ? "1fr" : "0fr",
                   opacity: isOpen ? 1 : 0,
                 }}
-                transition={t}
+                transition={trans}
                 className="grid px-4"
                 style={{ willChange: "grid-template-rows, opacity" }}
               >
@@ -281,7 +217,7 @@ function GuestFAQ() {
                       y: isOpen ? 0 : -2,
                       filter: isOpen ? "blur(0px)" : "blur(2px)",
                     }}
-                    transition={t}
+                    transition={trans}
                     className="pb-4"
                   >
                     <div className="text-[13px] leading-6 text-slate-600 dark:text-gray-400">
@@ -300,7 +236,7 @@ function GuestFAQ() {
           href="/auth/signup"
           className="block w-full rounded-xl bg-orange-600 py-3 text-center text-sm font-semibold !text-white hover:bg-orange-800"
         >
-          サインアップはこちら
+          {t("faqSignup")}
         </Link>
       </div>
     </div>
@@ -391,7 +327,8 @@ function DiscoverFlipTile({
   const tileSpan = big ? "col-span-2 row-span-2" : "col-span-1 row-span-1";
 
   const thumb = post ? getFirstSquareThumb(post) : null;
-  const display = post?.profile?.display_name ?? "ユーザー";
+  const tl = useTranslations("timeline");
+  const display = post?.profile?.display_name ?? tl("discoverTileUser");
   const isPublic = post?.profile?.is_public ?? true;
   const placeName = post?.place_name ?? "";
   const genre = post?.place_genre ?? null;
@@ -452,7 +389,7 @@ function DiscoverFlipTile({
               <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 dark:from-[#1e2026] dark:to-[#16181e]">
                 <div className="p-2 text-[11px] text-slate-500 dark:text-gray-400 line-clamp-6">
                   {placeName ? `📍 ${placeName}\n` : ""}
-                  {post?.content ? post.content : "投稿"}
+                  {post?.content ? post.content : tl("postLabel")}
                 </div>
               </div>
             )}
@@ -480,6 +417,20 @@ function DiscoverFlipTile({
         <div className="pointer-events-none absolute inset-0 opacity-[0.03] mix-blend-overlay bg-[radial-gradient(circle_at_20%_10%,#000,transparent_40%),radial-gradient(circle_at_80%_90%,#000,transparent_40%)]" />
       </div>
     </Link>
+  );
+}
+
+function DiscoverSeeAllLink() {
+  const t = useTranslations("timeline");
+  return (
+    <div className="pb-2 pt-4 text-center text-[11px] text-slate-500">
+      <Link
+        className="font-semibold text-orange-700 hover:underline"
+        href={gateHref("/timeline?tab=discover")}
+      >
+        {t("discoverSeeAll")}
+      </Link>
+    </div>
   );
 }
 
@@ -605,14 +556,7 @@ function DiscoverGrid({
         </div>
       </div>
 
-      <div className="pb-2 pt-4 text-center text-[11px] text-slate-500">
-        <Link
-          className="font-semibold text-orange-700 hover:underline"
-          href={gateHref("/timeline?tab=discover")}
-        >
-          発見タブで全部見る
-        </Link>
-      </div>
+      <DiscoverSeeAllLink />
     </div>
   );
 }
@@ -631,6 +575,7 @@ export default function FriendsTimelineClient({
   initialNextCursor: string | null;
   initialMeta?: SuggestMeta;
 }) {
+  const t = useTranslations("timeline");
   const [posts, setPosts] = useState<PostLite[]>(initialPosts ?? []);
   const [nextCursor, setNextCursor] = useState<string | null>(
     initialNextCursor ?? null
@@ -752,26 +697,26 @@ export default function FriendsTimelineClient({
 {/* 先頭説明（枠なし） */}
 <div className="mt-2 px-1">
   <div className="text-[24px] leading-tight font-extrabold text-slate-900 dark:text-gray-100">
-    ようこそGourmeetへ！
+    {t("guestWelcomeTitle")}
           </div>
 
   <div className="mt-2 text-[14px] leading-6 text-slate-600 dark:text-gray-400">
-    Gourmeetは、「星3.3の平均点」や「知らない人の口コミ」よりも、身近な友達の
-    <span className="font-semibold text-slate-900 dark:text-gray-100"> &ldquo;ここ良かったよ&rdquo; </span>
-    でお店に出会える、グルメ専用SNSです。
+    {t("guestWelcomeBody")}
+    <span className="font-semibold text-slate-900 dark:text-gray-100"> {t("guestWelcomeHighlight")} </span>
+    {t("guestWelcomeBody2")}
     <br />
     <br />
-    お店を探すときは友達の写真・場所・価格感がまとまった友達の投稿を眺めるだけで候補が絞れて、良かったお店はタイムラインで気軽にシェアして、充実したプロフィール機能に蓄積できます。
+    {t("guestWelcomeBody3")}
   </div>
         </div>
 
         {/* ログイン/サインアップ導線（上へ） */}
         <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-[#16181e] p-5">
           <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">
-            だれでも5秒でサインアップ
+            {t("signupIn5Sec")}
           </div>
           <div className="mt-1 text-[13px] leading-6 text-slate-600 dark:text-gray-400">
-            メールアドレス or Googleからから、すぐ始められます。
+            {t("signupIn5SecDesc")}
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -779,13 +724,13 @@ export default function FriendsTimelineClient({
               href="/auth/signup"
               className="inline-flex items-center justify-center rounded-full bg-orange-700 px-4 py-2 text-sm font-semibold !text-white hover:bg-orange-800"
             >
-              アカウント作成
+              {t("createAccount")}
             </Link>
             <Link
               href="/auth/login"
               className="inline-flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 px-4 py-2 text-sm font-semibold text-slate-800 dark:text-gray-200 hover:bg-slate-200 dark:hover:bg-white/15"
             >
-              ログイン
+              {t("loginLabel")}
             </Link>
           </div>
         </div>
@@ -793,10 +738,10 @@ export default function FriendsTimelineClient({
         {/* ✅ 端まで表示（Searchと同じ "余白ゼロ感"） */}
         <FullBleed className="md:relative md:left-auto md:right-auto md:w-auto md:translate-x-0">
           {discoverLoading && discoverPosts.length === 0 ? (
-            <div className="py-10 text-center text-xs text-slate-500">読み込み中...</div>
+            <div className="py-10 text-center text-xs text-slate-500">{t("loading")}</div>
           ) : discoverPosts.length === 0 ? (
             <div className="py-10 text-center text-xs text-slate-500">
-              表示できる投稿がありません
+              {t("noPosts")}
             </div>
           ) : (
             <div className="md:rounded-2xl md:border md:border-black/[.06] dark:md:border-white/[.08] md:bg-white dark:md:bg-[#16181e] overflow-hidden">
@@ -816,10 +761,10 @@ export default function FriendsTimelineClient({
       <div className="flex flex-col gap-4">
         <div className="rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-[#16181e] p-6">
           <div className="text-base font-semibold text-slate-900 dark:text-gray-100">
-            ようこそGourmeetへ
+            {t("zeroFollowWelcome")}
           </div>
           <div className="mt-2 text-sm leading-6 text-slate-600 dark:text-gray-400">
-            まずは発見タブで、友達や気になる人をフォローしてタイムラインを育ててみましょう。
+            {t("zeroFollowDesc")}
           </div>
         </div>
 
@@ -828,10 +773,10 @@ export default function FriendsTimelineClient({
         {/* ここも同様に端までOK（好み） */}
         <FullBleed className="md:relative md:left-auto md:right-auto md:w-auto md:translate-x-0">
           {discoverLoading && discoverPosts.length === 0 ? (
-            <div className="py-10 text-center text-xs text-slate-500">読み込み中...</div>
+            <div className="py-10 text-center text-xs text-slate-500">{t("loading")}</div>
           ) : discoverPosts.length === 0 ? (
             <div className="py-10 text-center text-xs text-slate-500">
-              表示できる投稿がありません
+              {t("noPosts")}
             </div>
           ) : (
             <div className="md:rounded-2xl md:border md:border-black/[.06] dark:md:border-white/[.08] md:bg-white dark:md:bg-[#16181e] overflow-hidden">
@@ -845,12 +790,12 @@ export default function FriendsTimelineClient({
         </FullBleed>
 
         <CTASection
-          title="友達を探してフォローする"
-          desc="検索からユーザーを見つけたり、発見タブで新しい投稿を追いかけられます。"
+          title={t("ctaFindFriends")}
+          desc={t("ctaFindFriendsDesc")}
           primaryHref="/search"
-          primaryLabel="友達を検索する"
+          primaryLabel={t("ctaSearchFriends")}
           secondaryHref="/timeline?tab=discover"
-          secondaryLabel="発見してみる"
+          secondaryLabel={t("ctaDiscover")}
         />
       </div>
     );
@@ -862,12 +807,12 @@ export default function FriendsTimelineClient({
       <div className="flex flex-col gap-4">
         {suggestBlock}
         <CTASection
-          title="まだ友達の投稿がありません"
-          desc="まずは気になる人をフォローして、タイムラインを育てよう。"
+          title={t("ctaNoFriendPosts")}
+          desc={t("ctaNoFriendPostsDesc")}
           primaryHref="/search"
-          primaryLabel="ユーザー/店を探す"
+          primaryLabel={t("ctaSearchUserShop")}
           secondaryHref="/timeline?tab=discover"
-          secondaryLabel="発見を見る"
+          secondaryLabel={t("ctaSeeDiscover")}
         />
       </div>
     );
@@ -877,12 +822,12 @@ export default function FriendsTimelineClient({
   if ((posts?.length ?? 0) === 0) {
     return (
       <CTASection
-        title="フォロー中の人の投稿がまだありません"
-        desc="フォローを増やすか、しばらくしてからまた見に来てね。"
+        title={t("ctaNoFollowingPosts")}
+        desc={t("ctaNoFollowingPostsDesc")}
         primaryHref="/search"
-        primaryLabel="探す"
+        primaryLabel={t("ctaSearch")}
         secondaryHref="/timeline?tab=discover"
-        secondaryLabel="発見を見る"
+        secondaryLabel={t("ctaSeeDiscover")}
       />
     );
   }

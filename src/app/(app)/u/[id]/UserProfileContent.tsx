@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Globe2, Lock } from "lucide-react";
+import { useTranslations } from "next-intl";
 import FollowButton from "@/components/FollowButton";
 import PostNotifyBellButton from "@/components/PostNotifyBellButton";
 import VisitHeatmap from "@/components/VisitHeatmap";
@@ -30,6 +31,7 @@ export default function UserProfileContent({
   initialBellEnabled,
   canViewPosts,
 }: Props) {
+  const t = useTranslations("profile");
   // キャッシュから即返す（初回はサーバーが setQueryData で入れた値）
   const { data: profileData } = useQuery({
     queryKey: queryKeys.userPublicProfile(userId),
@@ -44,7 +46,7 @@ export default function UserProfileContent({
 
   const profile = profileData?.profile;
   const counts = profileData?.counts;
-  const displayName = profile?.display_name || "ユーザー";
+  const displayName = profile?.display_name || t("user");
   const username = profile?.username || "";
   const bio = profile?.bio || "";
   const avatarUrl = profile?.avatar_url || "";
@@ -99,7 +101,7 @@ export default function UserProfileContent({
                       ) : null}
                       {isFollowing ? (
                         <p className="rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-gray-400 md:text-xs">
-                          フォローされています
+                          {t("followsYou")}
                         </p>
                       ) : null}
                     </div>
@@ -108,12 +110,12 @@ export default function UserProfileContent({
                       {isPublic ? (
                         <>
                           <Globe2 size={14} />
-                          <span>公開プロフィール</span>
+                          <span>{t("publicProfile")}</span>
                         </>
                       ) : (
                         <>
                           <Lock size={14} />
-                          <span>非公開プロフィール</span>
+                          <span>{t("privateProfile")}</span>
                         </>
                       )}
                     </div>
@@ -137,7 +139,7 @@ export default function UserProfileContent({
                     />
                   </div>
                   {initiallyRequested ? (
-                    <p className="text-[11px] text-slate-500 dark:text-gray-500">フォロー承認後に通知をONにできます</p>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-500">{t("pendingNotifyHint")}</p>
                   ) : null}
                 </div>
               </div>
@@ -149,7 +151,7 @@ export default function UserProfileContent({
               <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 dark:text-gray-400 md:text-sm">
                 <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900 dark:text-gray-100">{postsCount}</span>
-                  <span>投稿</span>
+                  <span>{t("posts")}</span>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <Link
@@ -157,7 +159,7 @@ export default function UserProfileContent({
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followingCount}</span>
-                    <span>フォロー中</span>
+                    <span>{t("following")}</span>
                   </Link>
                 </li>
                 <li className="flex items-center gap-1.5">
@@ -166,12 +168,12 @@ export default function UserProfileContent({
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followersCount}</span>
-                    <span>フォロワー</span>
+                    <span>{t("followers")}</span>
                   </Link>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900 dark:text-gray-100">{wantsCount}</span>
-                  <span>行きたい</span>
+                  <span>{t("wants")}</span>
                 </li>
               </ul>
             </div>
@@ -184,19 +186,19 @@ export default function UserProfileContent({
             </section>
           ) : (
             <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">来店ログ</h2>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">{t("visitLog")}</h2>
               <div className="mt-3 rounded-xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-xs text-slate-600 dark:text-gray-500 md:text-sm">
-                このアカウントの投稿はフォロワーのみが閲覧できます。
+                {t("followersOnlyPosts")}
               </div>
             </section>
           )}
 
           {/* ========================= ALBUM CARD ========================= */}
           <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
-            <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">投稿</h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">{t("postsHeading")}</h2>
             {!canViewPosts ? (
               <div className="rounded-xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-xs text-slate-600 dark:text-gray-500 md:text-sm">
-                このアカウントの投稿はフォロワーのみが閲覧できます。
+                {t("followersOnlyPosts")}
               </div>
             ) : (
               <AlbumBrowser posts={albumPosts} pinnedPostIdsInitial={pinnedPostIds} isOwner={false} />

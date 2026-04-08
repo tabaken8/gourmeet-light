@@ -5,11 +5,12 @@ import { getTranslations } from "next-intl/server";
 export default async function RequiredPage({
   searchParams,
 }: {
-  searchParams?: { next?: string };
+  searchParams?: Promise<{ next?: string }>;
 }) {
   const t = await getTranslations("auth");
-  const nextPath = searchParams?.next
-    ? decodeURIComponent(searchParams.next)
+  const sp = searchParams ? await searchParams : undefined;
+  const nextPath = sp?.next
+    ? decodeURIComponent(sp.next)
     : "/search";
 
   return (

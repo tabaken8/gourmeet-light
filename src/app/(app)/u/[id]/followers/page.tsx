@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function FollowersPage({ params }: { params: { id: string } }) {
-  const supabase = await createClient();;
-  const paramId = params.id;
+export default async function FollowersPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: paramId } = await params;
+  const supabase = await createClient();
 
   // resolve username or UUID → profile
   const { data: prof } = UUID_RE.test(paramId)

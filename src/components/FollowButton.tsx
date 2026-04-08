@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 
 type FollowStatus = "none" | "following" | "requested";
 
@@ -35,6 +36,7 @@ export default function FollowButton(props: Props) {
   const initiallyFollowing = props.initiallyFollowing ?? props.initialFollowing ?? false;
   const initiallyRequested = props.initiallyRequested ?? false;
 
+  const t = useTranslations("common");
   const mode = props.mode ?? "follow";
   const size = props.size ?? "sm";
   const className = props.className ?? "";
@@ -63,8 +65,8 @@ export default function FollowButton(props: Props) {
   }, [size]);
 
   const followLabel = useMemo(
-    () => (mode === "followback" ? "フォローバック" : "フォローする"),
-    [mode]
+    () => (mode === "followback" ? t("followBack") : t("followAction")),
+    [mode, t]
   );
 
   const doFollow = () => {
@@ -146,7 +148,7 @@ export default function FollowButton(props: Props) {
         ].join(" ")}
         aria-pressed="true"
       >
-        フォロー中
+        {t("following")}
       </button>
     );
   }
@@ -163,7 +165,7 @@ export default function FollowButton(props: Props) {
         ].join(" ")}
         aria-pressed="mixed"
       >
-        リクエスト済み
+        {t("requested")}
       </button>
     );
   }
@@ -178,7 +180,7 @@ export default function FollowButton(props: Props) {
         "border-slate-900 dark:border-white/20 bg-slate-900 dark:bg-white/15 text-white hover:opacity-90",
       ].join(" ")}
       aria-pressed="false"
-      title={!validTarget ? "targetId（またはtargetUserId/targetUsername）が必要です" : undefined}
+      title={!validTarget ? t("targetRequired") : undefined}
     >
       {followLabel}
     </button>

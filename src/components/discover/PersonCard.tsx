@@ -4,28 +4,31 @@
 import React, { useEffect, useRef } from "react";
 import Link from "next/link";
 import { MapPin, Sparkles, ChevronLeft, ChevronRight, Utensils, UserPlus } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { PersonMapItem } from "@/app/api/people-map/route";
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (key: string, values?: any) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60_000);
-  if (min < 60) return `${min}分前`;
+  if (min < 60) return t("minutesAgo", { count: min });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}時間前`;
+  if (hr < 24) return t("hoursAgo", { count: hr });
   const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}日前`;
+  if (day < 30) return t("daysAgo", { count: day });
   const mon = Math.floor(day / 30);
-  return `${mon}ヶ月前`;
+  return t("monthsAgo", { count: mon });
 }
 
 function PersonCardItem({
   person,
   active,
   onTap,
+  t,
 }: {
   person: PersonMapItem;
   active: boolean;
   onTap: () => void;
+  t: (key: string, values?: any) => string;
 }) {
   const initial = (person.display_name || person.username || "U").slice(0, 1).toUpperCase();
   const topPosts = person.top_posts ?? [];
@@ -66,12 +69,12 @@ function PersonCardItem({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="truncate text-[13px] font-semibold text-slate-800 dark:text-gray-100">
-                {person.display_name || person.username || "ユーザー"}
+                {person.display_name || person.username || t("user")}
               </span>
               {!person.is_following && (
                 <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 px-1.5 py-px text-[8px] font-semibold text-blue-600 dark:text-blue-400">
                   <UserPlus size={7} />
-                  おすすめ
+                  {t("recommended")}
                 </span>
               )}
             </div>
@@ -92,7 +95,7 @@ function PersonCardItem({
         <div className="mt-2 flex items-center gap-2 text-[10px]">
           <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 dark:bg-white/10 px-2 py-0.5 font-medium text-slate-600 dark:text-gray-300">
             <Utensils size={8} className="opacity-60" />
-            {person.post_count}件
+            {t("items", { count: person.post_count })}
           </span>
           {person.avg_score > 0 && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 font-bold text-orange-600 dark:text-orange-300">
@@ -132,7 +135,7 @@ function PersonCardItem({
               )}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[11px] font-medium text-slate-700 dark:text-gray-200">
-                  {post.place_name ?? "お店"}
+                  {post.place_name ?? t("shop")}
                 </div>
                 <div className="flex items-center gap-1.5 text-[9px] text-slate-400 dark:text-gray-500">
                   {post.recommend_score != null && (
@@ -140,7 +143,7 @@ function PersonCardItem({
                       {post.recommend_score.toFixed(1)}
                     </span>
                   )}
-                  <span>{timeAgo(post.created_at)}</span>
+                  <span>{timeAgo(post.created_at, t)}</span>
                 </div>
               </div>
             </div>
@@ -161,7 +164,7 @@ function PersonCardItem({
                 : "bg-blue-600 hover:bg-blue-700",
             ].join(" ")}
           >
-            {person.is_following ? "投稿を見る" : "プロフィールを見る"}
+            {person.is_following ? t("viewPosts") : t("viewProfile")}
           </Link>
         </div>
       )}
@@ -178,6 +181,7 @@ export default function PersonCardCarousel({
   selectedUserId: string | null;
   onSelect: (userId: string) => void;
 }) {
+  const t = useTranslations("common");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = React.useState(false);
   const [canScrollRight, setCanScrollRight] = React.useState(false);
@@ -230,6 +234,7 @@ export default function PersonCardCarousel({
               person={person}
               active={selectedUserId === person.user_id}
               onTap={() => onSelect(person.user_id)}
+              t={t}
             />
           </div>
         ))}
@@ -257,7 +262,7 @@ export default function PersonCardCarousel({
 
       {/* Count */}
       <div className="text-center text-[10px] text-slate-400 dark:text-gray-600 mt-1 pb-0.5">
-        {people.length}人
+        {t("peopleCount", { count: people.length })}
       </div>
 
       <style jsx global>{`

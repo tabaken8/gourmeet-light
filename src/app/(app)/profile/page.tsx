@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { Globe2, Lock } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
 import AlbumBlock from "./parts/AlbumBlock";
@@ -35,9 +36,11 @@ function joinLabelFromCreatedAt(iso: string | null | undefined): string | null {
 function SnsChip({
   kind,
   handle,
+  ariaLabel,
 }: {
   kind: "instagram" | "x";
   handle: string;
+  ariaLabel: string;
 }) {
   const h = cleanHandle(handle);
   if (!h) return null;
@@ -68,7 +71,7 @@ function SnsChip({
         "dark:border-white/10 dark:bg-white/[.06] dark:text-gray-300",
         "dark:hover:border-white/15 dark:hover:bg-white/10",
       ].join(" ")}
-      aria-label={`${kind}を開く`}
+      aria-label={ariaLabel}
     >
       <span className="grid h-6 w-6 place-items-center">{Icon}</span>
       <span className="text-slate-400 dark:text-gray-500">@</span>
@@ -78,6 +81,7 @@ function SnsChip({
 }
 
 export default async function AccountPage() {
+  const t = await getTranslations("profile");
   const supabase = await createClient();
 
   const {
@@ -168,12 +172,12 @@ export default async function AccountPage() {
                         {isPublic ? (
                           <>
                             <Globe2 size={14} />
-                            <span>公開プロフィール</span>
+                            <span>{t("publicProfile")}</span>
                           </>
                         ) : (
                           <>
                             <Lock size={14} />
-                            <span>非公開プロフィール</span>
+                            <span>{t("privateProfile")}</span>
                           </>
                         )}
                       </span>
@@ -181,15 +185,15 @@ export default async function AccountPage() {
                       {joinedLabel ? (
                         <>
                           <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-gray-600" />
-                          <span>{joinedLabel} から利用</span>
+                          <span>{t("memberSince", { date: joinedLabel })}</span>
                         </>
                       ) : null}
                     </div>
 
                     {(instagram || x) ? (
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <SnsChip kind="instagram" handle={instagram} />
-                        <SnsChip kind="x" handle={x} />
+                        <SnsChip kind="instagram" handle={instagram} ariaLabel={t("openSns", { kind: "Instagram" })} />
+                        <SnsChip kind="x" handle={x} ariaLabel={t("openSns", { kind: "X" })} />
                       </div>
                     ) : null}
                   </div>
@@ -207,7 +211,7 @@ export default async function AccountPage() {
                       "dark:border-white/10 dark:bg-white/[.06] dark:text-gray-300 dark:hover:bg-white/10",
                     ].join(" ")}
                   >
-                    プロフィールを編集
+                    {t("editProfile")}
                   </Link>
                 </div>
               </div>
@@ -221,7 +225,7 @@ export default async function AccountPage() {
               <ul className="mt-4 flex flex-wrap gap-6 text-sm text-slate-700 dark:text-gray-400">
                 <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900 dark:text-gray-100">{postsCount}</span>
-                  <span>投稿</span>
+                  <span>{t("posts")}</span>
                 </li>
 
                 <li className="flex items-center gap-1.5">
@@ -230,7 +234,7 @@ export default async function AccountPage() {
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followingCount}</span>
-                    <span>フォロー中</span>
+                    <span>{t("following")}</span>
                   </Link>
                 </li>
 
@@ -240,13 +244,13 @@ export default async function AccountPage() {
                     className="flex items-center gap-1.5 hover:underline"
                   >
                     <span className="font-semibold text-slate-900 dark:text-gray-100">{followersCount}</span>
-                    <span>フォロワー</span>
+                    <span>{t("followers")}</span>
                   </Link>
                 </li>
 
                 <li className="flex items-center gap-1.5">
                   <span className="font-semibold text-slate-900 dark:text-gray-100">{wantsCount}</span>
-                  <span>行きたい</span>
+                  <span>{t("wants")}</span>
                 </li>
               </ul>
             </div>
@@ -270,14 +274,14 @@ export default async function AccountPage() {
           <section className="w-full rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm md:p-5 dark:border-white/[.08] dark:bg-[#16181e]">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-900 md:text-base dark:text-gray-100">
-                投稿
+                {t("postsHeading")}
               </h2>
             </div>
 
             <Suspense
               fallback={
                 <div className="rounded-xl border border-black/[.06] bg-white p-8 text-center text-xs text-slate-600 md:text-sm dark:border-white/[.08] dark:bg-white/[.06] dark:text-gray-400">
-                  投稿を読み込み中...
+                  {t("loadingPosts")}
                 </div>
               }
             >

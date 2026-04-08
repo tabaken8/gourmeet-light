@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Compass, HelpCircle, MapPin as MapPinIcon, Search, Sparkles, TrainFront, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 import { motion, AnimatePresence } from "framer-motion";
 import Skeleton from "react-loading-skeleton";
@@ -176,6 +177,8 @@ function PostsSkeleton() {
 
 // ============================================================
 export default function SearchPage() {
+  const t = useTranslations("search");
+  const tc = useTranslations("common");
   const supabase = createClientComponentClient();
   const router = useRouter();
   const sp = useSearchParams();
@@ -505,7 +508,7 @@ export default function SearchPage() {
       if (payload?.parsedQuery?.intent) setParsedIntent(payload.parsedQuery.intent);
       else setParsedIntent(null);
     } catch (e: any) {
-      setSemanticError(e?.message ?? "AI検索に失敗しました");
+      setSemanticError(e?.message ?? t("aiFailed"));
     } finally {
       setSemanticLoading(false);
     }
@@ -584,7 +587,7 @@ export default function SearchPage() {
       setCursor(nextCursor);
       if (!nextCursor || newPosts.length === 0) setDone(true);
     } catch (e: any) {
-      const msg = e?.message ?? "読み込みに失敗しました";
+      const msg = e?.message ?? t("loadFailed");
       setError(msg);
       if (String(msg).includes("Unauthorized")) setDone(true);
     } finally {
@@ -695,17 +698,17 @@ export default function SearchPage() {
         setSemanticPosts(q.trim() ? payload.posts : []);
       }
     } catch {
-      setError("\u691C\u7D22\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
+      setError(t("searchFailed"));
     } finally {
       setAreaSearchLoading(false);
     }
-  }, [q]);
+  }, [q, t]);
 
   // -------- 現在地から探す (Plan C) --------
   const geoRetryRef = useRef(0);
   const handleSearchFromLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setGeoError("\u3053\u306E\u30D6\u30E9\u30A6\u30B6\u3067\u306F\u4F4D\u7F6E\u60C5\u5831\u304C\u5229\u7528\u3067\u304D\u307E\u305B\u3093");
+      setGeoError(t("geoUnavailable"));
       return;
     }
     setGeoLoading(true);
@@ -740,19 +743,13 @@ export default function SearchPage() {
         console.warn("[geo] error:", err.code, err.message);
 
         if (err.code === 1 /* PERMISSION_DENIED */) {
-          setGeoError(
-            "\u4F4D\u7F6E\u60C5\u5831\u304C\u8A31\u53EF\u3055\u308C\u3066\u3044\u307E\u305B\u3093\u3002\n" +
-            "iPhone: \u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u2192 Safari\u3092\u8A31\u53EF"
-          );
+          setGeoError(t("geoPermissionDenied"));
         } else if (err.code === 3 /* TIMEOUT */ && !isRetry) {
           // タイムアウト → 低精度でリトライ
           geoRetryRef.current += 1;
           handleSearchFromLocation();
         } else {
-          setGeoError(
-            "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\n" +
-            "\u300C\u8A2D\u5B9A\u300D\u2192\u300C\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3068\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u300D\u2192\u300C\u4F4D\u7F6E\u60C5\u5831\u30B5\u30FC\u30D3\u30B9\u300D\u304C\u30AA\u30F3\u304B\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044"
-          );
+          setGeoError(t("geoFailed"));
         }
       },
       opts
@@ -781,11 +778,11 @@ export default function SearchPage() {
         setSemanticPosts([]);
       }
     } catch {
-      setError("\u691C\u7D22\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
+      setError(t("searchFailed"));
     } finally {
       setAreaSearchLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // -------- @mention サジェスト --------
   const fetchMentionSuggestions = useCallback((partial: string) => {
@@ -871,23 +868,23 @@ export default function SearchPage() {
 
   // -------- 検索 placeholder --------
   const searchPlaceholder = useMemo(() => {
-    const m = placeholderMentions[0] ? `@${placeholderMentions[0]}` : "@友達";
-    if (isMobile) return `渋谷でランチ、${m} のラーメン…`;
-    return `なんでも。渋谷で軽くランチ、記念日向きの雰囲気のいいフレンチ、${m} のおすすめラーメン…`;
-  }, [placeholderMentions, isMobile]);
+    const m = placeholderMentions[0] ? `@${placeholderMentions[0]}` : t("friend");
+    if (isMobile) return t("searchPlaceholderMobile", { mention: m });
+    return t("searchPlaceholderDesktop", { mention: m });
+  }, [placeholderMentions, isMobile, t]);
 
   // -------- Title --------
   const titleText = useMemo(() => {
     if (isEmpty) return "";
     if (committedMode === "station") {
-      const name = committedStationName ?? "駅";
+      const name = committedStationName ?? t("station");
       const g = committedGenre ? ` × ${committedGenre}` : "";
       const qq = committedQ ? `（${committedQ}）` : "";
-      return `${name}周辺の投稿一覧${g}${qq}`;
+      return `${t("stationArea", { station: name })}${g}${qq}`;
     }
     const g = committedGenre ? ` × ${committedGenre}` : "";
-    return `${committedQ}${g} の検索結果`;
-  }, [isEmpty, committedMode, committedStationName, committedGenre, committedQ]);
+    return t("searchResults", { query: `${committedQ}${g}` });
+  }, [isEmpty, committedMode, committedStationName, committedGenre, committedQ, t]);
 
   // ============================================================
   return (
@@ -926,7 +923,7 @@ export default function SearchPage() {
           <button
             type="button"
             onClick={() => setHintsOpen((v) => !v)}
-            aria-label="検索ヒント"
+            aria-label={t("searchHint")}
             className={`absolute right-9 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full transition hover:bg-slate-100 dark:hover:bg-white/10 ${hintsOpen ? "text-orange-500" : "text-slate-400 dark:text-gray-500"}`}
           >
             <HelpCircle size={15} />
@@ -934,7 +931,7 @@ export default function SearchPage() {
           <button
             type="button"
             onClick={handleSearch}
-            aria-label="検索"
+            aria-label={t("search")}
             className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 dark:text-gray-400 transition hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-gray-200"
           >
             <Search size={15} />
@@ -981,14 +978,14 @@ export default function SearchPage() {
             >
               <div className="mt-2 rounded-xl bg-slate-50 dark:bg-white/[.06] px-3 py-2.5 text-[11px] text-slate-600 dark:text-gray-400">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="font-semibold text-orange-700 dark:text-orange-400">✨ こんな検索ができます</span>
+                  <span className="font-semibold text-orange-700 dark:text-orange-400">{"✨ "}{t("hintsTitle")}</span>
                   <button type="button" onClick={() => setHintsOpen(false)} className="text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"><X size={13} /></button>
                 </div>
                 <ul className="space-y-1.5 text-slate-600 dark:text-gray-400">
-                  <li><span className="font-medium text-slate-800 dark:text-gray-200">渋谷で軽くランチ</span> — 地名 + 気分で検索</li>
-                  <li><span className="font-medium text-slate-800 dark:text-gray-200">記念日向きの雰囲気のいいフレンチ</span> — 自然な言葉でOK</li>
-                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{placeholderMentions[0] ? `@${placeholderMentions[0]}` : "@友達"} のおすすめラーメン</span> — フォロー中の人の投稿に絞れる</li>
-                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{placeholderMentions[1] ?? placeholderMentions[0] ? `@${placeholderMentions[1] ?? placeholderMentions[0]}` : "@知り合い"} の東京駅近くのカフェ</span> — 地名 + ユーザー指定の組み合わせも可</li>
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{t("hintExample1")}</span> — {t("hintGeo")}</li>
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{t("hintExample2")}</span> — {t("hintNatural")}</li>
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{t("hintExample3", { mention: placeholderMentions[0] ? `@${placeholderMentions[0]}` : t("friend") })}</span> — {t("hintMention")}</li>
+                  <li><span className="font-medium text-slate-800 dark:text-gray-200">{t("hintExample4", { mention: placeholderMentions[1] ?? placeholderMentions[0] ? `@${placeholderMentions[1] ?? placeholderMentions[0]}` : t("acquaintance") })}</span> — {t("hintCombine")}</li>
                 </ul>
               </div>
             </motion.div>
@@ -1010,7 +1007,7 @@ export default function SearchPage() {
               onChange={(e) => toggleFollow(e.target.checked)}
               className="h-4 w-4 accent-orange-500"
             />
-            フォローのみ
+            {t("followOnly")}
           </label>
         </div>
 
@@ -1035,7 +1032,7 @@ export default function SearchPage() {
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-gray-200 shadow-sm hover:bg-slate-50 dark:hover:bg-white/10 active:scale-[0.97] transition disabled:opacity-50"
             >
               <MapPinIcon size={15} className="text-blue-500" />
-              {geoLoading ? "\u4F4D\u7F6E\u60C5\u5831\u3092\u53D6\u5F97\u4E2D\u2026" : "\u73FE\u5728\u5730\u304B\u3089\u63A2\u3059"}
+              {geoLoading ? t("gettingLocation") : t("searchFromLocation")}
             </button>
             {geoError && (
               <p className="mt-2 text-xs text-red-500 whitespace-pre-line">{geoError}</p>
@@ -1085,12 +1082,12 @@ export default function SearchPage() {
                   <div className="mb-2 flex items-center gap-2 px-3">
                     <Compass size={14} className="text-orange-500" />
                     <h2 className="text-[13px] font-semibold text-slate-700 dark:text-gray-300">
-                      みんなの食の地図
+                      {t("peopleMap")}
                     </h2>
                     <span className="text-[10px] text-slate-400 dark:text-gray-600">
-                      {peoplePeople.filter((p) => p.is_following).length}人
+                      {t("peopleCount", { count: peoplePeople.filter((p) => p.is_following).length })}
                       {peoplePeople.filter((p) => !p.is_following).length > 0
-                        ? ` + おすすめ${peoplePeople.filter((p) => !p.is_following).length}人`
+                        ? ` + ${t("recommendedCount", { count: peoplePeople.filter((p) => !p.is_following).length })}`
                         : ""}
                     </span>
                   </div>
@@ -1111,7 +1108,7 @@ export default function SearchPage() {
               ) : (
                 <motion.div key="empty-splash" {...fadeUp} className="px-3 py-2">
                   <div className="text-xs text-slate-500 dark:text-gray-500">
-                    キーワード入力・駅選択・ジャンル選択でも検索できます
+                    {t("emptyHint")}
                   </div>
                 </motion.div>
               )}
@@ -1128,7 +1125,7 @@ export default function SearchPage() {
               <div className="mb-2 text-[11px] font-medium text-slate-400 dark:text-gray-500">Users</div>
               <motion.div className="flex flex-col gap-1.5" variants={listStagger} initial="initial" animate="animate">
                 {users.map((u) => {
-                  const name = u.display_name ?? u.username ?? "\u30E6\u30FC\u30B6\u30FC";
+                  const name = u.display_name ?? u.username ?? tc("user");
                   const handle = u.username ? `@${u.username}` : "";
                   const initial = (name || "U").slice(0, 1).toUpperCase();
                   return (
@@ -1147,7 +1144,7 @@ export default function SearchPage() {
                           </div>
                           {u.bio && <div className="truncate text-xs text-slate-600 dark:text-gray-400">{u.bio}</div>}
                         </div>
-                        <div className="text-xs font-semibold text-orange-600 dark:text-orange-400">{"\u898B\u308B"}</div>
+                        <div className="text-xs font-semibold text-orange-600 dark:text-orange-400">{t("view")}</div>
                       </Link>
                     </motion.div>
                   );
@@ -1193,11 +1190,11 @@ export default function SearchPage() {
                   {quickPosts.length > 0 && (
                     <motion.div {...fadeUp}>
                       <div className="px-2 py-1.5 text-[11px] text-slate-400 dark:text-gray-500 flex items-center gap-1.5">
-                        <span>{"\u30AF\u30A4\u30C3\u30AF\u7D50\u679C"}</span>
+                        <span>{t("quickResults")}</span>
                         <span className="text-slate-300 dark:text-gray-600">{"\u00B7"}</span>
-                        <span>{quickPosts.length}{"\u4EF6"}</span>
+                        <span>{t("items", { count: quickPosts.length })}</span>
                         <span className="text-slate-300 dark:text-gray-600">{"\u00B7"}</span>
-                        <span className="text-orange-400">{"\u2728 AI\u691C\u7D22\u4E2D\u2026"}</span>
+                        <span className="text-orange-400">{"✨ "}{t("aiSearching")}</span>
                       </div>
                       {/* カルーセルはマップ上部で表示済み */}
                     </motion.div>
@@ -1221,7 +1218,7 @@ export default function SearchPage() {
                           </motion.span>
                         ))}
                       </div>
-                      <p className="text-[13px] text-slate-400">{"\u304A\u3044\u3057\u3044\u6295\u7A3F\u3092\u63A2\u3057\u3066\u3044\u307E\u3059\u2026"}</p>
+                      <p className="text-[13px] text-slate-400">{t("searchingPosts")}</p>
                     </motion.div>
                   )}
                 </>
@@ -1239,7 +1236,7 @@ export default function SearchPage() {
                       {detectedStations.length > 0 && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-slate-600 dark:text-gray-300">
                           <TrainFront size={10} className="shrink-0" />
-                          {detectedStations.map((s) => s.name.endsWith("\u99C5") ? s.name : `${s.name}\u99C5`).join("\u30FB")}{"\u5468\u8FBA"}
+                          {detectedStations.map((s) => s.name.endsWith("\u99C5") ? s.name : `${s.name}\u99C5`).join("\u30FB")}{t("nearStation")}
                         </span>
                       )}
                       {detectedAuthor && (
@@ -1249,11 +1246,11 @@ export default function SearchPage() {
                       )}
                       {parsedIntent && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-slate-600 dark:text-gray-300">
-                          {"\u300C"}{parsedIntent}{"\u300D"}{"\u3067\u691C\u7D22"}
+                          {"\u300C"}{parsedIntent}{"\u300D"}{t("searchedWith")}
                         </span>
                       )}
                       <span className="text-slate-400 dark:text-gray-500">{"\u00B7"}</span>
-                      <span className="text-slate-400 dark:text-gray-500">{semanticPosts.length}{"\u4EF6"}</span>
+                      <span className="text-slate-400 dark:text-gray-500">{t("items", { count: semanticPosts.length })}</span>
                     </div>
                   )}
                   {/* タイムラインリストは廃止 — カルーセル + 詳細遷移で十分 */}
@@ -1262,8 +1259,8 @@ export default function SearchPage() {
               {!semanticLoading && !semanticError && semanticPosts.length === 0 && (
                 <motion.div {...fadeUp} className="py-6 text-center text-xs text-slate-500">
                   {mentionNotFound
-                    ? `@${committedQ.match(/@([\w]+)/)?.[1] ?? "..."} \u3068\u3044\u3046\u30E6\u30FC\u30B6\u30FC\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002`
-                    : "\u8A72\u5F53\u3059\u308B\u6295\u7A3F\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002"}
+                    ? t("userNotFound", { username: committedQ.match(/@([\w]+)/)?.[1] ?? "..." })
+                    : t("noMatchingPosts")}
                 </motion.div>
               )}
             </>
@@ -1279,7 +1276,7 @@ export default function SearchPage() {
                       <motion.span key={i} animate={{ y: [0, -6, 0] }} transition={{ duration: 0.5, delay: i * 0.1, repeat: Infinity, repeatDelay: 1.5 }}>{emoji}</motion.span>
                     ))}
                   </div>
-                  <p className="text-[12px] text-slate-400 dark:text-gray-500">{"\u691C\u7D22\u4E2D\u2026"}</p>
+                  <p className="text-[12px] text-slate-400 dark:text-gray-500">{t("searching")}</p>
                 </motion.div>
               ) : null}
 
@@ -1292,7 +1289,7 @@ export default function SearchPage() {
               )}
 
               {done && posts.length > 0 && (
-                <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400 dark:text-gray-500">{"\u3053\u308C\u4EE5\u4E0A\u3042\u308A\u307E\u305B\u3093"}</motion.div>
+                <motion.div {...fadeUp} className="pb-8 text-center text-[11px] text-slate-400 dark:text-gray-500">{t("noMoreResults")}</motion.div>
               )}
 
               {/* 0件 */}
@@ -1306,7 +1303,7 @@ export default function SearchPage() {
                       }
                     />
                   )}
-                  <div className="py-6 text-center text-xs text-slate-500">{"\u8A72\u5F53\u3059\u308B\u6295\u7A3F\u304C\u3042\u308A\u307E\u305B\u3093\u3002"}</div>
+                  <div className="py-6 text-center text-xs text-slate-500">{t("noMatchingPostsStation")}</div>
                 </motion.div>
               )}
             </>

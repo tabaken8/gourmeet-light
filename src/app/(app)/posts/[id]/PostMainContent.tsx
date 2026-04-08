@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Suspense } from "react";
 import { MapPin } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostMoreMenu from "@/components/PostMoreMenu";
@@ -97,9 +98,9 @@ function extractPrefCity(address: string | null | undefined): string | null {
   return `${m[1]}${m[2]}`;
 }
 
-function timeOfDayLabel(v: string | null | undefined) {
-  if (v === "day") return "昼";
-  if (v === "night") return "夜";
+function timeOfDayLabel(v: string | null | undefined, t: (key: string) => string) {
+  if (v === "day") return t("day");
+  if (v === "night") return t("night");
   return null;
 }
 
@@ -160,6 +161,7 @@ export default function PostMainContent({
   placePhotosSlot,
   discoverSlot,
 }: Props) {
+  const t = useTranslations("postDetail");
   const { data } = useQuery({
     queryKey: queryKeys.postDetail(postId),
     queryFn: () => fetchPostDetail(postId),
@@ -175,20 +177,20 @@ export default function PostMainContent({
     // サーバーで setQueryData されているので通常ここには来ない
     return (
       <main className="mx-auto max-w-5xl px-3 md:px-6 py-6 md:py-10">
-        <div className="gm-card p-8 text-center text-sm text-slate-500">読み込み中...</div>
+        <div className="gm-card p-8 text-center text-sm text-slate-500">{t("loading")}</div>
       </main>
     );
   }
 
   const prof = post.profiles;
-  const display = prof?.display_name ?? "ユーザー";
+  const display = prof?.display_name ?? t("user");
   const avatar = prof?.avatar_url ?? null;
   const isPublic = prof?.is_public ?? true;
   const initial = (display || "U").slice(0, 1).toUpperCase();
 
   const score = clampScore(post.recommend_score);
   const visitedLabel = post.visited_on ? formatVisitedYYYYMMDD(post.visited_on) : null;
-  const tod = timeOfDayLabel(post.time_of_day);
+  const tod = timeOfDayLabel(post.time_of_day, t);
   const priceLabel = formatPrice(post);
   const areaLabel = extractPrefCity(post.place_address);
 
@@ -212,7 +214,7 @@ export default function PostMainContent({
           <section className="border-b border-black/[.06] dark:border-white/[.08] px-4 pt-5 pb-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-extrabold text-slate-900 dark:text-gray-100">{post.place_name ?? "店名不明"}</h1>
+                <h1 className="truncate text-lg font-extrabold text-slate-900 dark:text-gray-100">{post.place_name ?? t("unknownPlace")}</h1>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-slate-600 dark:text-gray-400">
                   {areaLabel ? <span className="font-semibold">{areaLabel}</span> : null}
                   {post.place_address ? <span className="truncate max-w-[520px]">{post.place_address}</span> : null}
@@ -220,12 +222,12 @@ export default function PostMainContent({
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {mapUrl ? (
                     <a href={mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-slate-700 dark:text-gray-200 hover:bg-slate-50 dark:hover:bg-white/15">
-                      <MapPin size={14} />地図
+                      <MapPin size={14} />{t("map")}
                     </a>
                   ) : null}
                   {priceLabel ? (
                     <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-slate-700 dark:text-gray-200">
-                      価格: {priceLabel}
+                      {t("price")}: {priceLabel}
                     </span>
                   ) : null}
                 </div>
@@ -261,14 +263,14 @@ export default function PostMainContent({
                 {summaryLine ? <div className="mt-2 text-[12px] font-semibold text-slate-800 dark:text-gray-200 line-clamp-2">{summaryLine}</div> : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
                   {visitedLabel ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 font-semibold text-slate-700 dark:text-gray-200">来店日: {visitedLabel}</span>
+                    <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 font-semibold text-slate-700 dark:text-gray-200">{t("visitedOn")}: {visitedLabel}</span>
                   ) : null}
                   {tod ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 font-semibold text-slate-700 dark:text-gray-200">時間帯: {tod}</span>
+                    <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 font-semibold text-slate-700 dark:text-gray-200">{t("timeOfDay")}: {tod}</span>
                   ) : null}
                   {score !== null ? (
                     <span className="inline-flex items-center rounded-full border border-orange-200 dark:border-orange-800/40 bg-orange-50 dark:bg-orange-950/40 px-3 py-1.5 font-semibold text-orange-800 dark:text-orange-300">
-                      おすすめ: <span className="ml-1 font-extrabold">{score.toFixed(1)}</span>/10
+                      {t("recommend")}: <span className="ml-1 font-extrabold">{score.toFixed(1)}</span>/10
                     </span>
                   ) : null}
                 </div>
@@ -329,13 +331,13 @@ export default function PostMainContent({
                 </div>
               </div>
             ) : (
-              <div className="mt-2 text-[12px] text-slate-500 dark:text-gray-500">まだDetailsがありません。</div>
+              <div className="mt-2 text-[12px] text-slate-500 dark:text-gray-500">{t("noDetails")}</div>
             )}
             {publicReqs.length > 0 ? (
               <div className="mt-5">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-gray-100">補足 / Q&A</h3>
-                  <div className="text-[11px] text-slate-400 dark:text-gray-500">{publicReqs.length}件</div>
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-gray-100">{t("supplementQA")}</h3>
+                  <div className="text-[11px] text-slate-400 dark:text-gray-500">{t("itemCount", { count: publicReqs.length })}</div>
                 </div>
                 <div className="mt-2 space-y-2">
                   {publicReqs.map((r: any) => {
@@ -343,7 +345,7 @@ export default function PostMainContent({
                     const ans = ansByReq[r.id] ?? [];
                     return (
                       <div key={r.id} className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.04] px-3 py-3">
-                        <div className="text-[12px] font-bold text-slate-800 dark:text-gray-200">Q. <span className="font-semibold">{q || "（質問）"}</span></div>
+                        <div className="text-[12px] font-bold text-slate-800 dark:text-gray-200">Q. <span className="font-semibold">{q || t("question")}</span></div>
                         <div className="mt-2 space-y-2">
                           {ans.map((a: any) => (
                             <div key={a.id} className="rounded-xl bg-slate-50 dark:bg-white/[.06] px-3 py-2">
@@ -377,7 +379,7 @@ export default function PostMainContent({
             {post.place_id ? (
               <div className="flex justify-end">
                 <div className="inline-block w-auto max-w-full">
-                  <Suspense fallback={<div className="text-xs text-slate-500">ジャンルを読み込み中...</div>}>
+                  <Suspense fallback={<div className="text-xs text-slate-500">{t("genreLoading")}</div>}>
                     <GenreVoteInline placeId={post.place_id} />
                   </Suspense>
                 </div>
@@ -401,7 +403,7 @@ export default function PostMainContent({
         {/* この人の他の投稿 */}
         <div className="mt-8">
           <UserOtherPostsStrip
-            title={`${display} の他の投稿`}
+            title={t("userOtherPosts", { name: display })}
             currentPostId={post.id}
             initialTab="genre"
             genreLabel={currentGenre}

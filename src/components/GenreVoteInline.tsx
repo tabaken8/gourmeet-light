@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 
 type Props = {
   placeId: string;
@@ -60,6 +61,7 @@ function clamp(n: number, min: number, max: number) {
 }
 
 export default function GenreVoteInline({ placeId }: Props) {
+  const t = useTranslations("postDetail");
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
@@ -169,15 +171,15 @@ export default function GenreVoteInline({ placeId }: Props) {
           text-slate-600 dark:text-gray-400
           hover:bg-white/75 dark:hover:bg-white/[.10]
         "
-        aria-label="ジャンルを選ぶ"
+        aria-label={t("selectGenre")}
       >
         {myGenre ? (
           <span className="truncate">
-            ジャンル: <span className="text-slate-800 dark:text-gray-100 font-medium">{myGenre}</span>{" "}
-            <span className="text-slate-400 dark:text-gray-500"></span>
+            {t("genreLabel")}: <span className="text-slate-800 dark:text-gray-100 font-medium">{myGenre}</span>{" "}
+            <span className="text-slate-400 dark:text-gray-500">{t("genreEdit")}</span>
           </span>
         ) : (
-          <span className="text-slate-500 dark:text-gray-500">ジャンルを選ぶ</span>
+          <span className="text-slate-500 dark:text-gray-500">{t("selectGenre")}</span>
         )}
       </button>
 
@@ -187,14 +189,14 @@ export default function GenreVoteInline({ placeId }: Props) {
           className="fixed inset-0 z-[60]"
           role="dialog"
           aria-modal="true"
-          aria-label="ジャンル投票"
+          aria-label={t("selectGenreTitle")}
         >
           {/* 背景 */}
           <button
             type="button"
             className="absolute inset-0 bg-black/35"
             onClick={() => (loading ? null : setOpen(false))}
-            aria-label="閉じる"
+            aria-label={t("close")}
           />
 
           {/* シート */}
@@ -211,13 +213,13 @@ export default function GenreVoteInline({ placeId }: Props) {
           >
             <div className="px-4 pt-4 pb-3">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">ジャンルを選択</div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-gray-100">{t("selectGenreTitle")}</div>
                 <button
                   type="button"
                   onClick={() => (loading ? null : setOpen(false))}
                   className="gm-press rounded-full px-3 py-1 text-[12px] text-slate-500 dark:text-gray-400 hover:text-slate-800 dark:hover:text-gray-200"
                 >
-                  閉じる
+                  {t("close")}
                 </button>
               </div>
               <div className="mt-1 text-[11px] text-slate-500 dark:text-gray-500">
@@ -230,16 +232,17 @@ export default function GenreVoteInline({ placeId }: Props) {
               options={options}
               value={selected}
               onChange={setSelected}
+              noCandidatesLabel={t("noCandidates")}
             />
 
             {/* 追加 */}
             <div className="px-4 pt-3">
-              <div className="text-[11px] font-medium text-slate-700 dark:text-gray-300">新しいジャンルを追加</div>
+              <div className="text-[11px] font-medium text-slate-700 dark:text-gray-300">{t("addNewGenre")}</div>
               <div className="mt-2 flex gap-2">
                 <input
                   value={custom}
                   onChange={(e) => setCustom(e.target.value)}
-                  placeholder="例：ジビエ、ワインバー など"
+                  placeholder={t("genrePlaceholder")}
                   className="
                     flex-1
                     rounded-2xl
@@ -266,17 +269,17 @@ export default function GenreVoteInline({ placeId }: Props) {
                     text-slate-900 dark:text-gray-200
                   "
                 >
-                  追加
+                  {t("add")}
                 </button>
               </div>
 
               {/* みんなの投票（見える場合のみ） */}
               <div className="mt-4 rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-slate-50 dark:bg-white/[.04] p-3">
-                <div className="text-[11px] font-semibold text-slate-700 dark:text-gray-300">みんなの傾向</div>
+                <div className="text-[11px] font-semibold text-slate-700 dark:text-gray-300">{t("communityTrends")}</div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {Object.keys(counts).length === 0 ? (
                     <span className="text-[11px] text-slate-500 dark:text-gray-500">
-                      （他ユーザーの投票が見えない設定の場合は表示されません）
+                      {t("votesHidden")}
                     </span>
                   ) : (
                     Object.entries(counts)
@@ -311,7 +314,7 @@ export default function GenreVoteInline({ placeId }: Props) {
                   text-slate-600 dark:text-gray-400
                 "
               >
-                未設定に戻す
+                {t("resetGenre")}
               </button>
 
               <div className="flex-1" />
@@ -331,7 +334,7 @@ export default function GenreVoteInline({ placeId }: Props) {
                   disabled:opacity-50
                 "
               >
-                保存
+                {t("save")}
               </button>
             </div>
           </div>
@@ -345,17 +348,19 @@ function WheelLikePicker({
   options,
   value,
   onChange,
+  noCandidatesLabel,
 }: {
   options: string[];
   value: string;
   onChange: (v: string) => void;
+  noCandidatesLabel: string;
 }) {
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const itemH = 44; // px
   const visible = 5; // odd
   const pad = Math.floor(visible / 2);
 
-  const safeOptions = options.length ? options : ["（候補なし）"];
+  const safeOptions = options.length ? options : [noCandidatesLabel];
   const idx = Math.max(0, safeOptions.findIndex((x) => x === value));
   const [activeIndex, setActiveIndex] = React.useState(idx);
 

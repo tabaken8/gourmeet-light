@@ -28,21 +28,22 @@ function fmt(d: string | null) {
 export default async function GiftDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect(`/auth/required?next=${encodeURIComponent(`/points/gifts/${params.id}`)}`);
+  if (!user) redirect(`/auth/required?next=${encodeURIComponent(`/points/gifts/${id}`)}`);
 
   const { data, error } = await supabase
     .from("point_gifts")
     .select(
       "id,status,gift_label,points_spent,amount_yen,gift_code,gift_url,created_at,delivered_at,expires_at"
     )
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
 

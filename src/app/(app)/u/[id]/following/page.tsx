@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function FollowingPage({ params }: { params: { id: string } }) {
-  const supabase = await createClient();;
-  const paramId = params.id;
+export default async function FollowingPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: paramId } = await params;
+  const supabase = await createClient();
 
   const { data: prof } = UUID_RE.test(paramId)
     ? await supabase.from("profiles").select("id, username, display_name").eq("id", paramId).maybeSingle()

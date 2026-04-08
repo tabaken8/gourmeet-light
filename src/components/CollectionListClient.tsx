@@ -5,6 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 type Collection = {
   id: string;
@@ -22,6 +23,7 @@ export default function CollectionListClient({
 }: Props) {
   const supabase = createClientComponentClient();
   const router = useRouter();
+  const t = useTranslations("collection");
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export default function CollectionListClient({
     } = await supabase.auth.getSession();
     const user = session?.user;
     if (!user) {
-      alert("ログインが必要です");
+      alert(t("loginRequiredAlert"));
       setCreating(false);
       return;
     }
@@ -53,7 +55,7 @@ export default function CollectionListClient({
 
     if (error || !data) {
       console.error(error);
-      alert("コレクションの作成に失敗しました");
+      alert(t("createFailed"));
       return;
     }
 
@@ -64,9 +66,7 @@ export default function CollectionListClient({
 
   const handleDelete = async (id: string) => {
     if (deletingId) return;
-    const ok = window.confirm(
-      "このコレクションを削除しますか？\n中の『紐づけ』は消えますが、投稿自体は削除されません。"
-    );
+    const ok = window.confirm(t("deleteConfirm"));
     if (!ok) return;
 
     setDeletingId(id);
@@ -80,7 +80,7 @@ export default function CollectionListClient({
 
     if (error) {
       console.error(error);
-      alert("コレクションの削除に失敗しました");
+      alert(t("deleteFailed"));
       return;
     }
 
@@ -95,7 +95,7 @@ export default function CollectionListClient({
       {/* 見出し */}
       <div className="mb-3 flex items-center justify-between gap-2">
         <p className="text-xs font-semibold text-slate-700 dark:text-gray-300 tracking-wide">
-          コレクション
+          {t("title")}
         </p>
         <span className="text-[11px] text-slate-400 dark:text-gray-500">
           {collections.length} lists
@@ -108,7 +108,7 @@ export default function CollectionListClient({
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          placeholder="新しいコレクション名"
+          placeholder={t("newCollectionPlaceholder")}
           className="h-9 flex-1 rounded-full border border-orange-100 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 text-xs text-slate-800 dark:text-gray-200 placeholder:text-slate-300 dark:placeholder:text-gray-500 outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
         />
         <button
@@ -116,7 +116,7 @@ export default function CollectionListClient({
           onClick={handleCreate}
           disabled={creating || !newName.trim()}
           className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
-          aria-label="コレクションを作成"
+          aria-label={t("createCollection")}
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -125,9 +125,9 @@ export default function CollectionListClient({
       {/* リスト */}
       {collections.length === 0 ? (
         <div className="mt-4 text-xs leading-relaxed text-slate-400 dark:text-gray-500">
-          まだコレクションがありません。
+          {t("emptyList")}
           <br />
-          上のフォームから新しく作成できます。
+          {t("createHint")}
         </div>
       ) : (
         <nav className="mt-1 space-y-1.5">
@@ -161,7 +161,7 @@ export default function CollectionListClient({
                   onClick={() => handleDelete(c.id)}
                   disabled={isDeleting}
                   className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 dark:text-gray-500 hover:bg-orange-50 dark:hover:bg-white/[.08] hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label="コレクションを削除"
+                  aria-label={t("deleteCollection")}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

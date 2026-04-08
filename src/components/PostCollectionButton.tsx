@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bookmark, X, Check } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 type Collection = { id: string; name: string };
 
@@ -26,31 +27,39 @@ type SuggestTypeResponse = {
   types?: string[] | null;
 };
 
-type GenreOption = { key: string; emoji: string; label: string };
+type GenreOption = { key: string; emoji: string; labelKey: string };
 
-const GENRES: GenreOption[] = [
-  { key: "ramen", emoji: "🍜", label: "ラーメン" },
-  { key: "sushi", emoji: "🍣", label: "寿司" },
-  { key: "yakiniku", emoji: "🥩", label: "焼肉" },
-  { key: "izakaya", emoji: "🍺", label: "焼き鳥/居酒屋" },
-  { key: "chinese", emoji: "🥟", label: "中華" },
-  { key: "curry", emoji: "🍛", label: "カレー" },
-  { key: "italian", emoji: "🍝", label: "イタリアン" },
-  { key: "pizza", emoji: "🍕", label: "ピザ" },
-  { key: "burger", emoji: "🍔", label: "バーガー" },
-  { key: "cafe", emoji: "☕️", label: "カフェ" },
-  { key: "sweets", emoji: "🍰", label: "スイーツ" },
-  { key: "bar", emoji: "🍷", label: "バー/酒" },
-  { key: "other", emoji: "📍", label: "その他" },
+const GENRE_DEFS: GenreOption[] = [
+  { key: "ramen", emoji: "🍜", labelKey: "genreRamen" },
+  { key: "sushi", emoji: "🍣", labelKey: "genreSushi" },
+  { key: "yakiniku", emoji: "🥩", labelKey: "genreYakiniku" },
+  { key: "izakaya", emoji: "🍺", labelKey: "genreIzakaya" },
+  { key: "chinese", emoji: "🥟", labelKey: "genreChinese" },
+  { key: "curry", emoji: "🍛", labelKey: "genreCurry" },
+  { key: "italian", emoji: "🍝", labelKey: "genreItalian" },
+  { key: "pizza", emoji: "🍕", labelKey: "genrePizza" },
+  { key: "burger", emoji: "🍔", labelKey: "genreBurger" },
+  { key: "cafe", emoji: "☕️", labelKey: "genreCafe" },
+  { key: "sweets", emoji: "🍰", labelKey: "genreSweets" },
+  { key: "bar", emoji: "🍷", labelKey: "genreBar" },
+  { key: "other", emoji: "📍", labelKey: "genreOther" },
 ];
 
-function labelForEmoji(emoji: string | null | undefined) {
+type GenreWithLabel = GenreOption & { label: string };
+
+function buildGenres(t: (key: string) => string): GenreWithLabel[] {
+  return GENRE_DEFS.map((g) => ({ ...g, label: t(g.labelKey) }));
+}
+
+function labelForEmojiWithGenres(emoji: string | null | undefined, genres: GenreWithLabel[]) {
   if (!emoji) return "";
-  return GENRES.find((g) => g.emoji === emoji)?.label ?? "";
+  return genres.find((g) => g.emoji === emoji)?.label ?? "";
 }
 
 export default function PostCollectionButton({ postId, className }: PostCollectionButtonProps) {
   const supabase = createClientComponentClient();
+  const t = useTranslations("collection");
+  const GENRES = useMemo(() => buildGenres(t), [t]);
 
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -159,14 +168,14 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
     } = await supabase.auth.getSession();
 
     if (sessionError) {
-      setError("ユーザー情報の取得に失敗しました");
+      setError(t("fetchUserFailed"));
       setLoading(false);
       return;
     }
 
     const user = session?.user;
     if (!user) {
-      setError("コレクションを使うにはログインが必要です");
+      setError(t("collectionLoginRequired"));
       setLoading(false);
       return;
     }
@@ -181,7 +190,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
     ]);
 
     if (collectionsRes.error) {
-      setError("コレクションの取得に失敗しました");
+      setError(t("fetchCollectionFailed"));
     } else {
       setCollections((collectionsRes.data ?? []) as Collection[]);
     }
@@ -218,7 +227,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
       .eq("id", postId)
       .single();
 
-    if (postErr || !post?.place_id) throw new Error("投稿の place_id を取得できませんでした");
+    if (postErr || !post?.place_id) throw new Error(t("placeIdFailed"));
 
     const res = await fetch("/api/places/ensure", {
       method: "POST",
@@ -228,7 +237,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
 
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      throw new Error(j?.error ?? "places の ensure に失敗しました");
+      throw new Error(j?.error ?? t("ensureFailed"));
     }
 
     return post.place_id as string;
@@ -243,7 +252,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
 
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      throw new Error(j?.error ?? "type サジェストに失敗しました");
+      throw new Error(j?.error ?? t("suggestFailed"));
     }
 
     return (await res.json()) as SuggestTypeResponse;
@@ -271,12 +280,12 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
     } = await supabase.auth.getSession();
 
     if (sessionError) {
-      setError("ユーザー情報の取得に失敗しました");
+      setError(t("fetchUserFailed"));
       return;
     }
     const user = session?.user;
     if (!user) {
-      setError("コレクションを使うにはログインが必要です");
+      setError(t("collectionLoginRequired"));
       return;
     }
 
@@ -286,7 +295,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
     });
 
     if (insErr && (insErr as any).code !== "23505") {
-      setError("コレクションへの追加に失敗しました");
+      setError(t("addFailed"));
       return;
     }
 
@@ -331,7 +340,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
 
       setStep("emoji");
     } catch (e: any) {
-      setError(e?.message ?? "場所情報の準備に失敗しました");
+      setError(e?.message ?? t("placePrepareFailed"));
     } finally {
       setSuggestLoading(false);
     }
@@ -339,7 +348,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
 
   const handleCreateAndAdd = async () => {
     if (!newName.trim()) {
-      setError("コレクション名を入力してください");
+      setError(t("enterCollectionName"));
       return;
     }
 
@@ -352,14 +361,14 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
     } = await supabase.auth.getSession();
 
     if (sessionError) {
-      setError("ユーザー情報の取得に失敗しました");
+      setError(t("fetchUserFailed"));
       setCreating(false);
       return;
     }
 
     const user = session?.user;
     if (!user) {
-      setError("コレクションを使うにはログインが必要です");
+      setError(t("collectionLoginRequired"));
       setCreating(false);
       return;
     }
@@ -373,7 +382,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
         .select("id, name")
         .single();
 
-      if (createError || !created) throw new Error("コレクションの作成に失敗しました");
+      if (createError || !created) throw new Error(t("createCollectionFailed"));
 
       setCollections((prev) => [...prev, { id: created.id, name: created.name }]);
       setNewName("");
@@ -389,7 +398,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
       setGenreQuery("");
       setStep("emoji");
     } catch (e: any) {
-      setError(e?.message ?? "作成に失敗しました");
+      setError(e?.message ?? t("creationFailed"));
     } finally {
       setSuggestLoading(false);
       setCreating(false);
@@ -402,7 +411,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
     return GENRES.filter((g) => g.label.includes(q) || g.emoji.includes(q));
   }, [genreQuery]);
 
-  const choiceLabel = useMemo(() => labelForEmoji(emojiChoice), [emojiChoice]);
+  const choiceLabel = useMemo(() => labelForEmojiWithGenres(emojiChoice, GENRES), [emojiChoice, GENRES]);
 
   return (
     <>
@@ -413,7 +422,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
           "flex h-8 w-8 items-center justify-center text-slate-400 hover:text-slate-600 transition-colors",
           className ?? "",
         ].join(" ")}
-        aria-label="コレクションに追加"
+        aria-label={t("addToCollection")}
       >
         <Bookmark className="h-5 w-5" />
       </button>
@@ -429,14 +438,14 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                 <div className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/[.08]">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold dark:text-gray-100">
-                      {step === "collections" ? "コレクションに追加" : "ジャンルを選ぶ"}
+                      {step === "collections" ? t("addToCollection") : t("selectGenre")}
                     </div>
                     {step === "emoji" && (
                       <div className="mt-0.5 text-[12px] text-black/50 dark:text-gray-400">
-                        現在：{" "}
+                        {t("current")}{" "}
                         <span className="inline-flex items-center gap-1 rounded-full border border-black/10 dark:border-white/[.10] bg-black/[.03] dark:bg-white/[.06] px-2 py-0.5">
                           <span className="text-base">{emojiChoice ?? "—"}</span>
-                          <span>{choiceLabel ? choiceLabel : emojiChoice ? "（未ラベル）" : "未選択"}</span>
+                          <span>{choiceLabel ? choiceLabel : emojiChoice ? t("unlabeled") : t("unselected")}</span>
                         </span>
                       </div>
                     )}
@@ -445,7 +454,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                     type="button"
                     onClick={closeAll}
                     className="rounded-full p-2 text-black/50 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/[.08]"
-                    aria-label="閉じる"
+                    aria-label={t("close")}
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -462,9 +471,9 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                   <div className="p-4">
                     <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
                       {loading ? (
-                        <p className="text-xs text-black/50 dark:text-gray-500">読み込み中...</p>
+                        <p className="text-xs text-black/50 dark:text-gray-500">{t("loading")}</p>
                       ) : collections.length === 0 ? (
-                        <p className="text-xs text-black/50 dark:text-gray-500">まだコレクションがありません。</p>
+                        <p className="text-xs text-black/50 dark:text-gray-500">{t("noCollections")}</p>
                       ) : (
                         collections.map((c) => {
                           const included = includedSet.has(c.id);
@@ -486,7 +495,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                             >
                               <span className="truncate">{c.name}</span>
                               <span className={included ? "text-xs font-semibold" : "text-xs text-black/40 dark:text-gray-500"}>
-                                {included ? "追加済み" : suggestLoading ? "準備中..." : "追加"}
+                                {included ? t("alreadyAdded") : suggestLoading ? t("preparing") : t("add")}
                               </span>
                             </button>
                           );
@@ -496,13 +505,13 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
 
                     <div className="mt-4 space-y-2 border-t border-black/10 dark:border-white/[.08] pt-3">
                       <label className="block text-xs font-medium text-black/60 dark:text-gray-400">
-                        新しいコレクションを作成
+                        {t("createNew")}
                       </label>
                       <input
                         type="text"
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        placeholder="コレクション名"
+                        placeholder={t("collectionName")}
                         className="w-full rounded-xl border border-black/20 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 py-3 text-sm dark:text-gray-100 dark:placeholder:text-gray-500 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                       />
                       <button
@@ -511,7 +520,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                         disabled={creating || suggestLoading}
                         className="flex w-full items-center justify-center rounded-xl bg-orange-500 px-3 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {creating ? "作成中..." : "作成して追加"}
+                        {creating ? t("creating") : t("createAndAdd")}
                       </button>
                     </div>
                   </div>
@@ -522,7 +531,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                   <div className="p-4">
                     <div className="rounded-2xl border border-black/10 dark:border-white/[.08] bg-black/[.02] dark:bg-white/[.04] p-3">
                       <div className="text-xs text-black/60 dark:text-gray-400">
-                        Googleのカテゴリから提案します。違ったらすぐ直せます。
+                        {t("googleSuggestNote")}
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -531,20 +540,20 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                               <span className="inline-flex items-center gap-2">
                                 <span className="text-xl">{suggest.suggestedEmoji}</span>
                                 <span>
-                                  おすすめ{" "}
+                                  {t("suggested")}{" "}
                                   <span className="text-black/45 dark:text-gray-500 font-normal">
-                                    {labelForEmoji(suggest.suggestedEmoji) ? `（${labelForEmoji(suggest.suggestedEmoji)}）` : ""}
+                                    {labelForEmojiWithGenres(suggest.suggestedEmoji, GENRES) ? `（${labelForEmojiWithGenres(suggest.suggestedEmoji, GENRES)}）` : ""}
                                   </span>
                                 </span>
                               </span>
                             ) : (
-                              <span>おすすめなし（手動でOK）</span>
+                              <span>{t("noSuggestion")}</span>
                             )}
                           </div>
                           {suggest?.suggestedType ? (
                             <div className="mt-0.5 text-[11px] text-black/45 dark:text-gray-500">type: {suggest.suggestedType}</div>
                           ) : (
-                            <div className="mt-0.5 text-[11px] text-black/45 dark:text-gray-500">判別できない店もあるので手動で。</div>
+                            <div className="mt-0.5 text-[11px] text-black/45 dark:text-gray-500">{t("manualNote")}</div>
                           )}
                         </div>
 
@@ -553,7 +562,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                           onClick={() => setEmojiChoice(null)}
                           className="shrink-0 rounded-xl border border-black/10 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 py-2 text-xs dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/[.10]"
                         >
-                          なし
+                          {t("none")}
                         </button>
                       </div>
                     </div>
@@ -562,7 +571,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                       <input
                         value={genreQuery}
                         onChange={(e) => setGenreQuery(e.target.value)}
-                        placeholder="ジャンルを検索（例: 焼肉, 寿司）"
+                        placeholder={t("searchGenrePlaceholder")}
                         className="w-full rounded-xl border border-black/20 dark:border-white/[.10] bg-white dark:bg-white/[.06] px-3 py-3 text-sm dark:text-gray-100 dark:placeholder:text-gray-500 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                       />
                     </div>
@@ -592,7 +601,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                                 <div className="min-w-0">
                                   <div className="text-sm font-semibold dark:text-gray-100 truncate">{g.label}</div>
                                   <div className="text-[11px] text-black/45 dark:text-gray-500">
-                                    {isSuggested ? "おすすめ" : " "}
+                                    {isSuggested ? t("suggested") : " "}
                                   </div>
                                 </div>
                               </div>
@@ -601,10 +610,10 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                                 {active ? (
                                   <span className="inline-flex items-center gap-1 text-orange-700 dark:text-orange-400 text-xs font-semibold">
                                     <Check className="h-4 w-4" />
-                                    選択中
+                                    {t("selected")}
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-black/35 dark:text-gray-500">選ぶ</span>
+                                  <span className="text-xs text-black/35 dark:text-gray-500">{t("select")}</span>
                                 )}
                               </div>
                             </div>
@@ -627,7 +636,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                         }}
                         className="rounded-xl border border-black/10 dark:border-white/[.10] px-4 py-3 text-sm dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/[.08]"
                       >
-                        戻る
+                        {t("back")}
                       </button>
 
                       <button
@@ -636,7 +645,7 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                         onClick={() => pendingCollectionId && commitAddToCollection(pendingCollectionId)}
                         className="rounded-xl bg-orange-600 px-5 py-3 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
                       >
-                        この内容で追加
+                        {t("confirmAdd")}
                       </button>
                     </div>
                   </div>
@@ -654,14 +663,14 @@ export default function PostCollectionButton({ postId, className }: PostCollecti
                       toastShown ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-5",
                     ].join(" ")}
                   >
-                    <span>コレクションに追加しました</span>
+                    <span>{t("addedToast")}</span>
                     {pendingUndo && (
                       <button
                         type="button"
                         onClick={handleUndo}
                         className="text-[12px] underline underline-offset-2 cursor-pointer hover:text-orange-300"
                       >
-                        元に戻す
+                        {t("undo")}
                       </button>
                     )}
                   </div>

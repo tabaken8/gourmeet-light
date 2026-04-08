@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Heart } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useTranslations } from "next-intl";
 
 type ProfileLite = {
   id: string;
@@ -53,6 +54,7 @@ export default function PostComments({
   meId,
   previewCount = 2,
 }: Props) {
+  const t = useTranslations("timeline");
   const supabase = createClientComponentClient();
 
   const [comments, setComments] = useState<CommentRow[]>([]);
@@ -73,10 +75,10 @@ export default function PostComments({
   const meCanComment = !!meId;
 
   const placeholder = useMemo(() => {
-    if (!meCanComment) return "ログインしてコメント…";
-    if (replyTo) return `${replyTo.displayName} に返信…`;
-    return "コメントを入力...";
-  }, [meCanComment, replyTo]);
+    if (!meCanComment) return t("loginToComment");
+    if (replyTo) return t("replyToPlaceholder", { name: replyTo.displayName });
+    return t("commentPlaceholder");
+  }, [meCanComment, replyTo, t]);
 
   const [expanded, setExpanded] = useState(false);
 
@@ -115,7 +117,7 @@ export default function PostComments({
         return cp;
       });
     } catch (e: any) {
-      setErrMsg(e?.message ?? "削除に失敗しました");
+      setErrMsg(e?.message ?? t("deleteFailed"));
     } finally {
       setDeletingId(null);
     }
@@ -360,13 +362,13 @@ export default function PostComments({
       {/* コメント一覧 */}
       <div className="space-y-2">
         {loading ? (
-          <div className="text-xs text-slate-400 dark:text-gray-500">コメントを読み込み中…</div>
+          <div className="text-xs text-slate-400 dark:text-gray-500">{t("commentLoading")}</div>
         ) : comments.length === 0 ? (
-          <div className="text-xs text-slate-400 dark:text-gray-500">まだコメントはありません。</div>
+          <div className="text-xs text-slate-400 dark:text-gray-500">{t("noCommentsYet")}</div>
         ) : (
           <>
             {visibleComments.map((c) => {
-              const name = c.profile?.display_name ?? "ユーザー";
+              const name = c.profile?.display_name ?? t("defaultUserName");
               const avatar = c.profile?.avatar_url ?? null;
               const initial = (name || "U").slice(0, 1).toUpperCase();
               const replyName = c.replyToProfile?.display_name ?? null;
@@ -409,10 +411,10 @@ export default function PostComments({
                           onClick={() => deleteComment(c.id)}
                           disabled={deletingId === c.id}
                           className="text-[11px] font-medium text-slate-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
-                          aria-label="コメントを削除"
-                          title="削除"
+                          aria-label={t("deleteCommentAria")}
+                          title={t("deleteTooltip")}
                         >
-                          {deletingId === c.id ? "削除中…" : "削除"}
+                          {deletingId === c.id ? t("deleting") : t("deleteLabel")}
                         </button>
                       ) : null}
                     </div>
@@ -423,7 +425,7 @@ export default function PostComments({
                         <Link href={`/u/${c.replyToProfile?.username ?? c.reply_to_user_id}`} className="hover:underline">
                           @{replyName}
                         </Link>{" "}
-                        に返信
+                        {t("replyToUser")}
                       </div>
                     )}
 
@@ -456,7 +458,7 @@ export default function PostComments({
                           }}
                           className="text-[11px] font-medium text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"
                         >
-                          返信
+                          {t("replyButton")}
                         </button>
 
                         {/* ✅ tiny heart like */}
@@ -470,8 +472,8 @@ export default function PostComments({
                             liked ? "text-red-500" : "text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300",
                             likeBusy ? "opacity-60" : "",
                           ].join(" ")}
-                          aria-label={liked ? "コメントのいいねを取り消す" : "コメントにいいね"}
-                          title={liked ? "いいね済み" : "いいね"}
+                          aria-label={liked ? t("unlikeComment") : t("likeComment")}
+                          title={liked ? t("likedTooltip") : t("likeTooltip")}
                         >
                           <Heart
                             className="h-[13px] w-[13px]"
@@ -494,7 +496,7 @@ export default function PostComments({
                 onClick={() => setExpanded((v) => !v)}
                 className="text-xs font-medium text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
               >
-                {expanded ? "コメントを折りたたむ" : `コメントをもっと見る（+${hiddenCount}）`}
+                {expanded ? t("collapseComments") : t("showMoreComments", { count: hiddenCount })}
               </button>
             )}
           </>
@@ -509,7 +511,7 @@ export default function PostComments({
             href="/auth/login"
             className="rounded-full !bg-slate-900 px-3 py-1 text-xs font-medium !text-white hover:opacity-90"
           >
-            ログイン
+            {t("loginLabel")}
           </Link>
         </div>
       ) : (
@@ -523,7 +525,7 @@ export default function PostComments({
               }}
               className="w-full text-left text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
             >
-              コメントを書く…
+              {t("writeCommentButton")}
             </button>
           )}
 
@@ -541,7 +543,7 @@ export default function PostComments({
               {replyTo && (
                 <div className="mb-2 flex items-center justify-between">
                   <div className="text-[11px] text-slate-500 dark:text-gray-400">
-                    返信先:{" "}
+                    {t("replyTarget")}{" "}
                     <span className="font-medium text-slate-700 dark:text-gray-200">{replyTo.displayName}</span>
                   </div>
                   <button
@@ -551,7 +553,7 @@ export default function PostComments({
                     }}
                     className="text-[11px] font-medium text-slate-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-gray-300"
                   >
-                    キャンセル
+                    {t("cancelReply")}
                   </button>
                 </div>
               )}
@@ -584,7 +586,7 @@ export default function PostComments({
                     }}
                     className="rounded-full px-3 py-1 text-xs text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
                   >
-                    閉じる
+                    {t("closeComposer")}
                   </button>
                   <button
                     type="button"
@@ -597,7 +599,7 @@ export default function PostComments({
                         : "bg-slate-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:opacity-90",
                     ].join(" ")}
                   >
-                    {submitting ? "送信中…" : "送信"}
+                    {submitting ? t("sending") : t("send")}
                   </button>
                 </div>
               </div>

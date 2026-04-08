@@ -3,6 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import FollowButton from "@/components/FollowButton";
 
 export type SuggestUser = {
@@ -37,6 +38,7 @@ export default function SuggestFollowCard({
   subtitle?: string | null;
   users: SuggestUser[];
 }) {
+  const t = useTranslations("common");
   if (!users || users.length === 0) return null;
 
   return (
@@ -48,7 +50,7 @@ export default function SuggestFollowCard({
 
       <div className="px-2 pb-3">
         {users.slice(0, 6).map((u) => {
-          const name = u.display_name ?? "ユーザー";
+          const name = u.display_name ?? t("user");
           return (
             <div
               key={u.id}
