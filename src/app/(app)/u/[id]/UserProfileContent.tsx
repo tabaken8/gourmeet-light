@@ -62,150 +62,136 @@ export default function UserProfileContent({
   const albumPosts = postsData?.albumPosts ?? [];
   const pinnedPostIds = postsData?.pinnedPostIds ?? [];
 
-  const cardClass = "w-full overflow-hidden rounded-2xl border border-black/[.06] dark:border-white/[.08] bg-white/95 dark:bg-[#16181e] shadow-sm";
-  const cardPad = "px-4 py-5 md:px-6 md:py-6";
-
   return (
-    <main className="min-h-screen bg-orange-50 dark:bg-transparent text-slate-800 dark:text-gray-200">
-      <div className="w-full overflow-x-hidden pb-24 pt-6">
-        <div className="flex w-full flex-col gap-6 md:mx-auto md:max-w-4xl md:px-6">
+    <main className="min-h-screen bg-white dark:bg-transparent text-slate-800 dark:text-gray-200">
+      <div className="mx-auto max-w-2xl px-4 pt-6 pb-24">
 
-          {/* ========================= PROFILE CARD ========================= */}
-          <section className={cardClass}>
-            <div className={cardPad}>
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex min-w-0 items-start gap-4">
-                  <div className="shrink-0">
-                    {avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={avatarUrl}
-                        alt="avatar"
-                        className="h-20 w-20 rounded-full border border-black/[.06] dark:border-white/10 bg-orange-100 dark:bg-orange-900/30 object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-20 w-20 items-center justify-center rounded-full border border-black/[.06] dark:border-white/10 bg-orange-100 dark:bg-orange-900/30 text-2xl font-bold text-orange-700 dark:text-orange-400">
-                        {displayName.slice(0, 1).toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0">
-                    <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-gray-100 md:text-2xl">
-                      {displayName}
-                    </h1>
-
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                      {username ? (
-                        <p className="text-xs font-medium text-slate-500 dark:text-gray-500 md:text-sm">@{username}</p>
-                      ) : null}
-                      {isFollowing ? (
-                        <p className="rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-gray-400 md:text-xs">
-                          {t("followsYou")}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-gray-500 md:text-xs">
-                      {isPublic ? (
-                        <>
-                          <Globe2 size={14} />
-                          <span>{t("publicProfile")}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Lock size={14} />
-                          <span>{t("privateProfile")}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
-                  <div className="flex items-center justify-end gap-2">
-                    {profile ? (
-                      <FollowButton
-                        targetUserId={profile.id}
-                        targetUsername={profile.username}
-                        initiallyFollowing={initiallyFollowing}
-                        initiallyRequested={initiallyRequested}
-                      />
-                    ) : null}
-                    <PostNotifyBellButton
-                      targetUserId={userId}
-                      canToggle={initiallyFollowing}
-                      initiallyEnabled={initialBellEnabled}
-                    />
-                  </div>
-                  {initiallyRequested ? (
-                    <p className="text-[11px] text-slate-500 dark:text-gray-500">{t("pendingNotifyHint")}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              {bio ? (
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-gray-200">{bio}</p>
-              ) : null}
-
-              <ul className="mt-4 flex flex-wrap gap-6 text-xs text-slate-700 dark:text-gray-400 md:text-sm">
-                <li className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-900 dark:text-gray-100">{postsCount}</span>
-                  <span>{t("posts")}</span>
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <Link
-                    href={`/u/${username || userId}/following`}
-                    className="flex items-center gap-1.5 hover:underline"
-                  >
-                    <span className="font-semibold text-slate-900 dark:text-gray-100">{followingCount}</span>
-                    <span>{t("following")}</span>
-                  </Link>
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <Link
-                    href={`/u/${username || userId}/followers`}
-                    className="flex items-center gap-1.5 hover:underline"
-                  >
-                    <span className="font-semibold text-slate-900 dark:text-gray-100">{followersCount}</span>
-                    <span>{t("followers")}</span>
-                  </Link>
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-900 dark:text-gray-100">{wantsCount}</span>
-                  <span>{t("wants")}</span>
-                </li>
-              </ul>
-            </div>
-          </section>
-
-          {/* ========================= HEATMAP CARD ========================= */}
-          {canViewPosts ? (
-            <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
-              <VisitHeatmap userId={userId} days={heatmapDays} earliestKey={earliestKey} />
-            </section>
-          ) : (
-            <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">{t("visitLog")}</h2>
-              <div className="mt-3 rounded-xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-xs text-slate-600 dark:text-gray-500 md:text-sm">
-                {t("followersOnlyPosts")}
-              </div>
-            </section>
-          )}
-
-          {/* ========================= ALBUM CARD ========================= */}
-          <section className={[cardClass, "p-4 md:p-5"].join(" ")}>
-            <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-gray-100 md:text-base">{t("postsHeading")}</h2>
-            {!canViewPosts ? (
-              <div className="rounded-xl border border-black/[.06] dark:border-white/[.08] bg-white dark:bg-white/[.04] p-8 text-center text-xs text-slate-600 dark:text-gray-500 md:text-sm">
-                {t("followersOnlyPosts")}
-              </div>
+        {/* ========================= AVATAR + NAME + ACTIONS ========================= */}
+        <div className="flex items-start gap-4">
+          {/* Avatar with brand gradient ring */}
+          <div
+            className="shrink-0"
+            style={{
+              background: "linear-gradient(135deg, #1DB9A0, #6BAA44, #C8882A, #D06A28)",
+              padding: "2.5px",
+              borderRadius: "9999px",
+            }}
+          >
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatarUrl}
+                alt="avatar"
+                className="h-24 w-24 rounded-full border-2 border-white dark:border-[#0b0c0f] bg-orange-100 dark:bg-orange-900/30 object-cover"
+              />
             ) : (
-              <AlbumBrowser posts={albumPosts} pinnedPostIdsInitial={pinnedPostIds} isOwner={false} />
+              <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-white dark:border-[#0b0c0f] bg-orange-100 dark:bg-orange-900/30 text-2xl font-bold text-orange-700 dark:text-orange-400">
+                {displayName.slice(0, 1).toUpperCase()}
+              </div>
             )}
-          </section>
+          </div>
 
+          <div className="min-w-0 flex-1">
+            {/* Name row: displayName + follow button + bell */}
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-gray-100 md:text-2xl">
+                {displayName}
+              </h1>
+              {profile ? (
+                <FollowButton
+                  targetUserId={profile.id}
+                  targetUsername={profile.username}
+                  initiallyFollowing={initiallyFollowing}
+                  initiallyRequested={initiallyRequested}
+                />
+              ) : null}
+              <PostNotifyBellButton
+                targetUserId={userId}
+                canToggle={initiallyFollowing}
+                initiallyEnabled={initialBellEnabled}
+              />
+            </div>
+
+            {/* Username + "follows you" badge */}
+            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              {username ? (
+                <p className="text-xs font-medium text-slate-500 dark:text-gray-500 md:text-sm">@{username}</p>
+              ) : null}
+              {isFollowing ? (
+                <p className="rounded-full bg-gradient-to-r from-teal-500/10 to-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-gray-400 md:text-xs">
+                  {t("followsYou")}
+                </p>
+              ) : null}
+            </div>
+
+            {/* Public/Private indicator */}
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-gray-500 md:text-xs">
+              {isPublic ? (
+                <>
+                  <Globe2 size={14} />
+                  <span>{t("publicProfile")}</span>
+                </>
+              ) : (
+                <>
+                  <Lock size={14} />
+                  <span>{t("privateProfile")}</span>
+                </>
+              )}
+            </div>
+
+            {initiallyRequested ? (
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-500">{t("pendingNotifyHint")}</p>
+            ) : null}
+          </div>
         </div>
+
+        {/* ========================= STATS ========================= */}
+        <div className="flex items-center gap-4 mt-4 text-[13px]">
+          <span><strong className="font-extrabold text-slate-900 dark:text-gray-100">{postsCount}</strong> <span className="text-slate-500 dark:text-gray-500">{t("posts")}</span></span>
+          <Link href={`/u/${username || userId}/following`} className="hover:opacity-70 transition">
+            <strong className="font-extrabold text-slate-900 dark:text-gray-100">{followingCount}</strong> <span className="text-slate-500 dark:text-gray-500">{t("following")}</span>
+          </Link>
+          <Link href={`/u/${username || userId}/followers`} className="hover:opacity-70 transition">
+            <strong className="font-extrabold text-slate-900 dark:text-gray-100">{followersCount}</strong> <span className="text-slate-500 dark:text-gray-500">{t("followers")}</span>
+          </Link>
+          <span><strong className="font-extrabold text-slate-900 dark:text-gray-100">{wantsCount}</strong> <span className="text-slate-500 dark:text-gray-500">{t("wants")}</span></span>
+        </div>
+
+        {/* ========================= BIO ========================= */}
+        {bio ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-gray-200">{bio}</p>
+        ) : null}
+
+        <div className="gm-brand-line mt-6" />
+
+        {/* ========================= HEATMAP ========================= */}
+        <section className="mt-6">
+          {canViewPosts ? (
+            <VisitHeatmap userId={userId} days={heatmapDays} earliestKey={earliestKey} />
+          ) : (
+            <>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-gray-100">{t("visitLog")}</h2>
+              <p className="mt-3 text-center text-xs text-slate-500 dark:text-gray-500 py-8">
+                {t("followersOnlyPosts")}
+              </p>
+            </>
+          )}
+        </section>
+
+        <div className="gm-brand-line mt-6" />
+
+        {/* ========================= POSTS ========================= */}
+        <section className="mt-6">
+          <h2 className="mb-3 text-sm font-bold text-slate-900 dark:text-gray-100">{t("postsHeading")}</h2>
+          {!canViewPosts ? (
+            <p className="text-center text-xs text-slate-500 dark:text-gray-500 py-8">
+              {t("followersOnlyPosts")}
+            </p>
+          ) : (
+            <AlbumBrowser posts={albumPosts} pinnedPostIdsInitial={pinnedPostIds} isOwner={false} />
+          )}
+        </section>
+
       </div>
     </main>
   );

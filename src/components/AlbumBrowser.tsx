@@ -243,159 +243,204 @@ export default function AlbumBrowser({
       .sort((a, b) => b.posts.length - a.posts.length || a.key.localeCompare(b.key, "ja"));
   }, [sortedPosts]);
 
+  // Lock/unlock body scroll when lightbox opens/closes
+  useEffect(() => {
+    if (lightboxPost) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [lightboxPost]);
+
   // ─── Lightbox ───────────────────────────────────────────────────────────────
   function Lightbox() {
     if (!lightboxPost) return null;
 
-    const images   = getAllFullUrls(lightboxPost);
-    // thumb URLs (already cached from grid) → instant placeholder while full loads
-    const thumbUrls = (lightboxPost.image_variants as any[] ?? [])
-      .map((x: any) => x?.thumb ?? x?.full ?? null)
-      .filter(Boolean) as string[];
-    const currentThumb = thumbUrls[lightboxImgIdx] ?? getThumbUrl(lightboxPost);
+    // Lightbox ではキャッシュ済みサムネだけ使う（高画質は詳細ページで）
+    const images   = (() => {
+      const v = lightboxPost.image_variants;
+      if (Array.isArray(v) && v.length > 0) {
+        const thumbs = v.map((x: any) => x?.thumb ?? x?.full ?? null).filter(Boolean) as string[];
+        if (thumbs.length > 0) return thumbs;
+      }
+      return (lightboxPost.image_urls ?? []).filter(Boolean) as string[];
+    })();
     const place    = lightboxPost.places;
     const name     = place?.name ?? "Unknown";
     const genre    = genreLabel(place);
     const score    = toScore(lightboxPost.recommend_score);
-    const scoreText = score == null ? null : `${score.toFixed(1)} / 10`;
     const mapUrl   = buildMapUrl(lightboxPost);
     const content  = lightboxPost.content;
     const isHR     = pinnedSet.has(String(lightboxPost.id));
 
     return createPortal(
+      /* Fully opaque black background — eliminates header bleed-through */
       <div
-        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85"
+        className="fixed inset-0 z-[9999] flex flex-col bg-black overflow-hidden"
         onClick={() => setLightboxPost(null)}
       >
-        <div
-          className="relative flex w-full flex-col md:flex-row bg-white dark:bg-[#1e2026] md:max-w-4xl md:rounded-xl overflow-hidden mx-2 md:mx-0"
-          style={{ maxHeight: "90vh" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Close button */}
+        {/* ─ Top bar: close + dots ─ */}
+        <div className="relative z-30 shrink-0 flex items-center justify-between px-4 py-3">
           <button
             onClick={() => setLightboxPost(null)}
-            className="absolute right-3 top-3 z-20 rounded-full bg-black/55 p-1.5 text-white hover:bg-black/75"
+            className="rounded-full p-1.5 text-white/70 hover:text-white transition-colors"
             aria-label="閉じる"
           >
-            <X size={18} />
+            <X size={22} />
           </button>
 
-          {/* ─ Image area：高さを明示してロード前に潰れないようにする ─ */}
-          <div className="relative flex h-[50vh] shrink-0 items-center justify-center bg-slate-900 md:h-auto md:w-[60%]">
-            {images.length > 0 ? (
-              <>
-                {/* thumb: キャッシュ済みで即時表示 → full が読み込まれるまでの placeholder */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {currentThumb && (
-                  <img
-                    key={`thumb-${currentThumb}`}
-                    src={currentThumb}
-                    alt=""
-                    aria-hidden
-                    className="absolute inset-0 h-full w-full object-contain"
-                  />
-                )}
-                {/* full: 読み込み完了後に thumb の上に重なる */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  key={images[lightboxImgIdx]}
-                  src={images[lightboxImgIdx]}
-                  alt=""
-                  className="relative z-10 h-full w-full object-contain md:max-h-[90vh]"
-                />
-              </>
-            ) : (
-              <div className="h-full w-full bg-slate-200 dark:bg-white/10" />
-            )}
+          {/* Image counter */}
+          {images.length > 1 && (
+            <div className="text-[11px] font-medium text-white/50 tracking-wide">
+              {lightboxImgIdx + 1} / {images.length}
+            </div>
+          )}
 
-            {images.length > 1 && (
-              <>
+          {/* Detail link */}
+          <Link
+            href={`/posts/${encodeURIComponent(String(lightboxPost.id))}`}
+            className="text-[12px] font-semibold text-orange-400 hover:text-orange-300 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            詳細 →
+          </Link>
+        </div>
+
+        {/* ─ Image area: fills available space but leaves room for info panel ─ */}
+        <div
+          className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {images.length > 0 ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              key={images[lightboxImgIdx]}
+              src={images[lightboxImgIdx]}
+              alt=""
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <div className="h-full w-full bg-white/5" />
+          )}
+
+          {/* Navigation arrows */}
+          {images.length > 1 && (
+            <>
+              <button
+                onClick={() => setLightboxImgIdx((i) => Math.max(0, i - 1))}
+                disabled={lightboxImgIdx === 0}
+                className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-white/10 p-2 text-white backdrop-blur-sm hover:bg-white/20 disabled:opacity-0 transition-all"
+              >
+                <ChevronLeft size={22} />
+              </button>
+              <button
+                onClick={() => setLightboxImgIdx((i) => Math.min(images.length - 1, i + 1))}
+                disabled={lightboxImgIdx === images.length - 1}
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-white/10 p-2 text-white backdrop-blur-sm hover:bg-white/20 disabled:opacity-0 transition-all"
+              >
+                <ChevronRight size={22} />
+              </button>
+            </>
+          )}
+
+          {/* Dot indicators */}
+          {images.length > 1 && (
+            <div className="absolute bottom-3 z-20 flex w-full justify-center gap-1.5">
+              {images.map((_, i) => (
                 <button
-                  onClick={() => setLightboxImgIdx((i) => Math.max(0, i - 1))}
-                  disabled={lightboxImgIdx === 0}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70 disabled:opacity-25"
-                >
-                  <ChevronLeft size={20} />
-                </button>
-                <button
-                  onClick={() => setLightboxImgIdx((i) => Math.min(images.length - 1, i + 1))}
-                  disabled={lightboxImgIdx === images.length - 1}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70 disabled:opacity-25"
-                >
-                  <ChevronRight size={20} />
-                </button>
-                <div className="absolute bottom-3 flex w-full justify-center gap-1.5">
-                  {images.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setLightboxImgIdx(i)}
-                      className={`h-1.5 w-1.5 rounded-full transition-all ${i === lightboxImgIdx ? "bg-white scale-125" : "bg-white/40"}`}
-                    />
-                  ))}
-                </div>
-              </>
+                  key={i}
+                  onClick={() => setLightboxImgIdx(i)}
+                  className={`rounded-full transition-all duration-200 ${
+                    i === lightboxImgIdx
+                      ? "h-2 w-2 bg-white"
+                      : "h-1.5 w-1.5 bg-white/30"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ─ Bottom info panel ─ */}
+        <div
+          className="relative z-20 shrink-0 border-t border-white/[.08] bg-[#111215] px-4 pb-6 pt-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Place name + score row */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                {isHR && (
+                  <Sparkles size={14} className="shrink-0 text-red-400" />
+                )}
+                <h3 className="truncate text-[15px] font-bold text-white leading-tight">
+                  {name}
+                </h3>
+              </div>
+              <p className="mt-0.5 truncate text-[12px] text-white/40">{genre}</p>
+            </div>
+
+            {score != null && (
+              <div className="shrink-0 flex flex-col items-center">
+                <span className="text-[22px] font-black leading-none" style={{
+                  background: "linear-gradient(135deg, #fb923c, #f59e0b)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}>
+                  {score.toFixed(1)}
+                </span>
+                <span className="text-[9px] font-medium text-white/30 mt-0.5">/ 10</span>
+              </div>
             )}
           </div>
 
-          {/* ─ Info panel ─ */}
-          <div className="flex flex-col overflow-y-auto p-4 md:w-[40%]">
-            {isHR && (
-              <div className="mb-2 inline-flex items-center gap-1.5 self-start rounded-full border-2 border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/30 px-2.5 py-1 text-[11px] font-extrabold text-red-700 dark:text-red-400">
-                <Sparkles size={11} />
-                My Special Picks
-              </div>
-            )}
+          {/* Content preview */}
+          {content && (
+            <p className="mt-2 text-[13px] leading-relaxed text-white/60 line-clamp-2 whitespace-pre-wrap">
+              {content}
+            </p>
+          )}
 
-            <div className="text-base font-bold leading-snug text-slate-900 dark:text-gray-100">{name}</div>
-            <div className="mt-0.5 text-sm text-slate-500 dark:text-gray-500">{genre}</div>
-
-            {scoreText && (
-              <div className="mt-2 inline-flex items-center gap-1 self-start rounded-full bg-orange-50 dark:bg-orange-900/30 px-3 py-1 text-sm font-bold text-orange-600 dark:text-orange-400">
-                ⭐ {scoreText}
-              </div>
-            )}
-
-            {content && (
-              <p className="mt-3 text-sm leading-relaxed text-slate-700 dark:text-gray-300 whitespace-pre-wrap">{content}</p>
-            )}
-
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-white/[.08] pt-4">
-              {mapUrl && (
-                <a
-                  href={mapUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/15 bg-white dark:bg-white/[.06] px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MapPin size={13} />
-                  地図
-                </a>
-              )}
-              <Link
-                href={`/posts/${encodeURIComponent(String(lightboxPost.id))}`}
-                className="inline-flex items-center gap-1 rounded-full bg-slate-900 dark:bg-white/15 px-3 py-1.5 text-xs font-semibold hover:bg-slate-700 dark:hover:bg-white/20"
-                style={{ color: "#fff" }}
+          {/* Action buttons */}
+          <div className="mt-3 flex items-center gap-2">
+            {mapUrl && (
+              <a
+                href={mapUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/[.12] bg-white/[.06] px-3 py-1.5 text-[11px] font-semibold text-white/70 hover:bg-white/[.12] transition-colors"
+                onClick={(e) => e.stopPropagation()}
               >
-                詳細を見る →
-              </Link>
-              {isOwner && (
-                <button
-                  type="button"
-                  onClick={() => toggleHighlyRecommended(String(lightboxPost.id))}
-                  className={[
-                    "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold",
-                    isHR
-                      ? "border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40"
-                      : "border-slate-200 dark:border-white/15 bg-white dark:bg-white/[.06] text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-white/10",
-                  ].join(" ")}
-                >
-                  <Sparkles size={12} />
-                  {isHR ? "Special Picks を解除" : "Special Picks にする"}
-                </button>
-              )}
-            </div>
+                <MapPin size={12} />
+                地図
+              </a>
+            )}
+            <Link
+              href={`/posts/${encodeURIComponent(String(lightboxPost.id))}`}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white transition-colors"
+              style={{
+                background: "linear-gradient(135deg, #1DB9A0, #6BAA44, #C8882A)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              詳細を見る →
+            </Link>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => toggleHighlyRecommended(String(lightboxPost.id))}
+                className={[
+                  "ml-auto inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors",
+                  isHR
+                    ? "border-red-500/30 bg-red-500/15 text-red-400 hover:bg-red-500/25"
+                    : "border-white/[.12] bg-white/[.06] text-white/50 hover:bg-white/[.12]",
+                ].join(" ")}
+              >
+                <Sparkles size={11} />
+                {isHR ? "解除" : "Special Picks"}
+              </button>
+            )}
           </div>
         </div>
       </div>,
@@ -406,67 +451,48 @@ export default function AlbumBrowser({
   // ─── PostGrid ────────────────────────────────────────────────────────────────
   function PostGrid({ items }: { items: AlbumPost[] }) {
     return (
-      <div className="grid grid-cols-2 gap-0 md:grid-cols-3 md:gap-[2px]">
+      <div className="grid grid-cols-2 gap-[2px] md:grid-cols-3">
         {items.map((p) => {
           const isHR     = pinnedSet.has(String(p.id));
           const place    = p.places;
           const name     = place?.name ?? "Unknown";
           const genre    = genreLabel(place);
           const score    = toScore(p.recommend_score);
-          const scoreText = score == null ? "おすすめ: -" : `おすすめ: ${score.toFixed(1)}`;
           const thumb    = getThumbUrl(p);
-          const mapUrl   = buildMapUrl(p);
 
           return (
-            <div
+            <button
               key={stableId(p)}
-              className={[
-                "bg-white dark:bg-[#16181e] shadow-sm",
-                isHR ? "border-2 border-red-300 dark:border-red-700/50" : "border border-orange-100 dark:border-white/[.08]",
-              ].join(" ")}
-              style={{ borderRadius: 0 }}
+              type="button"
+              className="relative block w-full text-left group"
+              onClick={() => openLightbox(p)}
             >
-              {/* サムネイル → lightbox */}
-              <button
-                type="button"
-                className="block w-full text-left"
-                onClick={() => openLightbox(p)}
-              >
-                <div className={["relative aspect-square", isHR ? "bg-red-50 dark:bg-red-900/20" : "bg-orange-50 dark:bg-white/[.04]", "overflow-hidden"].join(" ")}>
-                  {isHR && (
-                    <div className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full border border-red-200 bg-white/90 px-2 py-1 text-[11px] font-extrabold text-red-700 backdrop-blur">
-                      <Sparkles size={12} />
-                      My Special Picks
-                    </div>
-                  )}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {thumb && <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
-                  {isHR && <div className="pointer-events-none absolute inset-0 ring-2 ring-red-300/60" />}
+              <div className={["relative aspect-square overflow-hidden", isHR ? "bg-red-50 dark:bg-red-900/20" : "bg-slate-100 dark:bg-white/[.04]"].join(" ")}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {thumb && <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
+
+                {/* Hover/tap overlay with info */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-200" />
+                <div className="absolute inset-x-0 bottom-0 p-2 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-200">
+                  <div className="truncate text-[12px] font-bold text-white leading-tight">{name}</div>
+                  <div className="truncate text-[10px] text-white/70 mt-0.5">{genre}</div>
                 </div>
-              </button>
 
-              <div className="px-3 py-2">
-                <div className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100">{name}</div>
-                <div className="mt-0.5 truncate text-[12px] font-semibold text-slate-600 dark:text-gray-500">{genre || "未分類"}</div>
-                <div className="mt-1 text-[12px] font-semibold text-slate-700 dark:text-gray-400">{scoreText}</div>
+                {/* Score badge — always visible */}
+                {score != null && (
+                  <div className="absolute top-1.5 right-1.5 rounded-md bg-black/50 backdrop-blur-sm px-1.5 py-0.5 text-[10px] font-bold text-orange-300">
+                    {score.toFixed(1)}
+                  </div>
+                )}
 
-                {/* 地図ボタンのみ（3点リーダー削除） */}
-                {mapUrl && (
-                  <div className="mt-2">
-                    <a
-                      href={mapUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/15 bg-white dark:bg-white/[.06] px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MapPin size={12} />
-                      地図
-                    </a>
+                {/* HR badge */}
+                {isHR && (
+                  <div className="absolute top-1.5 left-1.5 rounded-md bg-black/50 backdrop-blur-sm p-1">
+                    <Sparkles size={12} className="text-red-400" />
                   </div>
                 )}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -539,7 +565,7 @@ export default function AlbumBrowser({
   const chipIdle   = "border-orange-100 dark:border-white/10 bg-white dark:bg-white/[.06] text-slate-600 dark:text-gray-400 hover:bg-orange-50/40 dark:hover:bg-white/10";
 
   return (
-    <section className="border border-orange-100 dark:border-white/[.08] bg-white/95 dark:bg-[#16181e] px-0 py-4 shadow-sm backdrop-blur md:px-5 md:py-5">
+    <section className="py-0">
       <div className="px-4 md:px-0">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
