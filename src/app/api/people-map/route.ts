@@ -16,7 +16,7 @@ export type PersonMapItem = {
   centroid_lat: number;
   centroid_lng: number;
   /** All post locations (outliers removed) with place info */
-  post_latlngs: { lat: number; lng: number; place_name: string; image_url: string | null; recommend_score: number | null }[];
+  post_latlngs: { lat: number; lng: number; place_name: string; image_url: string | null; recommend_score: number | null; post_id: string | null }[];
   /** Bounding box of post_latlngs for fitBounds */
   bounds: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } } | null;
   /** Top 2 posts by recommend_score for card display */
@@ -211,6 +211,7 @@ export async function GET() {
     recommend_score: number | null;
     image_url: string | null;
     created_at: string;
+    post_id: string | null;
   };
   type UserGroup = {
     scores: number[];
@@ -250,6 +251,7 @@ export async function GET() {
       recommend_score: post.recommend_score,
       image_url: imageUrl,
       created_at: post.created_at,
+      post_id: post.id ?? null,
     });
   }
 
@@ -283,7 +285,7 @@ export async function GET() {
       const key = `${p.lat},${p.lng}`;
       if (filteredSet.has(key) && !seenPlaces.has(key)) {
         seenPlaces.add(key);
-        postLatlngs.push({ lat: p.lat, lng: p.lng, place_name: p.place_name, image_url: p.image_url, recommend_score: p.recommend_score });
+        postLatlngs.push({ lat: p.lat, lng: p.lng, place_name: p.place_name, image_url: p.image_url, recommend_score: p.recommend_score, post_id: p.post_id ?? null });
       }
     }
 
@@ -463,7 +465,7 @@ async function handleGuestPeopleMap(supabase: any) {
   // Group posts by user
   const profileMap = new Map(publicProfiles.map((p: any) => [p.id, p]));
 
-  type PostEntry = { lat: number; lng: number; place_name: string; recommend_score: number | null; image_url: string | null; created_at: string };
+  type PostEntry = { lat: number; lng: number; place_name: string; recommend_score: number | null; image_url: string | null; created_at: string; post_id: string | null };
   type UserGroup = { scores: number[]; lats: number[]; lngs: number[]; genres: string[]; areas: string[]; allPosts: PostEntry[] };
   const userGroups = new Map<string, UserGroup>();
 
@@ -494,6 +496,7 @@ async function handleGuestPeopleMap(supabase: any) {
       recommend_score: post.recommend_score,
       image_url: imageUrl,
       created_at: post.created_at,
+      post_id: post.id ?? null,
     });
   }
 
@@ -517,7 +520,7 @@ async function handleGuestPeopleMap(supabase: any) {
       const key = `${p.lat},${p.lng}`;
       if (filteredSet.has(key) && !seenPlaces.has(key)) {
         seenPlaces.add(key);
-        postLatlngs.push({ lat: p.lat, lng: p.lng, place_name: p.place_name, image_url: p.image_url, recommend_score: p.recommend_score });
+        postLatlngs.push({ lat: p.lat, lng: p.lng, place_name: p.place_name, image_url: p.image_url, recommend_score: p.recommend_score, post_id: p.post_id ?? null });
       }
     }
 

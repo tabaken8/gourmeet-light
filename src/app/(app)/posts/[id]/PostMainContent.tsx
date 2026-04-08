@@ -208,79 +208,12 @@ export default function PostMainContent({
 
   return (
     <>
-      <main className="mx-auto max-w-5xl px-3 md:px-6 py-6 md:py-10">
-        <article className="gm-card overflow-hidden">
-          {/* 店ヘッダー */}
-          <section className="border-b border-black/[.06] dark:border-white/[.08] px-4 pt-5 pb-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="truncate text-lg font-extrabold text-slate-900 dark:text-gray-100">{post.place_name ?? t("unknownPlace")}</h1>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-slate-600 dark:text-gray-400">
-                  {areaLabel ? <span className="font-semibold">{areaLabel}</span> : null}
-                  {post.place_address ? <span className="truncate max-w-[520px]">{post.place_address}</span> : null}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {mapUrl ? (
-                    <a href={mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-slate-700 dark:text-gray-200 hover:bg-slate-50 dark:hover:bg-white/15">
-                      <MapPin size={14} />{t("map")}
-                    </a>
-                  ) : null}
-                  {priceLabel ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-slate-700 dark:text-gray-200">
-                      {t("price")}: {priceLabel}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <PostMoreMenu postId={post.id} isMine={isMine} />
-            </div>
-          </section>
+      <main className="mx-auto max-w-5xl py-0 md:py-6">
+        <article className="overflow-hidden">
 
-          {/* 投稿サマリー */}
-          <section className="border-b border-black/[.06] dark:border-white/[.08] px-4 py-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="gm-press flex h-10 w-10 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-black/[.06] dark:ring-white/[.08]">
-                {avatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatar} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  initial
-                )}
-              </Link>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 min-w-0">
-                    <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100 hover:underline">
-                      {display}
-                    </Link>
-                    {!isPublic ? <span className="text-[11px] text-slate-400 dark:text-gray-500">🔒</span> : null}
-                  </div>
-                  {showFollowButton ? (
-                    <FollowButton targetUserId={post.user_id} initiallyFollowing={false} initiallyRequested={false} label={followCtaLabel} />
-                  ) : null}
-                </div>
-                <div className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-500">{formatJST(post.created_at)}</div>
-                {summaryLine ? <div className="mt-2 text-[12px] font-semibold text-slate-800 dark:text-gray-200 line-clamp-2">{summaryLine}</div> : null}
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
-                  {visitedLabel ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 font-semibold text-slate-700 dark:text-gray-200">{t("visitedOn")}: {visitedLabel}</span>
-                  ) : null}
-                  {tod ? (
-                    <span className="inline-flex items-center rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/10 px-3 py-1.5 font-semibold text-slate-700 dark:text-gray-200">{t("timeOfDay")}: {tod}</span>
-                  ) : null}
-                  {score !== null ? (
-                    <span className="inline-flex items-center rounded-full border border-orange-200 dark:border-orange-800/40 bg-orange-50 dark:bg-orange-950/40 px-3 py-1.5 font-semibold text-orange-800 dark:text-orange-300">
-                      {t("recommend")}: <span className="ml-1 font-extrabold">{score.toFixed(1)}</span>/10
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* 写真 */}
+          {/* 1. Hero Image Section - full bleed */}
           {imageUrls.length > 0 ? (
-            <div className="-mx-3 md:mx-0 border-b border-black/[.06] dark:border-white/[.08]">
+            <div className="w-full">
               <div className="block w-full aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
                 <PostImageCarousel
                   postId={post.id}
@@ -293,22 +226,84 @@ export default function PostMainContent({
                   aspect={"square" as any}
                 />
               </div>
+              <div className="gm-brand-line" />
             </div>
           ) : null}
 
-          {/* 本文 */}
+          {/* 2. Place Header */}
+          <section className="px-4 md:px-6 pt-5 pb-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl font-extrabold text-slate-900 dark:text-gray-100 leading-tight">{post.place_name ?? t("unknownPlace")}</h1>
+                {areaLabel ? <p className="mt-1 text-[13px] text-slate-500 dark:text-gray-500">{areaLabel}</p> : null}
+
+                {/* Score + metadata inline */}
+                <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  {score !== null ? (
+                    <span className="flex items-baseline gap-0.5">
+                      <span className="text-2xl font-extrabold text-orange-500 dark:text-orange-400 leading-none">{score.toFixed(1)}</span>
+                      <span className="text-[12px] font-semibold text-orange-400 dark:text-orange-500">/10</span>
+                    </span>
+                  ) : null}
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-slate-500 dark:text-gray-500">
+                    {priceLabel ? <span>{priceLabel}</span> : null}
+                    {visitedLabel ? <span>{t("visitedOn")} {visitedLabel}</span> : null}
+                    {tod ? <span>{tod}</span> : null}
+                  </span>
+                </div>
+
+                {/* Map link - subtle text link */}
+                {mapUrl ? (
+                  <a href={mapUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-orange-500 dark:text-orange-400 hover:underline">
+                    <MapPin size={13} />{t("map")}
+                  </a>
+                ) : null}
+              </div>
+              <PostMoreMenu postId={post.id} isMine={isMine} />
+            </div>
+          </section>
+
+          {/* 3. Author Row */}
+          <section className="px-4 md:px-6 pt-3 pb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="gm-press flex h-9 w-9 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-black/[.06] dark:ring-white/[.08]">
+                {avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatar} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  initial
+                )}
+              </Link>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="truncate text-sm font-semibold text-slate-900 dark:text-gray-100 hover:underline">
+                      {display}
+                    </Link>
+                    {!isPublic ? <span className="text-[11px] text-slate-400 dark:text-gray-500">🔒</span> : null}
+                    <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatJST(post.created_at)}</span>
+                  </div>
+                  {showFollowButton ? (
+                    <FollowButton targetUserId={post.user_id} initiallyFollowing={false} initiallyRequested={false} label={followCtaLabel} />
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 4. Content Section */}
           {post.content ? (
-            <section className="px-4 py-4 border-b border-black/[.06] dark:border-white/[.08]">
+            <section className="px-4 md:px-6 pb-5">
               <TranslateButton text={post.content}>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-gray-200">{post.content}</p>
+                <p className="whitespace-pre-wrap text-[15px] leading-[1.75] text-slate-800 dark:text-gray-200">{post.content}</p>
               </TranslateButton>
             </section>
           ) : null}
 
-          {/* Details + Q&A */}
-          <section className="px-4 py-4 border-b border-black/[.06] dark:border-white/[.08]">
+          {/* 5. Details - flex-wrap chips */}
+          <section className="px-4 md:px-6 pb-5">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-extrabold text-slate-900 dark:text-gray-100">Details</h2>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-gray-100">Details</h2>
               <DetailRequestModal
                 postId={post.id}
                 postUserId={post.user_id}
@@ -318,52 +313,56 @@ export default function PostMainContent({
               />
             </div>
             {hasDetails ? (
-              <div className="mt-3">
-                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-                  <div className="divide-y divide-slate-200 dark:divide-white/[.08]">
-                    {detailRows.map((r) => (
-                      <div key={r.cat} className="grid grid-cols-[120px_1fr] gap-3 px-3 py-2">
-                        <div className="text-[12px] font-semibold text-slate-600 dark:text-gray-400">{r.title}</div>
-                        <div className="text-[12px] font-semibold text-slate-800 dark:text-gray-200">{r.value}</div>
-                      </div>
-                    ))}
+              <div className="mt-3 space-y-3">
+                {detailRows.map((r) => (
+                  <div key={r.cat}>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 mb-1.5">{r.title}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {r.value.split(" ・ ").map((chip) => (
+                        <span key={chip} className="inline-flex items-center rounded-full bg-slate-100 dark:bg-white/[.08] px-2.5 py-1 text-[12px] font-medium text-slate-700 dark:text-gray-300">
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
             ) : (
               <div className="mt-2 text-[12px] text-slate-500 dark:text-gray-500">{t("noDetails")}</div>
             )}
-            {publicReqs.length > 0 ? (
-              <div className="mt-5">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-gray-100">{t("supplementQA")}</h3>
-                  <div className="text-[11px] text-slate-400 dark:text-gray-500">{t("itemCount", { count: publicReqs.length })}</div>
-                </div>
-                <div className="mt-2 space-y-2">
-                  {publicReqs.map((r: any) => {
-                    const q = buildQuestionTextSafe(r);
-                    const ans = ansByReq[r.id] ?? [];
-                    return (
-                      <div key={r.id} className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.04] px-3 py-3">
-                        <div className="text-[12px] font-bold text-slate-800 dark:text-gray-200">Q. <span className="font-semibold">{q || t("question")}</span></div>
-                        <div className="mt-2 space-y-2">
-                          {ans.map((a: any) => (
-                            <div key={a.id} className="rounded-xl bg-slate-50 dark:bg-white/[.06] px-3 py-2">
-                              <div className="text-[12px] font-bold text-slate-700 dark:text-gray-300">A.</div>
-                              <div className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-900 dark:text-gray-100">{a.body}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
           </section>
 
-          {/* Actions */}
-          <div className="flex items-center justify-between px-4 py-4 border-b border-black/[.06] dark:border-white/[.08]">
+          {/* 6. Q&A Section */}
+          {publicReqs.length > 0 ? (
+            <section className="px-4 md:px-6 pb-5">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-gray-100">{t("supplementQA")}</h3>
+                <div className="text-[11px] text-slate-400 dark:text-gray-500">{t("itemCount", { count: publicReqs.length })}</div>
+              </div>
+              <div className="mt-2 space-y-2">
+                {publicReqs.map((r: any) => {
+                  const q = buildQuestionTextSafe(r);
+                  const ans = ansByReq[r.id] ?? [];
+                  return (
+                    <div key={r.id} className="rounded-2xl bg-slate-50 dark:bg-white/[.04] px-3.5 py-3">
+                      <div className="text-[12px] font-bold text-slate-800 dark:text-gray-200">Q. <span className="font-semibold">{q || t("question")}</span></div>
+                      <div className="mt-2 space-y-2">
+                        {ans.map((a: any) => (
+                          <div key={a.id} className="rounded-xl bg-white dark:bg-white/[.06] px-3 py-2">
+                            <div className="text-[12px] font-bold text-slate-700 dark:text-gray-300">A.</div>
+                            <div className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-900 dark:text-gray-100">{a.body}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {/* 7. Actions */}
+          <div className="flex items-center justify-between px-4 md:px-6 py-4">
             <PostActions
               postId={post.id}
               postUserId={post.user_id}
@@ -387,21 +386,24 @@ export default function PostMainContent({
             ) : null}
           </div>
 
-          {/* Comments（Server Component スロット） */}
-          <div id="comments" className="px-4 py-4 border-b border-black/[.06] dark:border-white/[.08]">
+          {/* Brand separator before comments */}
+          <div className="gm-brand-line" />
+
+          {/* 8. Comments */}
+          <div id="comments" className="px-4 md:px-6 py-5">
             {commentsSlot}
           </div>
 
-          {/* Place Photos（Server Component スロット） */}
+          {/* 9. Place Photos */}
           {placePhotosSlot ? (
-            <div className="px-4 py-4 border-b border-black/[.06] dark:border-white/[.08]">
+            <div className="px-4 md:px-6 py-5">
               {placePhotosSlot}
             </div>
           ) : null}
         </article>
 
         {/* この人の他の投稿 */}
-        <div className="mt-8">
+        <div className="mt-8 px-3 md:px-6">
           <UserOtherPostsStrip
             title={t("userOtherPosts", { name: display })}
             currentPostId={post.id}
@@ -413,7 +415,7 @@ export default function PostMainContent({
         </div>
       </main>
 
-      {/* More Discover（Server Component スロット） */}
+      {/* More Discover */}
       <div className="mx-auto max-w-5xl px-3 md:px-6 mt-0 mb-10">
         {discoverSlot}
       </div>

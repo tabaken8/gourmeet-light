@@ -9,6 +9,7 @@ import {
   OverlayView,
 } from "@react-google-maps/api";
 import type { PersonMapItem } from "@/app/api/people-map/route";
+import Link from "next/link";
 import { useTheme } from "@/components/providers/ThemeProvider";
 
 // ── shared map options (without styles — those are theme-dependent) ──
@@ -183,27 +184,42 @@ function PostPin({
             filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.3))",
           }}
         >
-          <div className="flex items-center gap-1.5 rounded-[10px] border-2 border-orange-500 bg-white dark:bg-[#1e2026] px-1.5 py-1 max-w-[180px]">
-            {post.image_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={post.image_url}
-                alt=""
-                className="w-9 h-9 rounded-md object-cover shrink-0"
-                loading="lazy"
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[11px] font-semibold text-slate-800 dark:text-gray-100">
-                {post.place_name}
-              </div>
-              {post.recommend_score != null && (
-                <div className="text-[10px] font-bold text-orange-500">
-                  {post.recommend_score.toFixed(1)}
+          {(() => {
+            const cardContent = (
+              <div className="flex items-center gap-2.5 rounded-xl border-2 border-orange-500 bg-white dark:bg-[#1e2026] px-2 py-1.5 max-w-[220px]">
+                {post.image_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={post.image_url}
+                    alt=""
+                    className="w-14 h-14 rounded-lg object-cover shrink-0"
+                    loading="lazy"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="line-clamp-2 text-[13px] font-bold leading-tight text-slate-800 dark:text-gray-100">
+                    {post.place_name}
+                  </div>
+                  {post.recommend_score != null && (
+                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/40 text-[12px] font-bold text-orange-600 dark:text-orange-400">
+                      ★ {post.recommend_score.toFixed(1)}
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            );
+
+            return post.post_id ? (
+              <Link
+                href={`/posts/${post.post_id}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {cardContent}
+              </Link>
+            ) : (
+              cardContent
+            );
+          })()}
           {/* Arrow pointing down to avatar */}
           <div
             style={{

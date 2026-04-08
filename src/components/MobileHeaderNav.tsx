@@ -11,6 +11,7 @@ import {
   Compass,
   Bell,
   UserPlus,
+  Bookmark,
   Plus,
   Settings,
 } from "lucide-react";
@@ -230,6 +231,16 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
                 <UserPlus size={18} className="text-slate-500 dark:text-gray-400" />
                 <Badge count={followReqCount} />
               </span>
+            </IconButton>
+
+            {/* Collection */}
+            <IconButton
+              href={gate("/collection")}
+              active={isActive("/collection")}
+              ariaLabel={t("collection")}
+              activeClassName="bg-slate-100"
+            >
+              <Bookmark size={18} className="text-slate-500 dark:text-gray-400" />
             </IconButton>
 
             {/* Settings */}
