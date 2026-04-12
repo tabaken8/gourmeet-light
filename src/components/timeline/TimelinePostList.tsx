@@ -309,7 +309,7 @@ export default function TimelinePostList({
 
 
   return (
-    <div className="flex flex-col items-stretch">
+    <div className="flex flex-col items-stretch touch-pan-y">
       {normalized.map((p, idx) => {
         const key = p.id ? `${p.id}` : `row-${idx}`;
 
