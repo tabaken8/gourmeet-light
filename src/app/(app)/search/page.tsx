@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 import { Compass, HelpCircle, MapPin as MapPinIcon, Search, Sparkles, TrainFront, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useTranslations } from "next-intl";
+import { normalizeQuery } from "@/lib/queryNormalizer";
 
 import { motion, AnimatePresence } from "framer-motion";
 import Skeleton from "react-loading-skeleton";
@@ -604,59 +605,13 @@ export default function SearchPage() {
   }
 
   // -------- 構造化クエリ判定 --------
-  // 「新宿 焼肉」のような location + genre だけのクエリかを判定
-  // true → LLM不要、index検索で0.5秒で返せる
-  const KNOWN_GENRES_SET = useMemo(() => new Set([
-    "和食","ラーメン","カフェ","イタリアン","寿司","焼肉","中華","フレンチ",
-    "居酒屋","韓国料理","海鮮","蕎麦","うどん","スイーツ","焼き鳥","天ぷら",
-    "鍋","とんかつ","バー","カレー","パン","ピザ","タイ料理","ベトナム料理",
-    ...genreCandidates,
-  ]), [genreCandidates]);
-
-  const isStructuredQuery = useCallback((text: string, chipGenre: string): {
-    structured: boolean;
-    locationToken: string | null;
-    genreToken: string | null;
-  } => {
-    const tokens = text.trim().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return { structured: false, locationToken: null, genreToken: null };
-    if (tokens.length > 3) return { structured: false, locationToken: null, genreToken: null };
-
-    // @mention or 自然言語 patterns
-    if (tokens.some(t => t.startsWith("@") || t.length > 8)) {
-      return { structured: false, locationToken: null, genreToken: null };
-    }
-
-    let genreToken: string | null = chipGenre || null;
-    let locationToken: string | null = null;
-    const unmatched: string[] = [];
-
-    for (const token of tokens) {
-      if (KNOWN_GENRES_SET.has(token)) {
-        if (!genreToken) genreToken = token;
-        // ジャンルが既にchipで指定済みならこのトークンは無視
-      } else {
-        // 地名候補（短い日本語、2〜5文字）
-        if (token.length >= 1 && token.length <= 6 && !locationToken) {
-          locationToken = token;
-        } else {
-          unmatched.push(token);
-        }
-      }
-    }
-
-    // unmatched があれば自然言語クエリ
-    if (unmatched.length > 0) return { structured: false, locationToken: null, genreToken: null };
-    // location も genre もないなら判定不能
-    if (!locationToken && !genreToken) return { structured: false, locationToken: null, genreToken: null };
-
-    return { structured: true, locationToken, genreToken: genreToken || chipGenre || null };
-  }, [KNOWN_GENRES_SET]);
+  // normalizeQuery() で助詞分割 + 装飾語除去 → Fast path 判定
 
   // -------- 構造化クエリの fast path 検索 --------
   async function loadStructuredSearch(args: {
-    locationToken: string;
+    locationToken: string | null;
     genreToken: string | null;
+    mentionUser?: string | null;
     follow: boolean;
   }) {
     setSemanticLoading(true);
@@ -667,22 +622,28 @@ export default function SearchPage() {
     setHintsOpen(false);
 
     try {
-      // 1. 地名 → station_place_id を解決
-      const stationRes = await fetch(`/api/search/suggest/station?q=${encodeURIComponent(args.locationToken)}&limit=1`);
-      const stationPayload = await stationRes.json().catch(() => ({}));
-      const station = stationPayload?.stations?.[0];
-
-      if (station?.station_place_id) {
-        setDetectedStations([{ name: station.station_name, placeId: station.station_place_id }]);
-      }
-
-      // 2. /api/search に station + genre で直接問い合わせ
       const params = new URLSearchParams();
-      if (station?.station_place_id) {
-        params.set("station_place_id", station.station_place_id);
-        params.set("station_name", station.station_name ?? args.locationToken);
-        params.set("radius_m", "3000");
+
+      // 1. 地名があれば → station_place_id を解決
+      if (args.locationToken) {
+        const stationRes = await fetch(`/api/search/suggest/station?q=${encodeURIComponent(args.locationToken)}&limit=1`);
+        const stationPayload = await stationRes.json().catch(() => ({}));
+        const station = stationPayload?.stations?.[0];
+
+        if (station?.station_place_id) {
+          setDetectedStations([{ name: station.station_name, placeId: station.station_place_id }]);
+          params.set("station_place_id", station.station_place_id);
+          params.set("station_name", station.station_name ?? args.locationToken);
+          params.set("radius_m", "3000");
+        }
       }
+
+      // 2. メンションがあれば author パラメータを設定
+      if (args.mentionUser) {
+        params.set("author", args.mentionUser);
+      }
+
+      // 3. 検索クエリ構築
       const searchQ = [args.genreToken, args.locationToken].filter(Boolean).join(" ");
       if (searchQ) params.set("q", searchQ);
       if (args.follow) params.set("follow", "1");
@@ -763,14 +724,15 @@ export default function SearchPage() {
       setResultMode("ai");
       if (nq) loadUsers(nq);
 
-      // 構造化クエリ判定: 「新宿 焼肉」のようなシンプルなクエリは LLM 不要
-      const sq = isStructuredQuery(nq, ng);
-      if (sq.structured && sq.locationToken) {
+      // 構造化クエリ判定: 助詞分割 + 装飾語除去で Fast path に回せるか判定
+      const nq_result = normalizeQuery(nq, ng, genreCandidates);
+      if (nq_result.structured) {
         // Fast path: index検索のみ (~0.5s)
         setAiSearchStartedAt(null);
         loadStructuredSearch({
-          locationToken: sq.locationToken,
-          genreToken: sq.genreToken,
+          locationToken: nq_result.locationToken,
+          genreToken: nq_result.genreToken,
+          mentionUser: nq_result.mentionUser,
           follow: next.follow,
         });
       } else {
