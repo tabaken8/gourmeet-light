@@ -781,9 +781,9 @@ export default function NewPostPage() {
     setBusy(true);
     setMsg(null);
 
-    // 投稿成功フラグ → beforeunload を無効化 & 下書き削除
+    // 投稿開始フラグ（下書き自動保存を止める）
+    // ※ clearDraft は DB INSERT 成功後に行う（失敗時に下書き復元するため）
     submittedRef.current = true;
-    clearDraft().catch(() => {});
 
     // ── Step 1: バリデーション通過直後にoptimisticを開始してすぐ遷移 ──────
     // アップロード完了を待たず、ローカルのblob URLでプレビューを表示
@@ -894,8 +894,13 @@ export default function NewPostPage() {
           fetch(`/api/posts/${inserted.id}/embed`, { method: "POST" }).catch(() => {});
         }
 
+        // 成功 → 下書きを削除
+        clearDraft().catch(() => {});
         optimisticPost.markDone();
       } catch {
+        // 失敗 → 下書きを復元（submittedRef を戻してから doSave）
+        submittedRef.current = false;
+        doSave();
         optimisticPost.markError();
       }
     })();
