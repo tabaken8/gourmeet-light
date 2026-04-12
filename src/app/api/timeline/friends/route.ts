@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { getGoodNotFollowingUsers, fetchGoodNotFollowingPosts, interleavePosts } from "@/lib/timeline-fof";
 
 function metersToWalkMinCeil(m: number | null | undefined): number | null {
   if (typeof m !== "number" || !Number.isFinite(m) || m < 0) return null;
@@ -241,16 +242,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ posts: arranged, nextCursor: nextCursorOut, meta }, { status: 200 });
   }
 
-  // ✅ ログイン：friends RPC
-  const { data, error } = await supabase.rpc("timeline_friends_v1", {
-    p_limit: limit,
-    p_cursor: cursor,
-  });
+  // ✅ ログイン：friends RPC + "良い not-following" 投稿
+  const [rpcResult, nfInfo] = await Promise.all([
+    supabase.rpc("timeline_friends_v1", {
+      p_limit: limit,
+      p_cursor: cursor,
+    }),
+    getGoodNotFollowingUsers(supabase, meId),
+  ]);
 
-  const rows = (data ?? []) as any[];
-  const nextCursor = rows.length > 0 ? rows[rows.length - 1].created_at : null;
+  const rows = (rpcResult.data ?? []) as any[];
 
-  let posts = error
+  let friendsPosts = rpcResult.error
     ? []
     : rows.map((r) => ({
         id: r.id,
@@ -287,10 +290,26 @@ export async function GET(req: Request) {
         initialLikers: r.initial_likers ?? r.initialLikers ?? [],
       }));
 
+  // "良い not-following" 投稿を取得（ランダム、リフレッシュごとに異なる）
+  const nfPostCount = Math.max(3, Math.ceil(limit / 5));
+  const nfPosts = await fetchGoodNotFollowingPosts(
+    supabase,
+    nfInfo,
+    meId,
+    nfPostCount,
+    cursor
+  );
+
+  // フレンド投稿優先でインターリーブ → 同一ユーザー連続回避
+  let posts = enforceNoRepeatWithin(
+    interleavePosts(friendsPosts, nfPosts, limit),
+    3
+  );
+  const nextCursor = posts.length > 0 ? posts[posts.length - 1].created_at : null;
+
   posts = await attachNearestStationsToPosts(supabase, posts);
 
-  // ✅ meta は “初回ページ” だけ（cursor ありなら followCount だけ返す）
-  const meta: Meta = cursor ? await buildMetaForLoggedIn(supabase, meId) : await buildMetaForLoggedIn(supabase, meId);
+  const meta: Meta = await buildMetaForLoggedIn(supabase, meId);
 
   return NextResponse.json({ posts, nextCursor, meta }, { status: 200 });
 }

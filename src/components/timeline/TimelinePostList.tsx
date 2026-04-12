@@ -1,7 +1,7 @@
 // src/components/timeline/TimelinePostList.tsx
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { MapPin, Lock } from "lucide-react";
@@ -66,6 +66,9 @@ export type PostRow = {
   likeCount?: number;
   likedByMe?: boolean;
   initialLikers?: LikerLite[];
+
+  /** "良い not-following" 投稿の理由ラベル（フォロー中ユーザーにはない） */
+  notFollowingReason?: string | null;
 };
 
 function formatJST(iso: any) {
@@ -186,6 +189,61 @@ function getTimelineSquareUrls(p: PostRow): string[] {
 function metersToWalkMin(m: number | null | undefined): number | null {
   if (typeof m !== "number" || !Number.isFinite(m) || m < 0) return null;
   return Math.max(1, Math.ceil(m / 80));
+}
+
+/** 楽観的フォローボタン（タイムライン投稿用・白黒反転・可逆） */
+function InlineFollowButton({ targetUserId }: { targetUserId: string }) {
+  const [followed, setFollowed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const handleToggle = useCallback(async () => {
+    if (busy) return;
+    const willFollow = !followed;
+    // 楽観的更新: 即座にUIを反映
+    setFollowed(willFollow);
+    setBusy(true);
+
+    try {
+      if (willFollow) {
+        const res = await fetch("/api/follow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetId: targetUserId }),
+        });
+        if (!res.ok) setFollowed(false);
+      } else {
+        const qs = new URLSearchParams({ targetId: targetUserId });
+        const res = await fetch(`/api/follow?${qs.toString()}`, { method: "DELETE" });
+        if (!res.ok) setFollowed(true);
+      }
+    } catch {
+      setFollowed(!willFollow);
+    } finally {
+      setBusy(false);
+    }
+  }, [targetUserId, followed, busy]);
+
+  if (followed) {
+    return (
+      <button
+        onClick={handleToggle}
+        disabled={busy}
+        className="rounded-full border border-slate-300 dark:border-white/15 bg-white dark:bg-white/[.06] px-2.5 py-0.5 text-[11px] font-medium text-slate-800 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+      >
+        フォロー中
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleToggle}
+      disabled={busy}
+      className="rounded-full border border-slate-900 dark:border-white/20 bg-slate-900 dark:bg-white/15 px-2.5 py-0.5 text-[11px] font-medium text-white hover:opacity-90 transition-colors disabled:opacity-50"
+    >
+      フォローする
+    </button>
+  );
 }
 
 export default function TimelinePostList({
@@ -325,6 +383,11 @@ export default function TimelinePostList({
                           {display}
                         </Link>
                         {!isPublic && <Lock size={12} className="shrink-0 text-slate-400 dark:text-gray-500" />}
+                        {p.notFollowingReason && (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-white/[.08] px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-gray-400 whitespace-nowrap">
+                            {p.notFollowingReason}
+                          </span>
+                        )}
                         <span className="text-[11px] text-slate-400 dark:text-gray-500">{"\u00B7"}</span>
                         <span className="text-[11px] text-slate-400 dark:text-gray-500">{formatRelativeTime(p.created_at, t)}</span>
                       </div>
@@ -362,7 +425,10 @@ export default function TimelinePostList({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
+                    {p.notFollowingReason && meId && meId !== p.user_id && (
+                      <InlineFollowButton targetUserId={p.user_id} />
+                    )}
                     <PostMoreMenu postId={p.id} isMine={meId === p.user_id} />
                   </div>
                 </div>

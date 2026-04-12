@@ -1,6 +1,7 @@
 // src/components/timeline/FriendsTimelineServer.tsx
 import { createClient } from "@/lib/supabase/server";
 import FriendsTimelineClient from "./FriendsTimelineClient";
+import { getGoodNotFollowingUsers, fetchGoodNotFollowingPosts, interleavePosts } from "@/lib/timeline-fof";
 
 export const dynamic = "force-dynamic";
 
@@ -197,19 +198,19 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
     );
   }
 
-  // ログイン済み：直接RPC呼び出し
-  const [postsResult, meta] = await Promise.all([
+  // ログイン済み：直接RPC呼び出し + k-hop=2投稿
+  const [postsResult, meta, fofInfo] = await Promise.all([
     supabase.rpc("timeline_friends_v1", {
       p_limit: LIMIT,
       p_cursor: null,
     }),
     buildMetaForLoggedIn(supabase, meId),
+    getGoodNotFollowingUsers(supabase, meId),
   ]);
 
   const rows = (postsResult.data ?? []) as any[];
-  const nextCursor = rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
-  let posts = postsResult.error
+  let friendsPosts = postsResult.error
     ? []
     : rows.map((r) => ({
         id: r.id,
@@ -239,6 +240,23 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
         likedByMe: r.liked_by_me ?? r.likedByMe ?? false,
         initialLikers: r.initial_likers ?? r.initialLikers ?? [],
       }));
+
+  // "良い not-following" 投稿を取得（ランダム、リフレッシュごとに異なる）
+  const nfPostCount = Math.max(3, Math.ceil(LIMIT / 5));
+  const nfPosts = await fetchGoodNotFollowingPosts(
+    supabase,
+    fofInfo,
+    meId,
+    nfPostCount,
+    null
+  );
+
+  // フレンド投稿優先でインターリーブ → 同一ユーザー連続回避
+  let posts = enforceNoRepeatWithin(
+    interleavePosts(friendsPosts, nfPosts, LIMIT),
+    3
+  );
+  const nextCursor = posts.length > 0 ? posts[posts.length - 1].created_at : null;
 
   posts = await attachNearestStationsToPosts(supabase, posts);
 
