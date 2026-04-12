@@ -898,14 +898,14 @@ export default function TimelineFeed({
                         type="button"
                         onClick={togglePhotos}
                         aria-label={isPhotosOpen ? "Googleの写真を閉じる" : "Googleの写真を表示"}
-                        className="md:hidden gm-chip gm-press inline-flex h-7 items-center gap-1 px-2 text-[11px] text-slate-700"
+                        className="md:hidden gm-chip gm-press inline-flex h-7 items-center gap-1 px-2 text-[11px] text-slate-700 dark:text-gray-300"
                       >
                         <GoogleMark className="h-4 w-4" />
                         <span className="leading-none">写真</span>
                         {isPhotosOpen ? (
-                          <ChevronUp size={14} className="text-slate-700" />
+                          <ChevronUp size={14} className="text-slate-700 dark:text-gray-300" />
                         ) : (
-                          <ChevronDown size={14} className="text-slate-700" />
+                          <ChevronDown size={14} className="text-slate-700 dark:text-gray-300" />
                         )}
                       </button>
                     )}

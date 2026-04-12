@@ -140,11 +140,11 @@ export default function PlacePhotoGallery({
   return (
     <div ref={rootRef} className="space-y-2">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-slate-700 truncate">
+        <div className="text-xs font-medium text-slate-700 dark:text-gray-300 truncate">
           Googleマップからの写真
         </div>
         {loading ? (
-          <div className="text-[11px] text-slate-400">読み込み中…</div>
+          <div className="text-[11px] text-slate-400 dark:text-gray-500">読み込み中…</div>
         ) : null}
       </div>
 

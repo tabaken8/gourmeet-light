@@ -5,16 +5,16 @@ export const metadata = {
 export default function TermsPage() {
   return (
     <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6 md:pb-10">
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">利用規約</h1>
+      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-gray-200">利用規約</h1>
 
-      <div className="space-y-6 text-sm leading-relaxed text-slate-800">
+      <div className="space-y-6 text-sm leading-relaxed text-slate-800 dark:text-gray-200">
         <p>
           本利用規約（以下、「本規約」）は、Gourmeet（以下、「本サービス」）の
           利用条件を定めるものです。ユーザーは、本規約に同意の上、本サービスを利用するものとします。
         </p>
 
         <section>
-          <h2 className="mb-2 font-semibold text-slate-800">
+          <h2 className="mb-2 font-semibold text-slate-800 dark:text-gray-200">
             第1条（適用）
           </h2>
           <p>
@@ -24,7 +24,7 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="mb-2 font-semibold text-slate-800">
+          <h2 className="mb-2 font-semibold text-slate-800 dark:text-gray-200">
             第2条（禁止事項）
           </h2>
           <p>ユーザーは、以下の行為をしてはなりません。</p>
@@ -37,7 +37,7 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="mb-2 font-semibold text-slate-800">
+          <h2 className="mb-2 font-semibold text-slate-800 dark:text-gray-200">
             第3条（サービスの提供）
           </h2>
           <p>
@@ -46,7 +46,7 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="mb-2 font-semibold text-slate-800">
+          <h2 className="mb-2 font-semibold text-slate-800 dark:text-gray-200">
             第4条（免責事項）
           </h2>
           <p>
@@ -55,7 +55,7 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="mb-2 font-semibold text-slate-800">
+          <h2 className="mb-2 font-semibold text-slate-800 dark:text-gray-200">
             第5条（規約の変更）
           </h2>
           <p>
