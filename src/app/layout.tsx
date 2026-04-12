@@ -156,11 +156,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
           <footer className="border-t border-black/[.06] dark:border-white/[.08] bg-white/70 dark:bg-[#12131a]/70 py-6 text-center text-xs text-black/60 dark:text-gray-400">
             <div className="mb-2 flex items-center justify-center gap-4">
-              <Link href="/privacy" className="underline underline-offset-2">
+              <Link href="/legal/privacy" className="underline underline-offset-2">
                 {t("privacy")}
               </Link>
               <span className="opacity-40">|</span>
-              <Link href="/terms" className="underline underline-offset-2">
+              <Link href="/legal/terms" className="underline underline-offset-2">
                 {t("terms")}
               </Link>
             </div>
