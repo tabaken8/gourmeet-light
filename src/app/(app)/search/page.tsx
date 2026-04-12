@@ -944,7 +944,22 @@ export default function SearchPage() {
 
   // -------- 操作ハンドラ --------
   const handleSearch = () => {
-    commitSearch({ q, genre, follow: followOnly, mode, sid: stationPlaceId, sname: stationName });
+    // テキスト入力からジャンルを検出し、チップと同期
+    const currentText = q.trim();
+    const textGenre = genreCandidates.find((g) => g && currentText.includes(g));
+    let resolvedGenre = genre;
+
+    if (textGenre) {
+      // テキストにジャンルが含まれている → そのジャンルをチップに反映
+      resolvedGenre = textGenre;
+      setGenre(textGenre);
+    } else if (genre && !currentText.includes(genre)) {
+      // 以前のチップジャンルがテキストから消えている → チップをクリア
+      resolvedGenre = "";
+      setGenre("");
+    }
+
+    commitSearch({ q: currentText, genre: resolvedGenre, follow: followOnly, mode, sid: stationPlaceId, sname: stationName });
   };
 
   const selectStation = (s: Station) => {
