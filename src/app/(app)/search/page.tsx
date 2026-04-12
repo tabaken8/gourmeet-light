@@ -726,6 +726,8 @@ export default function SearchPage() {
 
       // 構造化クエリ判定: 助詞分割 + 装飾語除去で Fast path に回せるか判定
       const nq_result = normalizeQuery(nq, ng, genreCandidates);
+      console.log("[commitSearch] normalizeQuery input:", { nq, ng, genreCandidatesLen: genreCandidates.length });
+      console.log("[commitSearch] normalizeQuery result:", JSON.stringify(nq_result));
       if (nq_result.structured) {
         // Fast path: index検索のみ (~0.5s)
         setAiSearchStartedAt(null);
