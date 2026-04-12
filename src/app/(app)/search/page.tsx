@@ -274,6 +274,7 @@ export default function SearchPage() {
   // --- map ---
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [geoMode, setGeoMode] = useState(false);
+  const [geoBounds, setGeoBounds] = useState<MapBounds | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [selectedMapPost, setSelectedMapPost] = useState<MapPost | null>(null);
@@ -607,12 +608,18 @@ export default function SearchPage() {
   // -------- 構造化クエリ判定 --------
   // normalizeQuery() で助詞分割 + 装飾語除去 → Fast path 判定
 
+  // -------- デフォルト東京スコープ（地理情報なし時） --------
+  const TOKYO_DEFAULT_BOUNDS: MapBounds = {
+    north: 35.82, south: 35.55, east: 139.92, west: 139.55,
+  };
+
   // -------- 構造化クエリの fast path 検索 --------
   async function loadStructuredSearch(args: {
     locationToken: string | null;
     genreToken: string | null;
     mentionUser?: string | null;
     follow: boolean;
+    bbox?: MapBounds | null;
   }) {
     setSemanticLoading(true);
     setSemanticError(null);
@@ -636,6 +643,12 @@ export default function SearchPage() {
           params.set("station_name", station.station_name ?? args.locationToken);
           params.set("radius_m", "3000");
         }
+      } else if (args.bbox) {
+        // 現在地モード or デフォルト東京スコープ → bbox で絞り込み
+        params.set("bbox_north", String(args.bbox.north));
+        params.set("bbox_south", String(args.bbox.south));
+        params.set("bbox_east", String(args.bbox.east));
+        params.set("bbox_west", String(args.bbox.west));
       }
 
       // 2. メンションがあれば author パラメータを設定
@@ -729,11 +742,18 @@ export default function SearchPage() {
       if (nq_result.structured) {
         // Fast path: index検索のみ (~0.5s)
         setAiSearchStartedAt(null);
+        // スコープ決定: geoMode > 地名トークン > デフォルト東京
+        const bbox = nq_result.locationToken
+          ? null                             // 地名あり → station 解決に任せる
+          : geoMode && geoBounds
+            ? geoBounds                      // 現在地モード → 現在地 bbox
+            : TOKYO_DEFAULT_BOUNDS;          // どちらもなし → 東京デフォルト
         loadStructuredSearch({
           locationToken: nq_result.locationToken,
           genreToken: nq_result.genreToken,
           mentionUser: nq_result.mentionUser,
           follow: next.follow,
+          bbox,
         });
       } else {
         // LLM path: AI検索 (~10s)
@@ -813,7 +833,7 @@ export default function SearchPage() {
         setGeoLoading(false);
         geoRetryRef.current = 0;
 
-        // Auto-search area around user location (~1km box)
+        // Store bounds for geo mode (~1km box)
         const delta = 0.008; // ~800m
         const autoBounds: MapBounds = {
           north: loc[0] + delta,
@@ -821,6 +841,8 @@ export default function SearchPage() {
           east: loc[1] + delta,
           west: loc[1] - delta,
         };
+        setGeoBounds(autoBounds);
+        // Auto-search: 現在地周辺の全投稿を取得
         handleSearchThisArea(autoBounds);
       },
       (err) => {
@@ -1009,11 +1031,22 @@ export default function SearchPage() {
       {/* ===== Search Card ===== */}
       <motion.div className="px-2 py-2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
 
-        {/* タイトル */}
+        {/* タイトル + 現在地モードバッジ */}
         {!isEmpty && (
           <div className="flex items-center gap-2 mb-2 px-1">
             {committedMode === "station" && <TrainFront size={14} className="shrink-0 text-slate-500" />}
             <p className="text-[13px] font-medium text-slate-700 dark:text-gray-300">{titleText}</p>
+            {geoMode && (
+              <button
+                type="button"
+                onClick={() => { setGeoMode(false); setGeoBounds(null); }}
+                className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-600 active:scale-[0.97] transition"
+              >
+                <MapPinIcon size={11} />
+                現在地
+                <X size={11} className="opacity-70" />
+              </button>
+            )}
           </div>
         )}
 
@@ -1140,19 +1173,31 @@ export default function SearchPage() {
       {/* ===== Body ===== */}
       {isEmpty ? (
         <div className="space-y-3">
-          {/* 現在地から探すボタン */}
-          <div className="px-3 pt-2">
-            <button
-              type="button"
-              onClick={handleSearchFromLocation}
-              disabled={geoLoading}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-gray-200 shadow-sm hover:bg-slate-50 dark:hover:bg-white/10 active:scale-[0.97] transition disabled:opacity-50"
-            >
-              <MapPinIcon size={15} className="text-blue-500" />
-              {geoLoading ? t("gettingLocation") : t("searchFromLocation")}
-            </button>
+          {/* 現在地から探す / 現在地モード表示 */}
+          <div className="px-3 pt-2 flex items-center gap-2 flex-wrap">
+            {geoMode ? (
+              <button
+                type="button"
+                onClick={() => { setGeoMode(false); setGeoBounds(null); }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-blue-500 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-blue-600 active:scale-[0.97] transition"
+              >
+                <MapPinIcon size={14} />
+                現在地モード:ON
+                <X size={14} className="ml-0.5 opacity-70" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSearchFromLocation}
+                disabled={geoLoading}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-gray-200 shadow-sm hover:bg-slate-50 dark:hover:bg-white/10 active:scale-[0.97] transition disabled:opacity-50"
+              >
+                <MapPinIcon size={15} className="text-blue-500" />
+                {geoLoading ? t("gettingLocation") : t("searchFromLocation")}
+              </button>
+            )}
             {geoError && (
-              <p className="mt-2 text-xs text-red-500 whitespace-pre-line">{geoError}</p>
+              <p className="text-xs text-red-500 whitespace-pre-line">{geoError}</p>
             )}
           </div>
 
