@@ -322,7 +322,7 @@ export default function PostMainContent({
           {post.content ? (
             <section className="px-4 md:px-6 pb-5">
               <TranslateButton text={post.content}>
-                <p className="whitespace-pre-wrap text-[15px] leading-[1.75] text-slate-800 dark:text-gray-200">{post.content}</p>
+                <p className="whitespace-pre-wrap text-[13.5px] leading-[1.75] text-slate-800 dark:text-gray-200">{post.content}</p>
               </TranslateButton>
             </section>
           ) : null}

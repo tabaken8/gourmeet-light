@@ -420,7 +420,7 @@ export default function SearchPostList({
                   {p.content && (
                     <>
                       <TranslateButton text={p.content}>
-                        <p className="whitespace-pre-wrap text-[13px] leading-snug text-slate-800 dark:text-gray-200">
+                        <p className="whitespace-pre-wrap text-[12px] leading-snug text-slate-800 dark:text-gray-200">
                           <Link href={`/posts/${p.id}`} className="hover:underline">
                             {p.content}
                           </Link>
