@@ -268,13 +268,18 @@ export default function SearchPage() {
   const [peopleLoading, setPeopleLoading] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
+  // --- デフォルト表示（未ログイン / follow 0 / people 空） ---
+  const [defaultPosts, setDefaultPosts] = useState<PostRow[]>([]);
+  const [defaultLoading, setDefaultLoading] = useState(false);
+
   // --- AI search timing ---
   const [aiSearchStartedAt, setAiSearchStartedAt] = useState<number | null>(null);
 
-  // --- map ---
+  // --- map / 地図スコープ固定 ---
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-  const [geoMode, setGeoMode] = useState(false);
-  const [geoBounds, setGeoBounds] = useState<MapBounds | null>(null);
+  const [scopedBounds, setScopedBounds] = useState<MapBounds | null>(null);
+  const [scopedStation, setScopedStation] = useState<{ placeId: string; name: string } | null>(null);
+  const [scopeLabel, setScopeLabel] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [selectedMapPost, setSelectedMapPost] = useState<MapPost | null>(null);
@@ -317,6 +322,35 @@ export default function SearchPage() {
     })();
     return () => { alive = false; };
   }, []);
+
+  // peoplePeople が空の時、本郷エリアのデフォルト投稿を取得
+  const HONGO_CENTER = { lat: 35.7128, lng: 139.7603 };
+  const HONGO_BOUNDS: MapBounds = {
+    north: 35.73, south: 35.69, east: 139.78, west: 139.74,
+  };
+  useEffect(() => {
+    if (peopleLoading || peoplePeople.length > 0) return;
+    let alive = true;
+    setDefaultLoading(true);
+    const params = new URLSearchParams({
+      bbox_north: String(HONGO_BOUNDS.north),
+      bbox_south: String(HONGO_BOUNDS.south),
+      bbox_east: String(HONGO_BOUNDS.east),
+      bbox_west: String(HONGO_BOUNDS.west),
+      limit: "30",
+    });
+    fetch(`/api/search?${params}`)
+      .then((r) => r.json().catch(() => ({})))
+      .then((payload) => {
+        if (!alive) return;
+        const posts: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
+        setDefaultPosts(posts);
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setDefaultLoading(false); });
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peopleLoading, peoplePeople.length]);
 
   const handleSelectPerson = useCallback((userId: string | null) => {
     setSelectedUserId(userId);
@@ -631,7 +665,7 @@ export default function SearchPage() {
     try {
       const params = new URLSearchParams();
 
-      // 1. 地名があれば → station_place_id を解決
+      // 1. 地名があれば → station_place_id を解決 & スコープ固定
       if (args.locationToken) {
         const stationRes = await fetch(`/api/search/suggest/station?q=${encodeURIComponent(args.locationToken)}&limit=1`);
         const stationPayload = await stationRes.json().catch(() => ({}));
@@ -642,9 +676,17 @@ export default function SearchPage() {
           params.set("station_place_id", station.station_place_id);
           params.set("station_name", station.station_name ?? args.locationToken);
           params.set("radius_m", "3000");
+
+          // 地名検索 → スコープ固定（station ベース）
+          // station_place_id を使ってスコープを固定する
+          // bbox は不明だが、次のチップ検索時に同じ station で再検索できるようにラベルだけ設定
+          setScopeLabel(station.station_name ?? args.locationToken);
+          // scopedBounds は station 検索では使わない（station_place_id で直接フィルタ）
+          // → scopedStation として別途保持
+          setScopedStation({ placeId: station.station_place_id, name: station.station_name ?? args.locationToken });
         }
       } else if (args.bbox) {
-        // 現在地モード or デフォルト東京スコープ → bbox で絞り込み
+        // スコープ固定 or デフォルト東京 → bbox で絞り込み
         params.set("bbox_north", String(args.bbox.north));
         params.set("bbox_south", String(args.bbox.south));
         params.set("bbox_east", String(args.bbox.east));
@@ -710,7 +752,7 @@ export default function SearchPage() {
     setCommittedStationName(next.sname ?? null);
     setSearchedStationName(mm === "station" ? (next.sname ?? null) : null);
 
-    setGeoMode(false);
+    // スコープは維持する（ユーザーが×で解除するまで）
     setSelectedMapPost(null);
     setUsers([]);
     setPosts([]);
@@ -742,18 +784,26 @@ export default function SearchPage() {
       if (nq_result.structured) {
         // Fast path: index検索のみ (~0.5s)
         setAiSearchStartedAt(null);
-        // スコープ決定: geoMode > 地名トークン > デフォルト東京
-        const bbox = nq_result.locationToken
-          ? null                             // 地名あり → station 解決に任せる
-          : geoMode && geoBounds
-            ? geoBounds                      // 現在地モード → 現在地 bbox
-            : TOKYO_DEFAULT_BOUNDS;          // どちらもなし → 東京デフォルト
+        // スコープ決定: 地名トークン > 固定station > 固定bbox > デフォルト東京
+        let scopeLocation = nq_result.locationToken;
+        let scopeBbox: MapBounds | null = null;
+
+        if (nq_result.locationToken) {
+          // 新しい地名あり → station 解決 & スコープ更新（loadStructuredSearch 内で処理）
+        } else if (scopedStation) {
+          // 固定 station あり → 地名トークンとして station 名を使う
+          scopeLocation = scopedStation.name;
+        } else {
+          // bbox スコープ or デフォルト東京
+          scopeBbox = scopedBounds ?? TOKYO_DEFAULT_BOUNDS;
+        }
+
         loadStructuredSearch({
-          locationToken: nq_result.locationToken,
+          locationToken: scopeLocation,
           genreToken: nq_result.genreToken,
           mentionUser: nq_result.mentionUser,
           follow: next.follow,
-          bbox,
+          bbox: scopeBbox,
         });
       } else {
         // LLM path: AI検索 (~10s)
@@ -782,10 +832,13 @@ export default function SearchPage() {
     }
   };
 
-  // -------- bbox検索 (このエリアで検索) --------
+  // -------- bbox検索 (このエリアで検索) → スコープ固定 --------
   const handleSearchThisArea = useCallback(async (bounds: MapBounds) => {
     setAreaSearchLoading(true);
     setError(null);
+    // 「このエリアで検索」→ スコープ固定
+    setScopedBounds(bounds);
+    if (!scopeLabel) setScopeLabel("このエリア");
     try {
       const params = new URLSearchParams({
         bbox_north: String(bounds.north),
@@ -807,7 +860,7 @@ export default function SearchPage() {
     } finally {
       setAreaSearchLoading(false);
     }
-  }, [q, t]);
+  }, [q, t, scopeLabel]);
 
   // -------- 現在地から探す (Plan C) --------
   const geoRetryRef = useRef(0);
@@ -829,11 +882,10 @@ export default function SearchPage() {
       (pos) => {
         const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setUserLocation(loc);
-        setGeoMode(true);
         setGeoLoading(false);
         geoRetryRef.current = 0;
 
-        // Store bounds for geo mode (~1km box)
+        // スコープ固定: 現在地 (~1km box)
         const delta = 0.008; // ~800m
         const autoBounds: MapBounds = {
           north: loc[0] + delta,
@@ -841,7 +893,8 @@ export default function SearchPage() {
           east: loc[1] + delta,
           west: loc[1] - delta,
         };
-        setGeoBounds(autoBounds);
+        setScopedBounds(autoBounds);
+        setScopeLabel("現在地");
         // Auto-search: 現在地周辺の全投稿を取得
         handleSearchThisArea(autoBounds);
       },
@@ -1036,14 +1089,14 @@ export default function SearchPage() {
           <div className="flex items-center gap-2 mb-2 px-1">
             {committedMode === "station" && <TrainFront size={14} className="shrink-0 text-slate-500" />}
             <p className="text-[13px] font-medium text-slate-700 dark:text-gray-300">{titleText}</p>
-            {geoMode && (
+            {(scopedBounds || scopedStation) && scopeLabel && (
               <button
                 type="button"
-                onClick={() => { setGeoMode(false); setGeoBounds(null); }}
+                onClick={() => { setScopedBounds(null); setScopedStation(null); setScopeLabel(null); }}
                 className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-600 active:scale-[0.97] transition"
               >
                 <MapPinIcon size={11} />
-                現在地
+                {scopeLabel}
                 <X size={11} className="opacity-70" />
               </button>
             )}
@@ -1173,16 +1226,16 @@ export default function SearchPage() {
       {/* ===== Body ===== */}
       {isEmpty ? (
         <div className="space-y-3">
-          {/* 現在地から探す / 現在地モード表示 */}
+          {/* 現在地から探す / スコープ固定表示 */}
           <div className="px-3 pt-2 flex items-center gap-2 flex-wrap">
-            {geoMode ? (
+            {scopedBounds ? (
               <button
                 type="button"
-                onClick={() => { setGeoMode(false); setGeoBounds(null); }}
+                onClick={() => { setScopedBounds(null); setScopedStation(null); setScopeLabel(null); }}
                 className="inline-flex items-center gap-1.5 rounded-full bg-blue-500 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-blue-600 active:scale-[0.97] transition"
               >
                 <MapPinIcon size={14} />
-                現在地モード:ON
+                {scopeLabel ?? "エリア固定"}
                 <X size={14} className="ml-0.5 opacity-70" />
               </button>
             ) : (
@@ -1201,8 +1254,8 @@ export default function SearchPage() {
             )}
           </div>
 
-          {/* geoMode: 現在地マップ */}
-          {geoMode && (
+          {/* スコープ固定時: マップ表示 */}
+          {scopedBounds && (
             <div className="space-y-0">
               <div className="px-2 pb-1">
                 <SearchMap
@@ -1228,7 +1281,7 @@ export default function SearchPage() {
             </div>
           )}
 
-          {!geoMode && (
+          {!scopedBounds && (
             <AnimatePresence mode="wait">
               {peopleLoading ? (
                 <motion.div key="people-loading" {...fadeUp} className="space-y-3 px-2">
@@ -1268,10 +1321,42 @@ export default function SearchPage() {
                   />
                 </motion.div>
               ) : (
-                <motion.div key="empty-splash" {...fadeUp} className="px-3 py-2">
-                  <div className="text-xs text-slate-500 dark:text-gray-500">
-                    {t("emptyHint")}
+                <motion.div key="default-explore" {...fadeUp} className="space-y-3">
+                  {/* デフォルト: 本郷エリアの地図 + 投稿 */}
+                  <div className="mb-2 flex items-center gap-2 px-3">
+                    <Compass size={14} className="text-orange-500" />
+                    <h2 className="text-[13px] font-semibold text-slate-700 dark:text-gray-300">
+                      みんなの投稿を探索
+                    </h2>
                   </div>
+                  {defaultLoading ? (
+                    <div className="px-2">
+                      <div className="w-full rounded-xl bg-slate-100 dark:bg-[#1e2026] animate-pulse" style={{ height: "40vh", minHeight: 240 }} />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="px-2">
+                        <SearchMap
+                          posts={defaultPosts}
+                          userLocation={[HONGO_CENTER.lat, HONGO_CENTER.lng]}
+                          onSearchThisArea={handleSearchThisArea}
+                          showSearchButton={true}
+                          onSelectPost={(p) => setSelectedMapPost(p)}
+                          selectedPostId={selectedMapPost?.id ?? null}
+                          loading={areaSearchLoading}
+                          onScopedSearch={handleScopedSearch}
+                        />
+                      </div>
+                      {defaultPosts.length > 0 && (
+                        <MapPostCardCarousel
+                          posts={defaultPosts}
+                          selectedPostId={selectedMapPost?.id ?? null}
+                          onSelect={(p) => setSelectedMapPost(p as MapPost)}
+                          onClose={() => setSelectedMapPost(null)}
+                        />
+                      )}
+                    </>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

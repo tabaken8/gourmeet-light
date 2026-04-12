@@ -834,7 +834,7 @@ export default function FriendsTimelineClient({
 
   // 通常描画
   return (
-    <div className="rounded-2xl bg-white dark:bg-[#16181e]">
+    <div className="overflow-hidden rounded-2xl bg-white dark:bg-[#16181e]">
       <div className="flex flex-col items-stretch gap-6">
         {(posts ?? []).map((p, idx) => (
           <React.Fragment key={p?.id ?? `row-${idx}`}>

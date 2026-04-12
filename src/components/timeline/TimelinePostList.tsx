@@ -437,7 +437,7 @@ export default function TimelinePostList({
 
                 {/* Media */}
                 {timelineImageUrls.length > 0 && (
-                  <div className="block w-[calc(100%+1.5rem)] -mx-3 md:w-full md:mx-0 aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
+                  <div className="block w-full aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
                     <PostImageCarousel
                       postId={p.id}
                       imageUrls={timelineImageUrls}

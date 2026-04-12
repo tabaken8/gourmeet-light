@@ -350,7 +350,7 @@ export default function SearchPostList({
 
                 {/* Media */}
                 {timelineImageUrls.length > 0 && (
-                  <div className="relative block w-[calc(100%+1.5rem)] -mx-3 md:w-full md:mx-0 aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
+                  <div className="relative block w-full aspect-square overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
                     {rankLabel && (
                       <div
                         className={`absolute top-3 left-3 z-10 rounded-full px-2 py-0.5 text-[11px] font-bold ${rankStyle}`}
