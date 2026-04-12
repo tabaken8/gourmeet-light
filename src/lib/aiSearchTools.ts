@@ -140,6 +140,12 @@ export type ToolContext = {
   detectedAuthor: { username: string; displayName: string | null } | null;
   // search_posts に渡された検索意図テキスト（UIバナー表示用）
   searchIntent: string | null;
+  // 事前解決済みの駅（LLMが渡し忘れても自動注入する）
+  preResolvedStationPlaceIds?: string[];
+  // 事前検出済みのジャンル（LLMが渡し忘れても自動注入する）
+  preResolvedGenre?: string;
+  // searchPosts の呼び出し回数（2回目以降はフォールバックなので自動注入しない）
+  searchCallCount?: number;
 };
 
 // ============================================================
@@ -266,13 +272,24 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
   const {
     query,
     author_id,
-    station_place_ids,
     radius_m = 3000,
-    genre,
     sort_by = "similarity",
     use_taste_profile = false,
     limit: rawLimit = 20,
   } = args;
+
+  // LLMが genre を渡さなかった場合、事前検出済みのジャンルを自動注入
+  const genre: string = (args.genre ?? ctx.preResolvedGenre ?? "").trim();
+
+  // LLMが station_place_ids を渡さなかった場合、初回のみ事前解決済みの駅を自動注入
+  // 2回目以降はフォールバック（エリア制限を外した再検索）なので注入しない
+  const callNum = (ctx.searchCallCount = (ctx.searchCallCount ?? 0) + 1);
+  const station_place_ids: string[] | undefined =
+    Array.isArray(args.station_place_ids) && args.station_place_ids.length > 0
+      ? args.station_place_ids
+      : callNum === 1
+        ? ctx.preResolvedStationPlaceIds
+        : undefined;
 
   const limit = Math.min(40, Math.max(1, Number(rawLimit)));
   // sort_by が similarity 以外のときは多めに取ってアプリ側でソート
@@ -292,13 +309,17 @@ async function searchPosts(args: Record<string, any>, ctx: ToolContext) {
     ctx.searchIntent = query.trim();
   }
 
+  // RPC は p_station_place_id (単数, text) を受け取る。配列の先頭を渡す。
+  const stationForRpc =
+    Array.isArray(station_place_ids) && station_place_ids.length > 0
+      ? station_place_ids[0]
+      : null;
+
   const { data: rawPosts, error } = await ctx.supabase.rpc("search_posts_semantic", {
     query_embedding: queryEmbedding,
     p_user_id: ctx.userId,
     p_follow_only: ctx.followOnly,
-    p_station_place_ids: Array.isArray(station_place_ids) && station_place_ids.length > 0
-      ? station_place_ids
-      : null,
+    p_station_place_id: stationForRpc,
     p_radius_m: radius_m,
     p_threshold: 0.25,
     p_limit: fetchLimit,

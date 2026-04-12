@@ -166,7 +166,7 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
     const { data } = await supabase
       .from("posts")
       .select(
-        "id,user_id,created_at,visited_on,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range,profiles!inner(id,display_name,avatar_url,is_public)"
+        "id,user_id,created_at,visited_on,time_of_day,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range,profiles!inner(id,display_name,avatar_url,is_public)"
       )
       .eq("profiles.is_public", true)
       .order("created_at", { ascending: false })
@@ -217,6 +217,7 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
         user_id: r.user_id,
         created_at: r.created_at,
         visited_on: r.visited_on,
+        time_of_day: r.time_of_day ?? null,
         content: r.content,
         place_id: r.place_id,
         place_name: r.place_name,
@@ -250,6 +251,22 @@ export default async function FriendsTimelineServer({ meId }: { meId: string | n
     nfPostCount,
     null
   );
+
+  // RPC結果にtime_of_dayがない場合、別途取得して補填
+  const rpcPostIds = friendsPosts.map((p: any) => p.id).filter(Boolean);
+  if (rpcPostIds.length > 0 && !friendsPosts[0]?.time_of_day) {
+    const { data: todRows } = await supabase
+      .from("posts")
+      .select("id, time_of_day")
+      .in("id", rpcPostIds);
+    if (todRows) {
+      const todMap = new Map(todRows.map((r: any) => [r.id, r.time_of_day]));
+      friendsPosts = friendsPosts.map((p: any) => ({
+        ...p,
+        time_of_day: todMap.get(p.id) ?? p.time_of_day ?? null,
+      }));
+    }
+  }
 
   // フレンド投稿優先でインターリーブ → 同一ユーザー連続回避
   let posts = enforceNoRepeatWithin(

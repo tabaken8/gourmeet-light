@@ -267,6 +267,9 @@ export default function SearchPage() {
   const [peopleLoading, setPeopleLoading] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
+  // --- AI search timing ---
+  const [aiSearchStartedAt, setAiSearchStartedAt] = useState<number | null>(null);
+
   // --- map ---
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [geoMode, setGeoMode] = useState(false);
@@ -469,8 +472,7 @@ export default function SearchPage() {
   }) {
     const q = args.q.trim();
     const genre = args.genre.trim();
-    const combined = [genre, q].filter(Boolean).join(" ");
-    if (!combined) return;
+    if (!q && !genre) return;
 
     setSemanticLoading(true);
     setSemanticError(null);
@@ -480,21 +482,17 @@ export default function SearchPage() {
     setDetectedStations([]);
     setDetectedAuthor(null);
     setMentionNotFound(false);
+    setHintsOpen(false);
 
     try {
-      // 明示的に選ばれた駅があればクエリに含める
-      const queryText = args.stationId
-        ? combined
-        : combined;
-
       const res = await fetch("/api/search/ai-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          q: queryText,
+          q,
           follow: args.follow,
-          // 明示的な駅指定は LLM に伝えず stationId として別途渡す方式も可だが
-          // 自然言語クエリ内に地名があれば LLM が自動解決するのでこのまま
+          // チップで明示的に選ばれたジャンル（テキストとは分離）
+          genre: genre || undefined,
         }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -507,10 +505,20 @@ export default function SearchPage() {
       if (payload?.detectedAuthor) setDetectedAuthor(payload.detectedAuthor);
       if (payload?.parsedQuery?.intent) setParsedIntent(payload.parsedQuery.intent);
       else setParsedIntent(null);
+      // クエリ内のジャンルを自動選択（例: "東京 和食" → 和食チップ選択）
+      const detectedGenre = payload?.parsedQuery?.genre;
+      if (detectedGenre && typeof detectedGenre === "string" && !args.genre) {
+        const match = genreCandidates.find((g) => detectedGenre.includes(g) || g.includes(detectedGenre));
+        if (match) {
+          setGenre(match);
+          setCommittedGenre(match);
+        }
+      }
     } catch (e: any) {
       setSemanticError(e?.message ?? t("aiFailed"));
     } finally {
       setSemanticLoading(false);
+      setAiSearchStartedAt(null);
     }
   }
 
@@ -595,6 +603,106 @@ export default function SearchPage() {
     }
   }
 
+  // -------- 構造化クエリ判定 --------
+  // 「新宿 焼肉」のような location + genre だけのクエリかを判定
+  // true → LLM不要、index検索で0.5秒で返せる
+  const KNOWN_GENRES_SET = useMemo(() => new Set([
+    "和食","ラーメン","カフェ","イタリアン","寿司","焼肉","中華","フレンチ",
+    "居酒屋","韓国料理","海鮮","蕎麦","うどん","スイーツ","焼き鳥","天ぷら",
+    "鍋","とんかつ","バー","カレー","パン","ピザ","タイ料理","ベトナム料理",
+    ...genreCandidates,
+  ]), [genreCandidates]);
+
+  const isStructuredQuery = useCallback((text: string, chipGenre: string): {
+    structured: boolean;
+    locationToken: string | null;
+    genreToken: string | null;
+  } => {
+    const tokens = text.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return { structured: false, locationToken: null, genreToken: null };
+    if (tokens.length > 3) return { structured: false, locationToken: null, genreToken: null };
+
+    // @mention or 自然言語 patterns
+    if (tokens.some(t => t.startsWith("@") || t.length > 8)) {
+      return { structured: false, locationToken: null, genreToken: null };
+    }
+
+    let genreToken: string | null = chipGenre || null;
+    let locationToken: string | null = null;
+    const unmatched: string[] = [];
+
+    for (const token of tokens) {
+      if (KNOWN_GENRES_SET.has(token)) {
+        if (!genreToken) genreToken = token;
+        // ジャンルが既にchipで指定済みならこのトークンは無視
+      } else {
+        // 地名候補（短い日本語、2〜5文字）
+        if (token.length >= 1 && token.length <= 6 && !locationToken) {
+          locationToken = token;
+        } else {
+          unmatched.push(token);
+        }
+      }
+    }
+
+    // unmatched があれば自然言語クエリ
+    if (unmatched.length > 0) return { structured: false, locationToken: null, genreToken: null };
+    // location も genre もないなら判定不能
+    if (!locationToken && !genreToken) return { structured: false, locationToken: null, genreToken: null };
+
+    return { structured: true, locationToken, genreToken: genreToken || chipGenre || null };
+  }, [KNOWN_GENRES_SET]);
+
+  // -------- 構造化クエリの fast path 検索 --------
+  async function loadStructuredSearch(args: {
+    locationToken: string;
+    genreToken: string | null;
+    follow: boolean;
+  }) {
+    setSemanticLoading(true);
+    setSemanticError(null);
+    setSemanticPosts([]);
+    setAiMessage(null);
+    setQuickPosts([]);
+    setHintsOpen(false);
+
+    try {
+      // 1. 地名 → station_place_id を解決
+      const stationRes = await fetch(`/api/search/suggest/station?q=${encodeURIComponent(args.locationToken)}&limit=1`);
+      const stationPayload = await stationRes.json().catch(() => ({}));
+      const station = stationPayload?.stations?.[0];
+
+      if (station?.station_place_id) {
+        setDetectedStations([{ name: station.station_name, placeId: station.station_place_id }]);
+      }
+
+      // 2. /api/search に station + genre で直接問い合わせ
+      const params = new URLSearchParams();
+      if (station?.station_place_id) {
+        params.set("station_place_id", station.station_place_id);
+        params.set("station_name", station.station_name ?? args.locationToken);
+        params.set("radius_m", "3000");
+      }
+      const searchQ = [args.genreToken, args.locationToken].filter(Boolean).join(" ");
+      if (searchQ) params.set("q", searchQ);
+      if (args.follow) params.set("follow", "1");
+      params.set("limit", "20");
+
+      const res = await fetch(`/api/search?${params.toString()}`);
+      const payload = await res.json().catch(() => ({}));
+      const posts: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
+
+      setSemanticPosts(posts);
+      if (args.genreToken) {
+        setParsedIntent(args.genreToken);
+      }
+    } catch (e: any) {
+      setSemanticError(e?.message ?? "検索に失敗しました");
+    } finally {
+      setSemanticLoading(false);
+    }
+  }
+
   // -------- 検索確定（唯一の正）--------
   const commitSearch = (next: {
     q: string;
@@ -650,26 +758,41 @@ export default function SearchPage() {
     if (mm !== "station" && !nq && !ng) return;
     if (mm === "station" && !next.sid) return;
 
-    // テキスト or ジャンルがあれば AI 検索、駅のみならキーワード検索
+    // テキスト or ジャンルがあれば検索
     if (nq || ng) {
       setResultMode("ai");
       if (nq) loadUsers(nq);
 
-      // Quick pre-search: fire fast index search in parallel with AI
-      const combined = [ng, nq].filter(Boolean).join(" ");
-      if (combined) {
-        setQuickLoading(true);
-        fetch(`/api/search?quick=1&q=${encodeURIComponent(combined)}&limit=20`)
-          .then((r) => r.json().catch(() => ({})))
-          .then((payload) => {
-            const qp: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
-            setQuickPosts(qp);
-          })
-          .catch(() => setQuickPosts([]))
-          .finally(() => setQuickLoading(false));
-      }
+      // 構造化クエリ判定: 「新宿 焼肉」のようなシンプルなクエリは LLM 不要
+      const sq = isStructuredQuery(nq, ng);
+      if (sq.structured && sq.locationToken) {
+        // Fast path: index検索のみ (~0.5s)
+        setAiSearchStartedAt(null);
+        loadStructuredSearch({
+          locationToken: sq.locationToken,
+          genreToken: sq.genreToken,
+          follow: next.follow,
+        });
+      } else {
+        // LLM path: AI検索 (~10s)
+        setAiSearchStartedAt(Date.now());
 
-      loadAiChat({ q: nq, genre: ng, follow: next.follow, stationId: next.sid ?? null, stationName: next.sname ?? null });
+        // Quick pre-search: fire fast index search in parallel with AI
+        const combined = [ng, nq].filter(Boolean).join(" ");
+        if (combined) {
+          setQuickLoading(true);
+          fetch(`/api/search?quick=1&q=${encodeURIComponent(combined)}&limit=20`)
+            .then((r) => r.json().catch(() => ({})))
+            .then((payload) => {
+              const qp: PostRow[] = Array.isArray(payload?.posts) ? payload.posts : [];
+              setQuickPosts(qp);
+            })
+            .catch(() => setQuickPosts([]))
+            .finally(() => setQuickLoading(false));
+        }
+
+        loadAiChat({ q: nq, genre: ng, follow: next.follow, stationId: next.sid ?? null, stationName: next.sname ?? null });
+      }
     } else {
       // 駅のみ → キーワードブラウズ
       setResultMode("keyword");
@@ -841,7 +964,23 @@ export default function SearchPage() {
 
   const selectGenre = (g: string) => {
     setGenre(g);
-    commitSearch({ q: q.trim() ? q : committedQ, genre: g, follow: followOnly, mode, sid: stationPlaceId, sname: stationName });
+    // テキスト内のジャンル名を新しいジャンルに置換、なければ末尾に追加
+    let currentQ = q.trim() || committedQ;
+    const existingGenre = genreCandidates.find((gc) => gc && currentQ.includes(gc));
+    if (g) {
+      if (existingGenre) {
+        // 既存のジャンル名を新しいジャンルに置換
+        currentQ = currentQ.replace(existingGenre, g).replace(/\s{2,}/g, " ").trim();
+      } else if (!currentQ.includes(g)) {
+        // テキストにジャンル名がない場合は末尾に追加
+        currentQ = `${currentQ} ${g}`.trim();
+      }
+    } else if (existingGenre) {
+      // 「すべて」選択時: テキストからジャンル名を除去
+      currentQ = currentQ.replace(existingGenre, "").replace(/\s{2,}/g, " ").trim();
+    }
+    setQ(currentQ);
+    commitSearch({ q: currentQ, genre: g, follow: followOnly, mode, sid: stationPlaceId, sname: stationName });
   };
 
   const toggleFollow = (next: boolean) => {
@@ -882,7 +1021,8 @@ export default function SearchPage() {
       const qq = committedQ ? `（${committedQ}）` : "";
       return `${t("stationArea", { station: name })}${g}${qq}`;
     }
-    const g = committedGenre ? ` × ${committedGenre}` : "";
+    // テキストにジャンル名が含まれている場合は重複表示しない
+    const g = committedGenre && !committedQ.includes(committedGenre) ? ` × ${committedGenre}` : "";
     return t("searchResults", { query: `${committedQ}${g}` });
   }, [isEmpty, committedMode, committedStationName, committedGenre, committedQ, t]);
 
@@ -1219,6 +1359,21 @@ export default function SearchPage() {
                         ))}
                       </div>
                       <p className="text-[13px] text-slate-400">{t("searchingPosts")}</p>
+                      {aiSearchStartedAt && (
+                        <div className="mt-2 w-48 flex flex-col items-center gap-1.5">
+                          <div className="w-full h-1 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                            <motion.div
+                              className="h-full rounded-full bg-slate-400 dark:bg-white/30"
+                              initial={{ width: "0%" }}
+                              animate={{ width: "95%" }}
+                              transition={{ duration: 12, ease: "easeOut" }}
+                            />
+                          </div>
+                          <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                            {"\u2728 AI\u304C\u5206\u6790\u4E2D\u2026\u7D0410\u79D2"}
+                          </span>
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </>

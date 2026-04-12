@@ -106,7 +106,7 @@ export async function getGoodNotFollowingUsers(
 }
 
 const POST_SELECT =
-  "id,user_id,created_at,visited_on,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range,profiles!inner(id,display_name,avatar_url,is_public)";
+  "id,user_id,created_at,visited_on,time_of_day,content,place_id,place_name,place_address,image_urls,image_variants,image_assets,cover_square_url,cover_full_url,cover_pin_url,recommend_score,price_yen,price_range,profiles!inner(id,display_name,avatar_url,is_public)";
 
 /**
  * "良い not-following" ユーザーの投稿をランダムに取得

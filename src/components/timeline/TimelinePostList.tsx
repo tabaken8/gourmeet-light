@@ -51,6 +51,7 @@ export type PostRow = {
   recommend_score?: number | null;
   price_yen?: number | null;
   price_range?: string | null;
+  time_of_day?: string | null;
 
   // station search UI fields (search results)
   search_station_distance_m?: number | null;
@@ -327,6 +328,7 @@ export default function TimelinePostList({
             : null;
 
         const priceLabel = formatPrice(p);
+        const todEmoji = p.time_of_day === "day" ? "☀️" : p.time_of_day === "night" ? "🌙" : null;
 
         const nearestName = p.nearest_station_name ?? null;
         const nearestDistM = p.nearest_station_distance_m ?? null;
@@ -472,13 +474,14 @@ export default function TimelinePostList({
                 </div>
 
                 {/* Meta line: score + price */}
-                {(score !== null || priceLabel) && (
+                {(score !== null || priceLabel || todEmoji) && (
                   <div className="flex items-center gap-1.5 px-3 pt-0.5 text-[11px]">
                     {score !== null && (
                       <span className="font-medium text-slate-500 dark:text-gray-400">{"\u304A\u3059\u3059\u3081"} {score}/10</span>
                     )}
-                    {score !== null && priceLabel && <span className="text-slate-300 dark:text-gray-600">{"\u00B7"}</span>}
+                    {score !== null && (priceLabel || todEmoji) && <span className="text-slate-300 dark:text-gray-600">{"\u00B7"}</span>}
                     {priceLabel && <span className="text-slate-400 dark:text-gray-500">{priceLabel}</span>}
+                    {todEmoji && <span>{todEmoji}</span>}
                   </div>
                 )}
 
