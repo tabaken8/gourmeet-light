@@ -5,12 +5,11 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Utensils, X, ChevronLeft, ChevronRight, MapPin, Sparkles, ExternalLink } from "lucide-react";
 import type { PostRow } from "./SearchPostList";
+import { timelineImageUrl } from "@/lib/imageUrl";
 
 function getSquareImageUrl(p: PostRow): string | null {
-  if (p.cover_square_url) return p.cover_square_url;
-  if (p.image_assets?.[0]?.square) return p.image_assets[0].square;
-  if (p.image_variants?.[0]?.thumb) return p.image_variants[0].thumb;
-  return null;
+  const raw = p.cover_square_url ?? p.image_assets?.[0]?.square ?? p.image_variants?.[0]?.thumb ?? null;
+  return raw ? timelineImageUrl(raw, 400) : null;
 }
 
 function formatPrice(p: PostRow): string | null {

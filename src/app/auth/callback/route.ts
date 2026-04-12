@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
   const invite = normalizeInvite(inviteParam);
 
   const nextParam = requestUrl.searchParams.get("next");
-  const nextPath = safeNextPath(nextParam) ?? "/timeline?tab=friends";
+  const nextPath = safeNextPath(nextParam) ?? "/timeline";
 
   if (!oauthCode) {
     return NextResponse.redirect(

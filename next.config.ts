@@ -4,6 +4,17 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
+  // Supabase Storage Image Transforms（Pro Plan）を使うので
+  // Next.js Image Optimization は不要。将来 <Image> を使う場合用に残す。
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**.supabase.co",
+        pathname: "/storage/v1/**",
+      },
+    ],
+  },
   webpack: (config) => {
     // Fix Supabase ESM wrapper: '../module/index.js' has no default export
     // but wrapper.mjs imports it as `import * as index` which Webpack

@@ -8,6 +8,7 @@ import { MapPin, Lock } from "lucide-react";
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions, { LikerLite } from "@/components/PostActions";
+import { timelineImageUrl } from "@/lib/imageUrl";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import TranslateButton from "@/components/TranslateButton";
@@ -165,7 +166,7 @@ function getTimelineSquareUrls(p: PostRow): string[] {
     const k = keyOf(u);
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push(u);
+    out.push(timelineImageUrl(u));
   }
   return out;
 }

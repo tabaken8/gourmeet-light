@@ -105,7 +105,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
 
   const gate = (href: string, _allowGuest = false) => href;
 
-  const homeHref = "/timeline?tab=friends";
+  const homeHref = "/timeline";
 
   const [uid, setUid] = useState<string | null>(null);
   const [hasPosted, setHasPosted] = useState<boolean | null>(null);

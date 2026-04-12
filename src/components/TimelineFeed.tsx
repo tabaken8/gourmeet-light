@@ -692,7 +692,7 @@ export default function TimelineFeed({
   if (error?.includes("Unauthorized") && activeTab === "friends") {
     return (
       <LoginCard
-        nextPath="/timeline?tab=friends"
+        nextPath="/timeline"
         title="続けるにはログイン"
         description="友達の投稿を見る・投稿する・フォロー・コレクションなどが使えるようになります。"
       />

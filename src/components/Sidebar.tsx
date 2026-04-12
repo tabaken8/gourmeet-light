@@ -108,7 +108,7 @@ export default function Sidebar({ name }: { name?: string }) {
   const isActive = (p: string) => pathname === p || pathname.startsWith(p + "/");
 
   // ロゴ/ホームは friends tab に統一
-  const homeHref = "/timeline?tab=friends";
+  const homeHref = "/timeline";
 
   return (
     <aside

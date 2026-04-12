@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, useMotionValue, animate } from "framer-motion";
@@ -35,6 +35,70 @@ function normalizeUrls(urls: string[]): string[] {
   const cleaned = (urls ?? []).filter((u): u is string => typeof u === "string" && u.trim().length > 0);
   return Array.from(new Set(cleaned));
 }
+
+// ── Shimmer placeholder ──
+function ShimmerPlaceholder() {
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-slate-100 dark:bg-[#1e2026]">
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.4s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/40 dark:via-white/[.06] to-transparent" />
+    </div>
+  );
+}
+
+// ── Image with fade-in on load ──
+function FadeImage({
+  src,
+  alt,
+  fitCls,
+  loading,
+  fetchPriority,
+}: {
+  src: string;
+  alt: string;
+  fitCls: string;
+  loading: "eager" | "lazy";
+  fetchPriority: "high" | "auto";
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  // 既にキャッシュ済みなら即表示
+  useEffect(() => {
+    const el = imgRef.current;
+    if (el?.complete && el.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, []);
+
+  return (
+    <>
+      {!loaded && <ShimmerPlaceholder />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        ref={imgRef}
+        src={src}
+        alt={alt}
+        className={[
+          "absolute inset-0 h-full w-full",
+          fitCls,
+          "transition-opacity duration-300 ease-out",
+          loaded ? "opacity-100" : "opacity-0",
+        ].join(" ")}
+        loading={loading}
+        decoding="async"
+        fetchPriority={fetchPriority}
+        draggable={false}
+        onLoad={() => setLoaded(true)}
+      />
+    </>
+  );
+}
+
+// ── Spring config for slide animations ──
+// Instagram/TikTok 風: ほどよくバネ感があり、素早く収束
+const SPRING_SLIDE = { type: "spring" as const, stiffness: 300, damping: 30, mass: 0.8 };
+// スナップバック（元の位置に戻る）はもう少し速い
+const SPRING_SNAP = { type: "spring" as const, stiffness: 400, damping: 35, mass: 0.6 };
 
 export default function PostImageCarousel({
   postId,
@@ -98,15 +162,17 @@ export default function PostImageCarousel({
     setIndex((prev) => clamp(prev));
   }, [clamp, total]);
 
-  // 近傍プリロード
+  // 近傍プリロード — 前後2枚
   useEffect(() => {
     if (!preloadNeighbors) return;
     if (total <= 1) return;
 
-    const next = index + 1;
-    const prev = index - 1;
-    if (next < total) preloadImage(urls[next]);
-    if (prev >= 0) preloadImage(urls[prev]);
+    for (let delta = 1; delta <= 2; delta++) {
+      const ni = index + delta;
+      const pi = index - delta;
+      if (ni < total) preloadImage(urls[ni]);
+      if (pi >= 0) preloadImage(urls[pi]);
+    }
   }, [index, urls, preloadNeighbors, total]);
 
   // URL同期
@@ -117,10 +183,10 @@ export default function PostImageCarousel({
     router.replace(url, { scroll: false });
   }, [index, postId, router, shouldSyncUrl, total]);
 
-  // index が変わったら x をスッと合わせる
+  // index が変わったらスプリングアニメーションで合わせる
   useEffect(() => {
     const target = -index * wrapW;
-    animate(x, target, { type: "tween", duration: 0.22, ease: [0.2, 0.9, 0.2, 1] });
+    animate(x, target, SPRING_SLIDE);
   }, [index, wrapW, x]);
 
   // reveal 制御
@@ -135,6 +201,20 @@ export default function PostImageCarousel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal, index, revealOnlyWhenActive]);
 
+  // 楽観的にindex即切替
+  const goto = useCallback(
+    (target: number) => {
+      const to = clamp(target);
+      if (to === index) return;
+      setIndex(to);
+      if (reveal) setRevealTick((t) => t + 1);
+    },
+    [clamp, index, reveal],
+  );
+
+  const prev = useCallback(() => goto(index - 1), [goto, index]);
+  const next = useCallback(() => goto(index + 1), [goto, index]);
+
   if (total === 0) return null;
 
   const canPrev = total > 1 && index > 0;
@@ -145,38 +225,27 @@ export default function PostImageCarousel({
     e.stopPropagation();
   };
 
-  // 楽観的にindex即切替（loadImage待ちなし）
-  const goto = (target: number) => {
-    const to = clamp(target);
-    if (to === index) return;
-    setIndex(to);
-    if (reveal) setRevealTick((t) => t + 1);
-  };
-
-  const prev = () => goto(index - 1);
-  const next = () => goto(index + 1);
-
   // ==== swipe end判定 ====
   const onDragEnd = (_: any, info: { offset: { x: number }; velocity: { x: number } }) => {
     if (total <= 1) return;
 
     const dx = info.offset.x;
     const vx = info.velocity.x;
-    // 閾値: 18%の移動 or 速度300px/s以上
-    const th = wrapW * 0.18;
+    // 閾値: 15%の移動 or 速度250px/s以上（少し軽くして反応良くする）
+    const th = wrapW * 0.15;
 
-    if ((dx < -th || vx < -300) && canNext) {
+    if ((dx < -th || vx < -250) && canNext) {
       goto(index + 1);
-    } else if ((dx > th || vx > 300) && canPrev) {
+    } else if ((dx > th || vx > 250) && canPrev) {
       goto(index - 1);
     } else {
-      // スナップバック
-      animate(x, -index * wrapW, { type: "tween", duration: 0.22, ease: [0.2, 0.9, 0.2, 1] });
+      // スナップバック — キビキビ戻る
+      animate(x, -index * wrapW, SPRING_SNAP);
     }
   };
 
-  // 前後1枚だけレンダーし、残りはプレースホルダー
-  const renderWindow = 1;
+  // 前後2枚レンダー（スムーズなスワイプのため）
+  const renderWindow = 2;
 
   const inner = (
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden">
@@ -185,7 +254,7 @@ export default function PostImageCarousel({
         style={{ x, touchAction: "pan-y" }}
         drag={total > 1 ? "x" : false}
         dragConstraints={{ left: -wrapW * (total - 1), right: 0 }}
-        dragElastic={0.18}
+        dragElastic={0.12}
         onDragEnd={onDragEnd}
         dragMomentum={false}
       >
@@ -193,13 +262,12 @@ export default function PostImageCarousel({
           const isNearby = Math.abs(i - index) <= renderWindow;
           const isActive = i === index;
 
-          // reveal判定（useEffectをmap外に移動済み）
+          // reveal判定
           const shouldRevealThis =
             reveal &&
             isActive &&
             (!revealOncePerImage || !revealedRef.current[i]);
 
-          // reveal開始マーク
           if (shouldRevealThis && revealOncePerImage) {
             revealedRef.current[i] = true;
           }
@@ -208,15 +276,12 @@ export default function PostImageCarousel({
             <div key={`${postId}-${i}`} className="relative h-full w-full shrink-0 bg-slate-100 dark:bg-[#1e2026]">
               {isNearby ? (
                 <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <FadeImage
                     src={u}
                     alt=""
-                    className={["absolute inset-0 h-full w-full", fitCls].join(" ")}
+                    fitCls={fitCls}
                     loading={isActive ? loadingMode : "lazy"}
-                    decoding="async"
                     fetchPriority={isActive && loadingMode === "eager" ? "high" : "auto"}
-                    draggable={false}
                   />
 
                   {shouldRevealThis && revealStyle === "wipe" ? (
@@ -260,7 +325,9 @@ export default function PostImageCarousel({
                     />
                   ) : null}
                 </>
-              ) : null}
+              ) : (
+                <ShimmerPlaceholder />
+              )}
             </div>
           );
         })}
@@ -308,7 +375,7 @@ export default function PostImageCarousel({
                 className="p-0.5"
                 aria-label={`Go to image ${i + 1}`}
               >
-                <span className={["block h-2 w-2 rounded-full", i === index ? "bg-white" : "bg-white/50"].join(" ")} />
+                <span className={["block h-2 w-2 rounded-full transition-colors duration-200", i === index ? "bg-white" : "bg-white/50"].join(" ")} />
               </button>
             ))}
           </div>
