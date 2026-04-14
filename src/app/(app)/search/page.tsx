@@ -1360,6 +1360,46 @@ export default function SearchPage() {
         </div>
       ) : (
         <div className="space-y-0">
+          {/* スコープ固定中: 検索結果モードでも地図を維持 */}
+          {scopedBounds && (
+            <div className="pb-1">
+              <div className="px-3 pt-0.5 pb-1 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setScopedBounds(null); setScopedStation(null); setScopeLabel(null); }}
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-600 active:scale-[0.97] transition"
+                >
+                  <MapPinIcon size={12} />
+                  {scopeLabel ?? "エリア固定"}
+                  <X size={12} className="ml-0.5 opacity-70" />
+                </button>
+              </div>
+              <div className="px-2">
+                <SearchMap
+                  posts={posts.length > 0 ? posts : (resultMode === "ai" ? (semanticPosts.length > 0 ? semanticPosts : quickPosts) : posts)}
+                  userLocation={userLocation}
+                  onSearchThisArea={handleSearchThisArea}
+                  showSearchButton={true}
+                  onSelectPost={(p) => setSelectedMapPost(p)}
+                  selectedPostId={selectedMapPost?.id ?? null}
+                  loading={areaSearchLoading}
+                  onScopedSearch={handleScopedSearch}
+                />
+              </div>
+              {(() => {
+                const mapPosts = posts.length > 0 ? posts : (resultMode === "ai" ? (semanticPosts.length > 0 ? semanticPosts : quickPosts) : posts);
+                return mapPosts.length > 0 ? (
+                  <MapPostCardCarousel
+                    posts={mapPosts}
+                    selectedPostId={selectedMapPost?.id ?? null}
+                    onSelect={(p) => setSelectedMapPost(p as MapPost)}
+                    onClose={() => setSelectedMapPost(null)}
+                  />
+                ) : null;
+              })()}
+            </div>
+          )}
+
           {/* Users */}
           {usersLoading ? (
             <UsersSkeleton />

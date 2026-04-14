@@ -450,20 +450,29 @@ export default function SearchMap({
       {onScopedSearch && currentBounds && !isTooWide && (
         <div className="absolute bottom-3 left-3 right-3 z-[1000] flex items-center gap-2">
           <div className="relative flex-1">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-gray-500" />
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-gray-500" />
             <input
               value={scopedQ}
               onChange={(e) => setScopedQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleScopedSearch(); }}
               placeholder={"\u3053\u306E\u30A8\u30EA\u30A2\u3067\u30E9\u30FC\u30E1\u30F3\u3001\u30AB\u30D5\u30A7\u2026"}
-              className="w-full rounded-full border border-slate-200 dark:border-white/15 bg-white/95 dark:bg-[#1e2026]/95 backdrop-blur py-2 pl-8 pr-3 text-[13px] text-slate-900 dark:text-gray-100 outline-none shadow-lg placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-slate-300 dark:focus:border-white/25 focus:ring-2 focus:ring-slate-100 dark:focus:ring-white/10"
+              className="w-full rounded-full border border-slate-200 dark:border-white/15 bg-white/95 dark:bg-[#1e2026]/95 backdrop-blur py-1.5 pl-8 pr-10 text-[16px] leading-tight text-slate-900 dark:text-gray-100 outline-none shadow-lg placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-slate-300 dark:focus:border-white/25 focus:ring-2 focus:ring-slate-100 dark:focus:ring-white/10"
               inputMode="search"
               enterKeyHint="search"
             />
+            {/* 検索ボタン */}
+            <button
+              type="button"
+              onClick={handleScopedSearch}
+              aria-label="検索"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-full text-slate-500 dark:text-gray-400 transition hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-gray-200"
+            >
+              <Search size={15} />
+            </button>
           </div>
           {/* Post count badge */}
           {mappablePosts.length > 0 && (
-            <div className="shrink-0 inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-[#1e2026]/90 backdrop-blur px-2.5 py-2 text-[11px] font-medium text-slate-600 dark:text-gray-300 shadow border border-slate-100 dark:border-white/15">
+            <div className="shrink-0 inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-[#1e2026]/90 backdrop-blur px-2.5 py-1.5 text-[11px] font-medium text-slate-600 dark:text-gray-300 shadow border border-slate-100 dark:border-white/15">
               <MapPin size={11} />
               {mappablePosts.length}
             </div>
