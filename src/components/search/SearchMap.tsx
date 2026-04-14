@@ -353,14 +353,14 @@ export default function SearchMap({
 
   if (!isLoaded) {
     return (
-      <div className="relative w-full flex items-center justify-center bg-slate-100 dark:bg-[#1e2026] rounded-xl" style={{ height: "40vh", minHeight: 240 }}>
+      <div className="relative w-full flex items-center justify-center bg-slate-100 dark:bg-[#1e2026] rounded-xl" style={{ height: "55vh", minHeight: 300 }}>
         <div className="text-sm text-slate-400 dark:text-gray-500">{"\u5730\u56F3\u3092\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026"}</div>
       </div>
     );
   }
 
   return (
-    <div className="relative w-full" style={{ height: "40vh", minHeight: 240 }}>
+    <div className="relative w-full" style={{ height: "55vh", minHeight: 300 }}>
       <GoogleMap
         mapContainerStyle={MAP_CONTAINER}
         center={center}

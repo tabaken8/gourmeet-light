@@ -94,7 +94,7 @@ export default function LocationFilter({ stationPlaceId, stationName, onSelect, 
             onBlur={() => setTimeout(close, 150)}
             onKeyDown={(e) => { if (e.key === "Escape") close(); }}
             placeholder="駅名を入力..."
-            className="w-32 bg-transparent text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500"
+            className="w-32 bg-transparent text-[16px] text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 leading-tight"
             inputMode="search"
           />
           {loading && <span className="text-[11px] text-slate-400 dark:text-gray-500">…</span>}

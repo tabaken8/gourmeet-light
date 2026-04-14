@@ -100,7 +100,7 @@ function buildUrl(
   const sp = new URLSearchParams(searchParams.toString());
 
   const q = (next.q ?? sp.get("q") ?? "").trim();
-  const followOnly = next.followOnly ?? (sp.get("follow") === "1");
+  const followOnly = next.followOnly ?? (sp.has("follow") ? sp.get("follow") === "1" : true);
   const mode = next.mode ?? normalizeModeFromUrl(sp.get("m"));
   const sid = next.stationPlaceId ?? sp.get("station_place_id") ?? sp.get("sid") ?? null;
   const sname = next.stationName ?? sp.get("station_name") ?? sp.get("sname") ?? null;
@@ -197,7 +197,7 @@ export default function SearchPage() {
 
   // --- input ---
   const [q, setQ] = useState("");
-  const [followOnly, setFollowOnly] = useState(false);
+  const [followOnly, setFollowOnly] = useState(true);
 
   // --- @mention サジェスト ---
   const [mentionSuggestions, setMentionSuggestions] = useState<{ id: string; username: string | null; display_name: string | null; avatar_url: string | null }[]>([]);
@@ -395,7 +395,7 @@ export default function SearchPage() {
     if (!mounted) return;
 
     const qFromUrl = (sp.get("q") ?? "").trim();
-    const followFromUrl = sp.get("follow") === "1";
+    const followFromUrl = sp.has("follow") ? sp.get("follow") === "1" : true;
     const modeFromUrl = normalizeModeFromUrl(sp.get("m"));
     const stationIdFromUrl = sp.get("station_place_id") ?? sp.get("sid") ?? null;
     const stationNameFromUrl = sp.get("station_name") ?? sp.get("sname") ?? null;
@@ -1080,9 +1080,9 @@ export default function SearchPage() {
 
   // ============================================================
   return (
-    <div className="space-y-4">
+    <div>
       {/* ===== Search Card ===== */}
-      <motion.div className="px-2 py-2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.div className="px-2 pt-0 pb-0" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
 
         {/* タイトル + 現在地モードバッジ */}
         {!isEmpty && (
@@ -1118,7 +1118,7 @@ export default function SearchPage() {
             }}
             onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
             placeholder={searchPlaceholder}
-            className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] py-2 pl-9 pr-18 text-[16px] font-normal text-slate-900 dark:text-gray-100 outline-none transition placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-slate-300 dark:focus:border-white/20 focus:ring-2 focus:ring-slate-100 dark:focus:ring-white/5 leading-tight"
+            className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] py-1.5 pl-9 pr-18 text-[16px] font-normal text-slate-900 dark:text-gray-100 outline-none transition placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-slate-300 dark:focus:border-white/20 focus:ring-2 focus:ring-slate-100 dark:focus:ring-white/5 leading-tight"
             inputMode="search"
             enterKeyHint="search"
           />
@@ -1195,26 +1195,28 @@ export default function SearchPage() {
           )}
         </AnimatePresence>
 
-        {/* 場所フィルター + フォロー */}
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <LocationFilter
-            stationPlaceId={stationPlaceId}
-            stationName={stationName}
-            onSelect={selectStation}
-            onClear={clearStation}
-          />
-          <label className="inline-flex cursor-pointer select-none items-center gap-2 text-[13px] text-slate-600 dark:text-gray-400">
+        {/* フォロー + 駅（検索バー直下、コンパクトに1行） */}
+        <div className="mt-1.5 flex items-center gap-2">
+          <label className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-black/[.08] dark:border-white/10 bg-white dark:bg-white/[.06] px-2.5 py-1.5 text-[12px] font-medium text-slate-600 dark:text-gray-400 transition">
             <input
               type="checkbox"
               checked={followOnly}
               onChange={(e) => toggleFollow(e.target.checked)}
-              className="h-4 w-4 accent-orange-500"
+              className="h-3.5 w-3.5 accent-orange-500"
             />
             {t("followOnly")}
           </label>
+          <div className="ml-auto">
+            <LocationFilter
+              stationPlaceId={stationPlaceId}
+              stationName={stationName}
+              onSelect={selectStation}
+              onClear={clearStation}
+            />
+          </div>
         </div>
 
-        {/* ジャンルフィルター */}
+        {/* ジャンルフィルター（横スクロール1行） */}
         <GenreFilter
           genres={genreCandidates}
           selectedGenre={genre}
@@ -1225,27 +1227,27 @@ export default function SearchPage() {
 
       {/* ===== Body ===== */}
       {isEmpty ? (
-        <div className="space-y-3">
+        <div>
           {/* 現在地から探す / スコープ固定表示 */}
-          <div className="px-3 pt-2 flex items-center gap-2 flex-wrap">
+          <div className="px-3 pt-0.5 pb-1 flex items-center gap-2 flex-wrap">
             {scopedBounds ? (
               <button
                 type="button"
                 onClick={() => { setScopedBounds(null); setScopedStation(null); setScopeLabel(null); }}
-                className="inline-flex items-center gap-1.5 rounded-full bg-blue-500 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm hover:bg-blue-600 active:scale-[0.97] transition"
+                className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-600 active:scale-[0.97] transition"
               >
-                <MapPinIcon size={14} />
+                <MapPinIcon size={12} />
                 {scopeLabel ?? "エリア固定"}
-                <X size={14} className="ml-0.5 opacity-70" />
+                <X size={12} className="ml-0.5 opacity-70" />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleSearchFromLocation}
                 disabled={geoLoading}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-gray-200 shadow-sm hover:bg-slate-50 dark:hover:bg-white/10 active:scale-[0.97] transition disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[.06] px-3 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-gray-200 shadow-sm hover:bg-slate-50 dark:hover:bg-white/10 active:scale-[0.97] transition disabled:opacity-50"
               >
-                <MapPinIcon size={15} className="text-blue-500" />
+                <MapPinIcon size={13} className="text-blue-500" />
                 {geoLoading ? t("gettingLocation") : t("searchFromLocation")}
               </button>
             )}
@@ -1256,8 +1258,8 @@ export default function SearchPage() {
 
           {/* スコープ固定時: マップ表示 */}
           {scopedBounds && (
-            <div className="space-y-0">
-              <div className="px-2 pb-1">
+            <div>
+              <div className="px-2">
                 <SearchMap
                   posts={posts}
                   userLocation={userLocation}
@@ -1285,7 +1287,7 @@ export default function SearchPage() {
             <AnimatePresence mode="wait">
               {peopleLoading ? (
                 <motion.div key="people-loading" {...fadeUp} className="space-y-3 px-2">
-                  <div className="w-full rounded-xl bg-slate-100 dark:bg-[#1e2026] animate-pulse" style={{ height: "40vh", minHeight: 240 }} />
+                  <div className="w-full rounded-xl bg-slate-100 dark:bg-[#1e2026] animate-pulse" style={{ height: "55vh", minHeight: 300 }} />
                   <div className="flex gap-3 overflow-hidden">
                     {[0, 1, 2].map((i) => (
                       <div key={i} className="w-[240px] shrink-0 rounded-2xl bg-slate-100 dark:bg-[#1e2026] animate-pulse h-[180px]" />
@@ -1294,9 +1296,9 @@ export default function SearchPage() {
                 </motion.div>
               ) : peoplePeople.length > 0 ? (
                 <motion.div key="discover" {...fadeUp}>
-                  <div className="mb-2 flex items-center gap-2 px-3">
-                    <Compass size={14} className="text-orange-500" />
-                    <h2 className="text-[13px] font-semibold text-slate-700 dark:text-gray-300">
+                  <div className="mb-1 flex items-center gap-2 px-3">
+                    <Compass size={12} className="text-orange-500" />
+                    <h2 className="text-[11px] font-semibold text-slate-500 dark:text-gray-400">
                       {t("peopleMap")}
                     </h2>
                     <span className="text-[10px] text-slate-400 dark:text-gray-600">
@@ -1321,17 +1323,11 @@ export default function SearchPage() {
                   />
                 </motion.div>
               ) : (
-                <motion.div key="default-explore" {...fadeUp} className="space-y-3">
+                <motion.div key="default-explore" {...fadeUp}>
                   {/* デフォルト: 本郷エリアの地図 + 投稿 */}
-                  <div className="mb-2 flex items-center gap-2 px-3">
-                    <Compass size={14} className="text-orange-500" />
-                    <h2 className="text-[13px] font-semibold text-slate-700 dark:text-gray-300">
-                      みんなの投稿を探索
-                    </h2>
-                  </div>
                   {defaultLoading ? (
                     <div className="px-2">
-                      <div className="w-full rounded-xl bg-slate-100 dark:bg-[#1e2026] animate-pulse" style={{ height: "40vh", minHeight: 240 }} />
+                      <div className="w-full rounded-xl bg-slate-100 dark:bg-[#1e2026] animate-pulse" style={{ height: "55vh", minHeight: 300 }} />
                     </div>
                   ) : (
                     <>
