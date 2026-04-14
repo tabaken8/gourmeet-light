@@ -1028,7 +1028,7 @@ export default function NewPostPage() {
                     <MapPin className="h-4 w-4 shrink-0 text-slate-400 dark:text-gray-500" />
                     <input type="text" value={placeQuery} onChange={(e) => setPlaceQuery(e.target.value)}
                       placeholder={t("placePlaceholder")}
-                      className="w-full bg-transparent text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500" aria-label="store search" />
+                      className="w-full bg-transparent text-[16px] text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 leading-tight" aria-label="store search" />
                   </div>
                   {placeQuery.trim().length >= 2 && (
                     <div className="absolute left-0 right-0 top-full z-20 mt-1">
@@ -1061,7 +1061,7 @@ export default function NewPostPage() {
           {/* ── 本文 ── */}
           <Section title={t("body")} required requiredLabel={t("required")}>
             <textarea
-              className="h-28 w-full resize-none rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-4 py-3 text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 dark:focus:ring-orange-900/30 transition md:h-36"
+              className="h-28 w-full resize-none rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-4 py-3 text-[16px] leading-relaxed text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 dark:focus:ring-orange-900/30 transition md:h-36"
               placeholder={t("bodyPlaceholder")}
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -1093,7 +1093,7 @@ export default function NewPostPage() {
                     const n = Number(v); if (!Number.isFinite(n)) return;
                     setRecommendSelected(true); setRecommendScore(Math.round(Math.min(10, Math.max(0, n)) * 10) / 10);
                   }}
-                  className="w-16 rounded-lg border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-2 py-1.5 text-center text-sm font-bold text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400"
+                  className="w-16 rounded-lg border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-2 py-1.5 text-center text-[16px] font-bold text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400"
                   aria-label="recommend number" />
               </div>
               <div className="flex justify-between text-[11px] text-slate-400 dark:text-gray-500"><span>0</span><span>10</span></div>
@@ -1110,12 +1110,12 @@ export default function NewPostPage() {
                 <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2.5 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-100 dark:focus-within:ring-orange-900/30 transition">
                   <span className="text-sm font-medium text-slate-400 dark:text-gray-500">&yen;</span>
                   <input inputMode="numeric" value={priceYenText} onChange={(e) => setPriceYenText(onlyDigits(e.target.value))}
-                    placeholder={t("pricePlaceholder")} className="w-full bg-transparent text-sm text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500" aria-label="price" />
+                    placeholder={t("pricePlaceholder")} className="w-full bg-transparent text-[16px] text-slate-900 dark:text-gray-100 outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 leading-tight" aria-label="price" />
                   {priceYenValue ? <span className="shrink-0 text-[12px] text-slate-400 dark:text-gray-500">&yen;{formatYen(priceYenValue)}</span> : null}
                 </div>
               ) : (
                 <select value={priceRange} onChange={(e) => setPriceRange(e.target.value as any)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2.5 text-sm text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400" aria-label="price range">
+                  className="w-full rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2.5 text-[16px] text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400 leading-tight" aria-label="price range">
                   {PRICE_RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               )}
@@ -1130,7 +1130,7 @@ export default function NewPostPage() {
             <div className="flex items-center gap-3">
               <input type="date" name="visited_on" value={visitedOn} onChange={(e) => setVisitedOn(e.target.value)}
                 max={new Date().toISOString().slice(0, 10)}
-                className="flex-1 rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2 text-sm text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400 transition"
+                className="flex-1 rounded-xl border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] px-3 py-2 text-[16px] text-slate-900 dark:text-gray-100 outline-none focus:border-orange-400 transition leading-tight"
                 style={{ WebkitAppearance: "none" } as any} aria-label="visited date" />
               <div className="inline-flex rounded-lg border border-slate-200 dark:border-white/[.08] p-0.5">
                 {([{ v: "day" as const, l: t("day") }, { v: "night" as const, l: t("night") }]).map((x) => (
@@ -1218,7 +1218,7 @@ export default function NewPostPage() {
                   <div className="relative w-28 shrink-0">
                     <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-slate-400 dark:text-gray-500" />
                     <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder={t("search")}
-                      className="w-full rounded-full border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] py-1 pl-7 pr-2 text-[11px] text-slate-800 dark:text-gray-200 outline-none focus:border-orange-400" aria-label="tag search" />
+                      className="w-full rounded-full border border-slate-200 dark:border-white/[.08] bg-white dark:bg-white/[.06] py-1 pl-7 pr-2 text-[16px] text-slate-800 dark:text-gray-200 outline-none focus:border-orange-400 leading-tight" aria-label="tag search" />
                   </div>
                 </div>
 
