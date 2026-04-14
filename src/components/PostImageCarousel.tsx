@@ -62,7 +62,6 @@ function FadeImage({
   const [loaded, setLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // 既にキャッシュ済みなら即表示
   useEffect(() => {
     const el = imgRef.current;
     if (el?.complete && el.naturalWidth > 0) {
@@ -94,11 +93,15 @@ function FadeImage({
   );
 }
 
-// ── Spring config for slide animations ──
-// Instagram/TikTok 風: ほどよくバネ感があり、素早く収束
+// ── Spring config ──
 const SPRING_SLIDE = { type: "spring" as const, stiffness: 300, damping: 30, mass: 0.8 };
-// スナップバック（元の位置に戻る）はもう少し速い
 const SPRING_SNAP = { type: "spring" as const, stiffness: 400, damping: 35, mass: 0.6 };
+
+// ── 角度判定の閾値 ──
+// タッチ初動の角度が水平から ±30° 以内のときだけ横スワイプとして認識
+const ANGLE_THRESHOLD_DEG = 30;
+// 角度判定に必要な最小移動距離（px）— これ以下だとまだ方向不明
+const MIN_MOVE_PX = 8;
 
 export default function PostImageCarousel({
   postId,
@@ -212,8 +215,108 @@ export default function PostImageCarousel({
     [clamp, index, reveal],
   );
 
-  const prev = useCallback(() => goto(index - 1), [goto, index]);
-  const next = useCallback(() => goto(index + 1), [goto, index]);
+  const prevSlide = useCallback(() => goto(index - 1), [goto, index]);
+  const nextSlide = useCallback(() => goto(index + 1), [goto, index]);
+
+  // ==== 自前タッチハンドリング（角度判定付き） ====
+  const touchRef = useRef<{
+    startX: number;
+    startY: number;
+    startTime: number;
+    decided: boolean;    // 方向が決まったか
+    isHorizontal: boolean; // 横ドラッグとして認識されたか
+    tracking: boolean;   // タッチ中か
+  } | null>(null);
+
+  // index を最新値で参照するための ref
+  const indexRef = useRef(index);
+  useEffect(() => { indexRef.current = index; }, [index]);
+  const wrapWRef = useRef(wrapW);
+  useEffect(() => { wrapWRef.current = wrapW; }, [wrapW]);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (total <= 1) return;
+    const t = e.touches[0];
+    touchRef.current = {
+      startX: t.clientX,
+      startY: t.clientY,
+      startTime: Date.now(),
+      decided: false,
+      isHorizontal: false,
+      tracking: true,
+    };
+  }, [total]);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    const state = touchRef.current;
+    if (!state || !state.tracking) return;
+
+    const t = e.touches[0];
+    const dx = t.clientX - state.startX;
+    const dy = t.clientY - state.startY;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // まだ方向が決まっていない
+    if (!state.decided) {
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MIN_MOVE_PX) return; // まだ動き足りない
+
+      // 角度判定: atan2 で角度を計算
+      const angleDeg = Math.atan2(absDy, absDx) * (180 / Math.PI);
+      state.decided = true;
+
+      if (angleDeg <= ANGLE_THRESHOLD_DEG) {
+        // 横方向 → カルーセルスワイプとして奪う
+        state.isHorizontal = true;
+      } else {
+        // 縦方向 → スクロールに任せる。タッチ追跡を止める
+        state.isHorizontal = false;
+        state.tracking = false;
+        return;
+      }
+    }
+
+    if (!state.isHorizontal) return;
+
+    // 横スワイプ中: ブラウザのスクロールを抑止 & x を追従
+    e.preventDefault();
+    const baseX = -indexRef.current * wrapWRef.current;
+    // ゴムバンド効果: 端で引っ張ると抵抗感
+    const i = indexRef.current;
+    const maxI = total - 1;
+    let offset = dx;
+    if ((i === 0 && dx > 0) || (i === maxI && dx < 0)) {
+      offset = dx * 0.2; // 端は 20% だけ動く
+    }
+    x.set(baseX + offset);
+  }, [total, x]);
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    const state = touchRef.current;
+    touchRef.current = null;
+    if (!state || !state.isHorizontal) return;
+
+    const t = e.changedTouches[0];
+    const dx = t.clientX - state.startX;
+    const elapsed = Date.now() - state.startTime;
+    const vx = dx / Math.max(elapsed, 1) * 1000; // px/s
+
+    const w = wrapWRef.current;
+    const th = w * 0.15;
+    const i = indexRef.current;
+    const canNext = i < total - 1;
+    const canPrev = i > 0;
+
+    if ((dx < -th || vx < -250) && canNext) {
+      goto(i + 1);
+    } else if ((dx > th || vx > 250) && canPrev) {
+      goto(i - 1);
+    } else {
+      // スナップバック
+      animate(x, -i * w, SPRING_SNAP);
+    }
+  }, [total, goto, x]);
 
   if (total === 0) return null;
 
@@ -225,44 +328,28 @@ export default function PostImageCarousel({
     e.stopPropagation();
   };
 
-  // ==== swipe end判定 ====
-  const onDragEnd = (_: any, info: { offset: { x: number }; velocity: { x: number } }) => {
-    if (total <= 1) return;
-
-    const dx = info.offset.x;
-    const vx = info.velocity.x;
-    // 閾値: 15%の移動 or 速度250px/s以上（少し軽くして反応良くする）
-    const th = wrapW * 0.15;
-
-    if ((dx < -th || vx < -250) && canNext) {
-      goto(index + 1);
-    } else if ((dx > th || vx > 250) && canPrev) {
-      goto(index - 1);
-    } else {
-      // スナップバック — キビキビ戻る
-      animate(x, -index * wrapW, SPRING_SNAP);
-    }
-  };
-
-  // 前後2枚レンダー（スムーズなスワイプのため）
+  // 前後2枚レンダー
   const renderWindow = 2;
 
   const inner = (
-    <div ref={wrapRef} className="relative h-full w-full overflow-hidden">
+    <div
+      ref={wrapRef}
+      className="relative h-full w-full overflow-hidden"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      // touch-action: pan-y をデフォルトにしつつ、
+      // 横スワイプ検知後に e.preventDefault() で制御
+      style={{ touchAction: "pan-y" }}
+    >
       <motion.div
         className="absolute inset-0 flex"
-        style={{ x, touchAction: "pan-y" }}
-        drag={total > 1 ? "x" : false}
-        dragConstraints={{ left: -wrapW * (total - 1), right: 0 }}
-        dragElastic={0.12}
-        onDragEnd={onDragEnd}
-        dragMomentum={false}
+        style={{ x }}
       >
         {urls.map((u, i) => {
           const isNearby = Math.abs(i - index) <= renderWindow;
           const isActive = i === index;
 
-          // reveal判定
           const shouldRevealThis =
             reveal &&
             isActive &&
@@ -340,7 +427,7 @@ export default function PostImageCarousel({
               type="button"
               onClick={(e) => {
                 stopNav(e);
-                prev();
+                prevSlide();
               }}
               className="absolute left-0 top-1/2 z-20 -translate-y-1/2 flex items-center justify-center w-10 h-16 text-white/70 hover:text-white transition"
               aria-label="Previous image"
@@ -354,7 +441,7 @@ export default function PostImageCarousel({
               type="button"
               onClick={(e) => {
                 stopNav(e);
-                next();
+                nextSlide();
               }}
               className="absolute right-0 top-1/2 z-20 -translate-y-1/2 flex items-center justify-center w-10 h-16 text-white/70 hover:text-white transition"
               aria-label="Next image"
