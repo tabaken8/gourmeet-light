@@ -477,10 +477,16 @@ function toSupabaseThumbUrl(
     const u = new URL(u0);
     const p = u.pathname;
 
-    const needle = "/storage/v1/object/public/";
-    if (!p.includes(needle)) return u.toString();
-
-    const rest = p.split(needle)[1];
+    const objectNeedle = "/storage/v1/object/public/";
+    const renderNeedle = "/storage/v1/render/image/public/";
+    let rest: string;
+    if (p.includes(renderNeedle)) {
+      rest = p.split(renderNeedle)[1];
+    } else if (p.includes(objectNeedle)) {
+      rest = p.split(objectNeedle)[1];
+    } else {
+      return u.toString();
+    }
     const renderPath = `/storage/v1/render/image/public/${rest}`;
     const out = new URL(u.origin + renderPath);
 

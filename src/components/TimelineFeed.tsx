@@ -13,6 +13,7 @@ import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
 import LoginCard from "@/components/LoginCard";
+import { timelineImageUrl } from "@/lib/imageUrl";
 import SuggestFollowCard, { SuggestUser } from "@/components/SuggestFollowCard";
 import FollowButton from "@/components/FollowButton";
 
@@ -102,20 +103,17 @@ function getTimelineSquareUrls(p: PostRow): string[] {
   const all = [...cover, ...squaresFromAssets, ...thumbsFromVariants];
   const uniq = Array.from(new Set(all)).filter(Boolean);
 
-  return uniq;
+  return uniq.map((u) => timelineImageUrl(u));
 }
 
 function getFirstSquareThumb(p: PostRow): string | null {
-  if (p.cover_square_url) return p.cover_square_url;
-
-  const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
-  if (assets[0]?.square) return assets[0].square;
-
-  const variants = Array.isArray(p.image_variants) ? p.image_variants : [];
-  if (variants[0]?.thumb) return variants[0].thumb;
-
-  const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
-  return legacy[0] ?? null;
+  const raw =
+    p.cover_square_url ??
+    (Array.isArray(p.image_assets) ? p.image_assets[0]?.square : null) ??
+    (Array.isArray(p.image_variants) ? p.image_variants[0]?.thumb : null) ??
+    (Array.isArray(p.image_urls) ? p.image_urls[0] : null) ??
+    null;
+  return raw ? timelineImageUrl(raw) : null;
 }
 
 function extractPrefCity(address: string | null | undefined): string | null {

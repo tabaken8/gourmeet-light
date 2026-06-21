@@ -10,7 +10,13 @@
  * - タイムライン: 1080px, q=82（Retina 端末でも鮮明）
  * - マップカード: 400px, q=70
  * - 詳細ページ : 元 URL そのまま
+ *
+ * 入力が /object/public/ でも /render/image/public/?width=540... でも
+ * 必ず指定の width/quality で正規化して返す。
  */
+
+const OBJECT_MARKER = "/storage/v1/object/public/";
+const RENDER_MARKER = "/storage/v1/render/image/public/";
 
 function supabaseTransform(
   src: string,
@@ -18,20 +24,22 @@ function supabaseTransform(
   quality: number,
 ): string {
   if (!src) return src;
-  // blob URL はそのまま（optimistic post 用）
   if (src.startsWith("blob:")) return src;
 
-  // Supabase Storage URL かどうか判定
-  // 例: https://xxx.supabase.co/storage/v1/object/public/post-images/...
-  const marker = "/storage/v1/object/public/";
-  const idx = src.indexOf(marker);
-  if (idx === -1) return src; // Supabase 以外の URL はそのまま
+  let base: string;
+  let path: string;
 
-  // /object/ → /render/image/ に差し替え
-  const base = src.slice(0, idx);
-  const path = src.slice(idx + marker.length);
+  const renderIdx = src.indexOf(RENDER_MARKER);
+  if (renderIdx !== -1) {
+    base = src.slice(0, renderIdx);
+    path = src.slice(renderIdx + RENDER_MARKER.length);
+  } else {
+    const objectIdx = src.indexOf(OBJECT_MARKER);
+    if (objectIdx === -1) return src;
+    base = src.slice(0, objectIdx);
+    path = src.slice(objectIdx + OBJECT_MARKER.length);
+  }
 
-  // パスに既存のクエリパラメータがあれば除去
   const cleanPath = path.split("?")[0];
 
   return `${base}/storage/v1/render/image/public/${cleanPath}?width=${width}&resize=contain&quality=${quality}`;
