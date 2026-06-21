@@ -14,6 +14,7 @@ import {
 } from "framer-motion";
 import { Lock, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { timelineImageUrl } from "@/lib/imageUrl";
 
 type PostLite = any;
 
@@ -256,22 +257,12 @@ function hashString(s: string): number {
 }
 
 function getFirstSquareThumb(p: PostRow): string | null {
-  if (p.cover_square_url) return p.cover_square_url;
-
-  const assets = Array.isArray(p.image_assets) ? p.image_assets : [];
-  for (const a of assets) {
-    const sq = a?.square ?? null;
-    if (typeof sq === "string" && sq) return sq;
-  }
-
-  const vars = Array.isArray(p.image_variants) ? p.image_variants : [];
-  for (const v of vars) {
-    const th = v?.thumb ?? null;
-    if (typeof th === "string" && th) return th;
-  }
-
-  const legacy = Array.isArray(p.image_urls) ? p.image_urls : [];
-  return legacy[0] ?? null;
+  const raw =
+    p.cover_square_url ??
+    (Array.isArray(p.image_assets) ? (p.image_assets.find((a) => a?.square)?.square ?? null) : null) ??
+    (Array.isArray(p.image_variants) ? (p.image_variants.find((v) => v?.thumb)?.thumb ?? null) : null) ??
+    (Array.isArray(p.image_urls) ? (p.image_urls[0] ?? null) : null);
+  return raw ? timelineImageUrl(raw) : null;
 }
 
 type PlannedTile = { big: boolean; p: PostRow };
