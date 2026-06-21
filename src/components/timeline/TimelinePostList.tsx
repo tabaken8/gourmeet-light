@@ -182,7 +182,6 @@ function getTimelineSquareUrls(p: PostRow): string[] {
     const k = keyOf(u);
     if (seen.has(k)) continue;
     seen.add(k);
-    // タイムラインでは 540px に縮小して配信（Vercel Image Optimization）
     out.push(timelineImageUrl(u));
   }
   return out;

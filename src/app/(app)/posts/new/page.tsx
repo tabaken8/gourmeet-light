@@ -261,7 +261,7 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   const [squareFile, pinFile, fullFile] = await Promise.all([
     canvasToFile(squareCanvas, `${baseName}_square`, {
       mime: fmt.mime,
-      quality: fmt.ext === "avif" ? 0.65 : fmt.ext === "webp" ? 0.88 : 0.92,
+      quality: fmt.ext === "avif" ? 0.82 : fmt.ext === "webp" ? 0.90 : 0.94,
       ext: fmt.ext,
     }),
     canvasToFile(pinCanvas, `${baseName}_pin`, {
@@ -271,7 +271,7 @@ async function prepareImage(file: File): Promise<PreparedImage> {
     }),
     canvasToFile(fullCanvas, `${baseName}_full`, {
       mime: fmt.mime,
-      quality: fmt.ext === "avif" ? 0.7 : fmt.ext === "webp" ? 0.9 : 0.94,
+      quality: fmt.ext === "avif" ? 0.85 : fmt.ext === "webp" ? 0.92 : 0.95,
       ext: fmt.ext,
     }),
   ]);

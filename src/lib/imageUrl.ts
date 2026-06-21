@@ -3,13 +3,13 @@
  *
  * Supabase Pro Plan の機能:
  *   /storage/v1/object/public/... → /storage/v1/render/image/public/...
- *   + ?width=540&resize=contain&quality=75
+ *   + ?width=1080&resize=contain&quality=82
  *
  * CDN キャッシュされるので 2 回目以降は即配信。
  *
- * - タイムライン: 540px, q=75（Retina 2x で十分）
+ * - タイムライン: 1080px, q=82（Retina 端末でも鮮明）
  * - マップカード: 400px, q=70
- * - 詳細ページ : 元 URL そのまま（1080px square）
+ * - 詳細ページ : 元 URL そのまま
  */
 
 function supabaseTransform(
@@ -37,9 +37,9 @@ function supabaseTransform(
   return `${base}/storage/v1/render/image/public/${cleanPath}?width=${width}&resize=contain&quality=${quality}`;
 }
 
-/** タイムライン用: 540px にリサイズ */
-export function timelineImageUrl(src: string, width = 540): string {
-  return supabaseTransform(src, width, 75);
+/** タイムライン用: 1080px にリサイズ（Retina 端末でも鮮明） */
+export function timelineImageUrl(src: string, width = 1080): string {
+  return supabaseTransform(src, width, 82);
 }
 
 /** 詳細ページ用: 元の URL をそのまま返す */
