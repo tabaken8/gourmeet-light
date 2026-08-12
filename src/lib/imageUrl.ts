@@ -51,11 +51,12 @@ export function timelineImageUrl(src: string, width = 1080): string {
   return supabaseTransform(src, width, 82);
 }
 
-/** アバター用: Retina 2x で cover リサイズ */
+/** アバター用: Retina 2x（最小96px）で cover リサイズ */
 export function avatarImageUrl(
   src: string | null | undefined,
   displayPx: number,
 ): string {
   if (!src) return "";
-  return supabaseTransform(src, displayPx * 2, 75, "cover");
+  const width = Math.max(displayPx * 2, 96);
+  return supabaseTransform(src, width, 80, "cover");
 }
