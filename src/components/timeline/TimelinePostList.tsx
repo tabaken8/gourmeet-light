@@ -15,6 +15,7 @@ import PostComments from "@/components/PostComments";
 import TranslateButton from "@/components/TranslateButton";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
 import { Navigation } from "lucide-react";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 type ImageVariant = { thumb?: string | null; full?: string | null; [k: string]: any };
 type ImageAsset = { pin?: string | null; square?: string | null; full?: string | null; [k: string]: any };
@@ -346,11 +347,7 @@ export default function TimelinePostList({
         const locationLine = locationParts.join(" \u00B7 ");
 
         // Google Maps link
-        const mapsUrl = p.place_id
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_name ?? "place")}&query_place_id=${encodeURIComponent(p.place_id)}`
-          : p.place_address
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
-          : null;
+        const mapsUrl = buildGoogleMapsUrl({ placeId: p.place_id, name: p.place_name, address: p.place_address });
 
         return (
           <article key={key} className="gm-feed-divider">

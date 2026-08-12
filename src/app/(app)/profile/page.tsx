@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Globe2, Lock } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
+import VisitHeatmap from "@/components/VisitHeatmap";
+import type { HeatmapDay } from "@/types";
 import AlbumBlock from "./parts/AlbumBlock";
 
 import InstagramIcon from "@/components/icons/InstagramIcon";

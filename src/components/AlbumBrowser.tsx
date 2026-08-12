@@ -6,27 +6,10 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { MapPin, Search, Tag, Sparkles, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
-type PlaceRow = {
-  place_id: string;
-  name: string | null;
-  address?: string | null;
-  primary_genre: string | null;
-  area_label_ja?: string | null;
-  search_text?: string | null;
-};
-
-export type AlbumPost = {
-  id: string;
-  place_id: string | null;
-  created_at?: string | null;
-  visited_on?: string | null;
-  recommend_score?: number | string | null;
-  content?: string | null;
-  image_urls?: string[] | null;
-  image_variants?: any[] | null;
-  places?: PlaceRow | null;
-};
+import type { PlaceRow, AlbumPost } from "@/types";
+export type { AlbumPost } from "@/types";
 
 type View = "all" | "area" | "genre";
 type SortKey = "score" | "visited" | "created";
@@ -71,13 +54,7 @@ function stableId(p: AlbumPost) {
 
 function buildMapUrl(p: AlbumPost): string | null {
   const place = p.places;
-  const placeName = place?.name ?? null;
-  const placeAddress = place?.address ?? null;
-  return p.place_id
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName ?? "place")}&query_place_id=${encodeURIComponent(p.place_id)}`
-    : placeAddress
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeAddress)}`
-      : null;
+  return buildGoogleMapsUrl({ placeId: p.place_id, name: place?.name, address: place?.address });
 }
 
 function comparePosts(a: AlbumPost, b: AlbumPost) {

@@ -18,6 +18,7 @@ import UserOtherPostsStrip from "./parts/UserOtherPostsStrip";
 import { TAG_CATEGORIES, type TagCategory, findTagById, tagCategoryLabel } from "@/lib/postTags";
 import * as DetailTemplates from "@/lib/detailTemplates";
 import { queryKeys, fetchPostDetail } from "@/lib/queries";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 const DT: any = DetailTemplates;
 
@@ -201,11 +202,7 @@ export default function PostMainContent({
   const priceLabel = formatPrice(post);
   const areaLabel = extractPrefCity(post.place_address);
 
-  const mapUrl = post.place_id
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_name ?? "place")}&query_place_id=${encodeURIComponent(post.place_id)}`
-    : post.place_address
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
-    : null;
+  const mapUrl = buildGoogleMapsUrl({ placeId: post.place_id, name: post.place_name, address: post.place_address });
 
   const imageUrls = getAllImageUrls(post);
   const summaryLine = (post.content ?? "").trim().split("\n").map((s: string) => s.trim()).filter(Boolean)[0] ?? null;

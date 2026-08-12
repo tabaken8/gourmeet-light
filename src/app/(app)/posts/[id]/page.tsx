@@ -11,6 +11,7 @@ import PostCommentsBlock from "./parts/PostCommentsBlock";
 import PlacePhotosBlock from "./parts/PlacePhotosBlock";
 import MoreDiscoverBlock from "./parts/MoreDiscoverBlock";
 import PostMainContent from "./PostMainContent";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -230,11 +231,7 @@ export default async function PostPage({
   const miniSameGenre = (sameGenreRes.data ?? []).map(toMiniPost);
 
   // ---- mapUrl（PlacePhotosBlock にも使う） ----
-  const mapUrl = post.place_id
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_name ?? "place")}&query_place_id=${encodeURIComponent(post.place_id)}`
-    : post.place_address
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(post.place_address)}`
-    : null;
+  const mapUrl = buildGoogleMapsUrl({ placeId: post.place_id, name: post.place_name, address: post.place_address });
 
   // ---- QueryClient にキャッシュとしてセット ----
   const queryClient = new QueryClient();

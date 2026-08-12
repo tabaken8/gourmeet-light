@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Sparkles, Loader2, ExternalLink, ChevronDown } from "lucide-react";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 export type Poster = {
   user_id: string;
@@ -381,7 +382,7 @@ export default function MapRecommendPanel({
                                 return { p, thumb };
                               });
 
-                              const mapsHref = `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(it.place_id)}`;
+                              const mapsHref = buildGoogleMapsUrl({ placeId: it.place_id }) ?? "https://www.google.com/maps";
 
                               return (
                                 <div

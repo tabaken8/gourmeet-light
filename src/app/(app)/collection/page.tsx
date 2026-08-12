@@ -7,6 +7,7 @@ import PostActions from "@/components/PostActions";
 import CollectionListClient from "@/components/CollectionListClient";
 import UncollectButton from "@/components/UncollectButton";
 import { getTranslations } from "next-intl/server";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function CollectionPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const supabase = await createClient();;
+  const supabase = await createClient();
   const tc = await getTranslations("collection");
 
   const {
@@ -278,13 +279,7 @@ export default async function CollectionPage({
                 const avatar = prof?.avatar_url ?? null;
                 const initial = (display || "U").slice(0, 1).toUpperCase();
 
-                const mapUrl = p.place_id
-                  ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
-                  : p.place_address
-                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      p.place_address
-                    )}`
-                    : null;
+                const mapUrl = buildGoogleMapsUrl({ placeId: p.place_id, address: p.place_address });
 
                 return (
                   <article

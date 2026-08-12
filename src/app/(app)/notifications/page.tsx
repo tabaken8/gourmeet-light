@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { MapPin, MessageCircle, Heart, UserPlus, HelpCircle, Pencil } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useTranslations } from "next-intl";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 /** template id -> label（通知プレビュー用） */
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -324,13 +325,7 @@ export default function NotificationsPage() {
                     const post = n.post;
                     const dr = n.detail_request;
 
-                    const mapUrl = post?.place_id
-                      ? `https://www.google.com/maps/place/?q=place_id:${post.place_id}`
-                      : post?.place_address
-                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                          post.place_address
-                        )}`
-                      : null;
+                    const mapUrl = buildGoogleMapsUrl({ placeId: post?.place_id, address: post?.place_address });
 
                     // ★ ここが差分：detail_answer は /requests/[detail_request_id]
                     const href =

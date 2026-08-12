@@ -1,6 +1,7 @@
 // src/components/HeatmapBlock.tsx (例)
 import { createClient } from "@/lib/supabase/server";
-import VisitHeatmap, { type HeatmapDay } from "@/components/VisitHeatmap";
+import VisitHeatmap from "@/components/VisitHeatmap";
+import type { HeatmapDay } from "@/types";
 
 // ---- utils ----
 const JST_TZ = "Asia/Tokyo";

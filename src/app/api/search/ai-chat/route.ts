@@ -10,6 +10,7 @@ import {
   executeTool,
 } from "@/lib/aiSearchTools";
 import { parseSearchQuery } from "@/lib/parseSearchQuery";
+import { KNOWN_GENRE_LABELS } from "@/lib/genre/genres";
 
 export const runtime = "nodejs";
 
@@ -107,14 +108,13 @@ export async function POST(req: Request) {
 
     // ---- ジャンル決定 ----
     // 優先順位: 1. チップで明示選択されたジャンル → 2. テキストから自動検出
-    const KNOWN_GENRES = ["和食","ラーメン","カフェ","イタリアン","寿司","焼肉","中華","フレンチ","居酒屋","韓国料理","海鮮","蕎麦","うどん","スイーツ","焼き鳥","天ぷら","鍋","とんかつ"];
     let finalGenre = "";
     if (explicitGenre) {
       // チップで明示選択されたジャンルを最優先
       finalGenre = explicitGenre;
     } else {
       // テキストからジャンル名を自動検出
-      const detectedGenre = KNOWN_GENRES.find(g =>
+      const detectedGenre = KNOWN_GENRE_LABELS.find(g =>
         (parsed.intent && parsed.intent.includes(g)) || q.includes(g)
       );
       if (detectedGenre) finalGenre = detectedGenre;

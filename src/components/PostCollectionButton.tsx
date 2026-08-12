@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Bookmark, X, Check } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useTranslations } from "next-intl";
+import { GENRES } from "@/lib/genre/genres";
 
 type Collection = { id: string; name: string };
 
@@ -27,28 +28,10 @@ type SuggestTypeResponse = {
   types?: string[] | null;
 };
 
-type GenreOption = { key: string; emoji: string; labelKey: string };
-
-const GENRE_DEFS: GenreOption[] = [
-  { key: "ramen", emoji: "🍜", labelKey: "genreRamen" },
-  { key: "sushi", emoji: "🍣", labelKey: "genreSushi" },
-  { key: "yakiniku", emoji: "🥩", labelKey: "genreYakiniku" },
-  { key: "izakaya", emoji: "🍺", labelKey: "genreIzakaya" },
-  { key: "chinese", emoji: "🥟", labelKey: "genreChinese" },
-  { key: "curry", emoji: "🍛", labelKey: "genreCurry" },
-  { key: "italian", emoji: "🍝", labelKey: "genreItalian" },
-  { key: "pizza", emoji: "🍕", labelKey: "genrePizza" },
-  { key: "burger", emoji: "🍔", labelKey: "genreBurger" },
-  { key: "cafe", emoji: "☕️", labelKey: "genreCafe" },
-  { key: "sweets", emoji: "🍰", labelKey: "genreSweets" },
-  { key: "bar", emoji: "🍷", labelKey: "genreBar" },
-  { key: "other", emoji: "📍", labelKey: "genreOther" },
-];
-
-type GenreWithLabel = GenreOption & { label: string };
+type GenreWithLabel = { key: string; emoji: string; labelKey: string; label: string };
 
 function buildGenres(t: (key: string) => string): GenreWithLabel[] {
-  return GENRE_DEFS.map((g) => ({ ...g, label: t(g.labelKey) }));
+  return GENRES.map((g) => ({ ...g, label: t(g.labelKey) }));
 }
 
 function labelForEmojiWithGenres(emoji: string | null | undefined, genres: GenreWithLabel[]) {

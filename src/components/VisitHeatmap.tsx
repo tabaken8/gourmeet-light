@@ -5,13 +5,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { X, MapPin } from "lucide-react";
 import { createPortal } from "react-dom";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
-export type HeatmapDay = {
-  date: string; // "YYYY-MM-DD" (JST基準の代表日付)
-  count: number;
-  maxScore: number | null;
-  posts: Array<{ id: string; thumbUrl: string | null }>;
-};
+import type { HeatmapDay } from "@/types";
+export type { HeatmapDay } from "@/types";
 
 type DetailPost = {
   id: string;
@@ -728,11 +725,7 @@ const monthMeta = useMemo(() => {
 
                         const priceLabel = formatPrice(p);
 
-                        const mapUrl = p.place_id
-                          ? `https://www.google.com/maps/place/?q=place_id:${p.place_id}`
-                          : p.place_address
-                            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
-                            : null;
+                        const mapUrl = buildGoogleMapsUrl({ placeId: p.place_id, address: p.place_address });
 
                         return (
                           <a

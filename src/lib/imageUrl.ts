@@ -49,8 +49,3 @@ function supabaseTransform(
 export function timelineImageUrl(src: string, width = 1080): string {
   return supabaseTransform(src, width, 82);
 }
-
-/** 詳細ページ用: 元の URL をそのまま返す */
-export function detailImageUrl(src: string): string {
-  return src;
-}

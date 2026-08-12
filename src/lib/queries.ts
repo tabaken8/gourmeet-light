@@ -2,9 +2,7 @@
 // クライアントサイドのデータフェッチ関数（TanStack Query の queryFn として使用）
 
 import { createClient } from "@/lib/supabase/client";
-import type { HeatmapDay } from "@/components/VisitHeatmap";
-import type { AlbumPost } from "@/components/AlbumBrowser";
-import type { MiniPost } from "@/app/(app)/posts/[id]/parts/UserOtherPostsStrip";
+import type { HeatmapDay, AlbumPost, MiniPost } from "@/types";
 
 // ---- utils（サーバー側と共用できる純粋関数） ----
 

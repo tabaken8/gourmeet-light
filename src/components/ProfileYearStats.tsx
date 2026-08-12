@@ -7,6 +7,7 @@ import { EyeOff, Eye } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import { useRouter } from "next/navigation";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 type Scope = "me" | "public";
 type BadgeTier = "none" | "bronze" | "silver" | "gold" | "diamond";
@@ -604,10 +605,7 @@ function GoogleMark({ size = 16 }: { size?: number }) {
 }
 
 function makeGoogleMapsUrl(placeId: string | null, address: string | null, lat?: number | null, lng?: number | null) {
-  if (placeId) return `https://www.google.com/maps/place/?q=place_id:${placeId}`;
-  if (address) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-  if (typeof lat === "number" && typeof lng === "number") return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  return null;
+  return buildGoogleMapsUrl({ placeId, address, lat, lng });
 }
 
 function makePhotoPinContent(imageUrl: string | null, ringColor: string, selected?: boolean) {

@@ -5,26 +5,8 @@ import Link from "next/link";
 import { Tag, Clock, Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-type PlaceRow = {
-  place_id: string;
-  name: string | null;
-  address?: string | null;
-  primary_genre: string | null;
-  area_label_ja?: string | null;
-};
-
-export type MiniPost = {
-  id: string;
-  place_id: string | null;
-  created_at?: string | null;
-  visited_on?: string | null;
-  recommend_score?: number | string | null;
-  image_urls?: string[] | null;
-  image_variants?: any[] | null;
-  places?: PlaceRow | null;
-  place_name?: string | null;
-  place_address?: string | null;
-};
+import type { PlaceRow, MiniPost } from "@/types";
+export type { MiniPost } from "@/types";
 
 type Tab = "genre" | "recent";
 

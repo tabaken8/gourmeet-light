@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import AlbumBrowser, { type AlbumPost } from "@/components/AlbumBrowser";
+import AlbumBrowser from "@/components/AlbumBrowser";
+import type { AlbumPost } from "@/types";
 
 function normalizePlacesShape(row: any) {
   const pl = row?.places;

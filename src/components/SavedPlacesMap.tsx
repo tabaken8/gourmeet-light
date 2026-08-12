@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
+import { GENRES, GENRE_LABEL_BY_EMOJI } from "@/lib/genre/genres";
 
 type FollowRow = { follower_id: string; followee_id: string; status: string };
 type PostRow = {
@@ -31,26 +32,10 @@ type UserPlaceRow = { place_id: string };
 type IconMode = "avatar" | "photo";
 
 /** ---- Genre (emoji) options ---- */
-type GenreOption = { key: string; emoji: string; label: string };
-const GENRES: GenreOption[] = [
-  { key: "ramen", emoji: "🍜", label: "ラーメン" },
-  { key: "sushi", emoji: "🍣", label: "寿司" },
-  { key: "yakiniku", emoji: "🥩", label: "焼肉" },
-  { key: "yakitori_izakaya", emoji: "🍺", label: "焼き鳥/居酒屋" },
-  { key: "chinese", emoji: "🥟", label: "中華" },
-  { key: "curry", emoji: "🍛", label: "カレー" },
-  { key: "italian", emoji: "🍝", label: "イタリアン" },
-  { key: "pizza", emoji: "🍕", label: "ピザ" },
-  { key: "burger", emoji: "🍔", label: "バーガー" },
-  { key: "cafe", emoji: "☕️", label: "カフェ" },
-  { key: "sweets", emoji: "🍰", label: "スイーツ" },
-  { key: "bar", emoji: "🍷", label: "バー/酒" },
-  { key: "other", emoji: "📍", label: "その他" },
-];
 
 function labelForEmoji(emoji: string | null | undefined) {
   if (!emoji) return "";
-  return GENRES.find((g) => g.emoji === emoji)?.label ?? "";
+  return GENRE_LABEL_BY_EMOJI[emoji] ?? "";
 }
 
 /** ---- Budget helpers (loose range) ---- */

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
+import { DEFAULT_GENRE_LABELS } from "@/lib/genre/genres";
 
 type Props = {
   placeId: string;
@@ -12,26 +13,7 @@ type ApiGet = {
   counts: Record<string, number>;
 };
 
-const DEFAULT_GENRES = [
-  "ラーメン",
-  "寿司",
-  "焼肉",
-  "居酒屋",
-  "カフェ",
-  "喫茶店",
-  "イタリアン",
-  "フレンチ",
-  "中華",
-  "韓国料理",
-  "カレー",
-  "ハンバーガー",
-  "そば",
-  "うどん",
-  "定食",
-  "和食",
-  "洋食",
-  "スイーツ",
-];
+const DEFAULT_GENRES = DEFAULT_GENRE_LABELS;
 
 function uniq(arr: string[]) {
   const seen = new Set<string>();

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 export type NotificationRow = {
   id: string;
@@ -98,14 +99,7 @@ function messageFor(n: NotificationRow, t: (key: string, values?: any) => string
 
 function mapsUrlFromPost(p: NotificationRow["post"]) {
   if (!p) return null;
-  const mapUrl = p.place_id
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        p.place_name ?? "place"
-      )}&query_place_id=${encodeURIComponent(p.place_id)}`
-    : p.place_address
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.place_address)}`
-    : null;
-  return mapUrl;
+  return buildGoogleMapsUrl({ placeId: p.place_id, name: p.place_name, address: p.place_address });
 }
 
 export default function NotificationsClient({ initial }: { initial: NotificationRow[] }) {

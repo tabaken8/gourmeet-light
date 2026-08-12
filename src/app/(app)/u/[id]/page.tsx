@@ -3,8 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { QueryClient, dehydrate } from "@tanstack/react-query";
 import { HydrationBoundary } from "@tanstack/react-query";
-import type { HeatmapDay } from "@/components/VisitHeatmap";
-import type { AlbumPost } from "@/components/AlbumBrowser";
+import type { HeatmapDay, AlbumPost } from "@/types";
 import type { Metadata } from "next";
 import {
   queryKeys,
