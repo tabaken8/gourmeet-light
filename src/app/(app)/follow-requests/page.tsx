@@ -6,6 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import Link from "next/link";
 import { Check, X, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 type FollowRequestRow = {
   follower_id: string;
@@ -153,7 +154,7 @@ export default function FollowRequestsPage() {
               {f?.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={f.avatar_url}
+                  src={avatarImageUrl(f.avatar_url, 40)}
                   alt=""
                   className="h-full w-full object-cover"
                 />

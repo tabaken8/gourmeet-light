@@ -18,6 +18,7 @@ import UserOtherPostsStrip from "./parts/UserOtherPostsStrip";
 import { TAG_CATEGORIES, type TagCategory, findTagById, tagCategoryLabel } from "@/lib/postTags";
 import * as DetailTemplates from "@/lib/detailTemplates";
 import { queryKeys, fetchPostDetail } from "@/lib/queries";
+import { avatarImageUrl } from "@/lib/imageUrl";
 import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
 
 const DT: any = DetailTemplates;
@@ -286,7 +287,7 @@ export default function PostMainContent({
                 <Link href={`/u/${(post as any).profiles?.username ?? post.user_id}`} className="gm-press flex h-9 w-9 shrink-0 flex-none aspect-square items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-black/[.06] dark:ring-white/[.08]">
                   {avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatar} alt="" className="h-full w-full object-cover" />
+                    <img src={avatarImageUrl(avatar, 36)} alt="" className="h-full w-full object-cover" />
                   ) : (
                     initial
                   )}

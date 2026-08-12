@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Utensils, X, ChevronLeft, ChevronRight, MapPin, Sparkles, ExternalLink } from "lucide-react";
 import type { PostRow } from "./SearchPostList";
-import { timelineImageUrl } from "@/lib/imageUrl";
+import { timelineImageUrl, avatarImageUrl } from "@/lib/imageUrl";
 
 function getSquareImageUrl(p: PostRow): string | null {
   const raw = p.cover_square_url ?? p.image_assets?.[0]?.square ?? p.image_variants?.[0]?.thumb ?? null;
@@ -163,7 +163,7 @@ function CardItem({
             <div className="h-4 w-4 rounded-full overflow-hidden bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-[7px] font-semibold text-orange-700 dark:text-orange-400 shrink-0">
               {avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatar} alt="" className="h-4 w-4 object-cover" loading="lazy" />
+                <img src={avatarImageUrl(avatar, 16)} alt="" className="h-4 w-4 object-cover" loading="lazy" />
               ) : initial}
             </div>
             <span className="truncate text-[10px] text-slate-400 dark:text-gray-500">{name}</span>

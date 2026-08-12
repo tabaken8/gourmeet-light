@@ -2,6 +2,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function FollowingPage({ params }: { params: Promise<{ id: 
             <li key={u.id} className="flex items-center gap-3">
               {u.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={u.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover border dark:border-white/10" />
+                <img src={avatarImageUrl(u.avatar_url, 40)} alt="" className="h-10 w-10 rounded-full object-cover border dark:border-white/10" />
               ) : (
                 <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-white/10" />
               )}

@@ -13,6 +13,7 @@ import {
   fetchUserPublicProfile,
   fetchUserPublicPosts,
 } from "@/lib/queries";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 type Props = {
   userId: string;
@@ -80,7 +81,7 @@ export default function UserProfileContent({
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={avatarUrl}
+                src={avatarImageUrl(avatarUrl, 96)}
                 alt="avatar"
                 className="h-24 w-24 rounded-full border-2 border-white dark:border-[#0b0c0f] bg-orange-100 dark:bg-orange-900/30 object-cover"
               />

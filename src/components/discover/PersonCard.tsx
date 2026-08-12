@@ -6,6 +6,7 @@ import Link from "next/link";
 import { MapPin, Sparkles, ChevronLeft, ChevronRight, Utensils, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { PersonMapItem } from "@/app/api/people-map/route";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 function timeAgo(iso: string, t: (key: string, values?: any) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -56,7 +57,7 @@ function PersonCardItem({
             {person.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={person.avatar_url}
+                src={avatarImageUrl(person.avatar_url, 44)}
                 alt={person.display_name || ""}
                 className="h-11 w-11 object-cover"
                 referrerPolicy="no-referrer"

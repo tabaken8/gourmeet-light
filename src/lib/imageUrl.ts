@@ -22,6 +22,7 @@ function supabaseTransform(
   src: string,
   width: number,
   quality: number,
+  resize: "contain" | "cover" = "contain",
 ): string {
   if (!src) return src;
   if (src.startsWith("blob:")) return src;
@@ -42,10 +43,19 @@ function supabaseTransform(
 
   const cleanPath = path.split("?")[0];
 
-  return `${base}/storage/v1/render/image/public/${cleanPath}?width=${width}&resize=contain&quality=${quality}`;
+  return `${base}/storage/v1/render/image/public/${cleanPath}?width=${width}&resize=${resize}&quality=${quality}`;
 }
 
 /** タイムライン用: 1080px にリサイズ（Retina 端末でも鮮明） */
 export function timelineImageUrl(src: string, width = 1080): string {
   return supabaseTransform(src, width, 82);
+}
+
+/** アバター用: Retina 2x で cover リサイズ */
+export function avatarImageUrl(
+  src: string | null | undefined,
+  displayPx: number,
+): string {
+  if (!src) return "";
+  return supabaseTransform(src, displayPx * 2, 75, "cover");
 }

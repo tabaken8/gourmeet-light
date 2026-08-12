@@ -16,6 +16,7 @@ import {
   Settings,
 } from "lucide-react";
 import { useNavBadges } from "@/hooks/useNavBadges";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 function Badge({ count }: { count?: number }) {
   const show = !!count && count > 0;
@@ -312,7 +313,7 @@ export default function MobileHeaderNav({ name }: { name?: string }) {
           {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={avatarUrl}
+              src={avatarImageUrl(avatarUrl, 28)}
               alt={displayNameSafe || "profile"}
               className="h-7 w-7 rounded-full object-cover bg-slate-200"
               referrerPolicy="no-referrer"

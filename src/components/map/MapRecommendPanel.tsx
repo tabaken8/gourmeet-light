@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Sparkles, Loader2, ExternalLink, ChevronDown } from "lucide-react";
 import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 export type Poster = {
   user_id: string;
@@ -146,7 +147,7 @@ function Avatar({ p }: { p: Poster }) {
       >
         {p.avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.avatar_url} alt="" className="h-8 w-8 object-cover" referrerPolicy="no-referrer" />
+          <img src={avatarImageUrl(p.avatar_url, 32)} alt="" className="h-8 w-8 object-cover" referrerPolicy="no-referrer" />
         ) : (
           initial
         )}
@@ -178,7 +179,7 @@ function MiniIdentity({ displayName, avatarUrl }: { displayName: string | null; 
     >
       {avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={avatarUrl} alt="" className="h-5 w-5 object-cover" referrerPolicy="no-referrer" />
+        <img src={avatarImageUrl(avatarUrl, 20)} alt="" className="h-5 w-5 object-cover" referrerPolicy="no-referrer" />
       ) : (
         initial
       )}

@@ -9,6 +9,7 @@ import { Compass, HelpCircle, MapPin as MapPinIcon, Search, Sparkles, TrainFront
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useTranslations } from "next-intl";
 import { normalizeQuery } from "@/lib/queryNormalizer";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 import { motion, AnimatePresence } from "framer-motion";
 import Skeleton from "react-loading-skeleton";
@@ -1156,7 +1157,7 @@ export default function SearchPage() {
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-100 dark:bg-orange-900/30 text-xs font-semibold text-orange-700 dark:text-orange-400">
                       {u.avatar_url
                         // eslint-disable-next-line @next/next/no-img-element
-                        ? <img src={u.avatar_url} alt="" className="h-8 w-8 object-cover" />
+                        ? <img src={avatarImageUrl(u.avatar_url, 32)} alt="" className="h-8 w-8 object-cover" />
                         : initial}
                     </div>
                     <div className="min-w-0">
@@ -1417,7 +1418,7 @@ export default function SearchPage() {
                         <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-100 dark:bg-white/15 text-[10px] font-semibold text-slate-600 dark:text-gray-300">
                           {u.avatar_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={u.avatar_url} alt="" className="h-10 w-10 object-cover" />
+                            <img src={avatarImageUrl(u.avatar_url, 40)} alt="" className="h-10 w-10 object-cover" />
                           ) : initial}
                         </div>
                         <div className="min-w-0 flex-1">

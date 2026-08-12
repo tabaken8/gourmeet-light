@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Heart } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useTranslations } from "next-intl";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 type ProfileLite = {
   id: string;
@@ -387,7 +388,7 @@ export default function PostComments({
                   >
                     {avatar ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={avatar} alt="" className="h-7 w-7 rounded-full object-cover" />
+                      <img src={avatarImageUrl(avatar, 28)} alt="" className="h-7 w-7 rounded-full object-cover" />
                     ) : (
                       initial
                     )}

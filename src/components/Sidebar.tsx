@@ -19,6 +19,7 @@ import {
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import { useNavBadges } from "@/hooks/useNavBadges";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 function NavItem({
   href,
@@ -53,7 +54,7 @@ function NavItem({
         {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={avatarUrl}
+            src={avatarImageUrl(avatarUrl, 24)}
             alt={avatarAlt ?? "profile"}
             className="h-6 w-6 rounded-full object-cover bg-slate-200 dark:bg-white/10"
             referrerPolicy="no-referrer"

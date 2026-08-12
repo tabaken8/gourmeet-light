@@ -9,7 +9,7 @@ import { MapPin, Lock } from "lucide-react";
 import PostMoreMenu from "@/components/PostMoreMenu";
 import PostImageCarousel from "@/components/PostImageCarousel";
 import PostActions, { LikerLite } from "@/components/PostActions";
-import { timelineImageUrl } from "@/lib/imageUrl";
+import { timelineImageUrl, avatarImageUrl } from "@/lib/imageUrl";
 import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import TranslateButton from "@/components/TranslateButton";
@@ -363,7 +363,7 @@ export default function TimelinePostList({
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={avatar}
+                          src={avatarImageUrl(avatar, 32)}
                           alt=""
                           className="h-8 w-8 rounded-full object-cover"
                           loading="lazy"

@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Bell, Mail, ToggleLeft, ToggleRight, Search } from "lucide-react";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 type Prefs = {
   email_enabled: boolean;
@@ -286,7 +287,7 @@ export default function NotificationSettingsClient({
                     {t.avatar_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={t.avatar_url}
+                        src={avatarImageUrl(t.avatar_url, 40)}
                         alt=""
                         className="h-10 w-10 rounded-full border border-black/[.06] object-cover"
                       />

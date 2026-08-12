@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 type Props = {
   initialDisplayName: string;
@@ -71,7 +72,7 @@ export default function AccountClient({ initialDisplayName, initialBio, initialA
         >
           {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+            <img src={avatarImageUrl(avatarUrl, 64)} alt="" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-xl font-bold">
               {(displayName || "U").slice(0, 1).toUpperCase()}

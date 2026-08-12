@@ -6,6 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 export type NotificationRow = {
   id: string;
@@ -192,7 +193,7 @@ export default function NotificationsClient({ initial }: { initial: Notification
                     {avatar ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={avatar}
+                        src={avatarImageUrl(avatar, 40)}
                         alt=""
                         className="h-10 w-10 rounded-full object-cover bg-slate-200 dark:bg-white/10"
                         referrerPolicy="no-referrer"

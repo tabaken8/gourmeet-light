@@ -3,6 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 type ThreadRow = {
   id: string;
@@ -660,7 +661,7 @@ function ResultCard({ r }: { r: any }) {
                   {top.author_avatar_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={top.author_avatar_url}
+                      src={avatarImageUrl(top.author_avatar_url, 20)}
                       alt=""
                       className="h-5 w-5 rounded-full object-cover"
                     />

@@ -13,6 +13,7 @@ import AlbumBlock from "./parts/AlbumBlock";
 import InstagramIcon from "@/components/icons/InstagramIcon";
 import XIcon from "@/components/icons/XIcon";
 import { subtractDaysKeyJST } from "@/lib/queries";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -151,7 +152,7 @@ export default async function AccountPage() {
               {avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={avatarUrl}
+                  src={avatarImageUrl(avatarUrl, 96)}
                   alt="avatar"
                   className="h-24 w-24 rounded-full border-[3px] border-white bg-orange-100 object-cover dark:border-[#16181e] dark:bg-orange-900/30"
                 />

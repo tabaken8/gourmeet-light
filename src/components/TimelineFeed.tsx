@@ -13,7 +13,7 @@ import PostCollectionButton from "@/components/PostCollectionButton";
 import PostComments from "@/components/PostComments";
 import PlacePhotoGallery from "@/components/PlacePhotoGallery";
 import LoginCard from "@/components/LoginCard";
-import { timelineImageUrl } from "@/lib/imageUrl";
+import { timelineImageUrl, avatarImageUrl } from "@/lib/imageUrl";
 import SuggestFollowCard, { SuggestUser } from "@/components/SuggestFollowCard";
 import FollowButton from "@/components/FollowButton";
 import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
@@ -787,7 +787,7 @@ export default function TimelineFeed({
                       {avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={avatar}
+                          src={avatarImageUrl(avatar, 36)}
                           alt=""
                           className="h-9 w-9 rounded-full object-cover"
                           loading="lazy"

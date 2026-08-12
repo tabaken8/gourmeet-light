@@ -8,6 +8,7 @@ import CollectionListClient from "@/components/CollectionListClient";
 import UncollectButton from "@/components/UncollectButton";
 import { getTranslations } from "next-intl/server";
 import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -296,7 +297,7 @@ export default async function CollectionPage({
                           {avatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={avatar}
+                              src={avatarImageUrl(avatar, 36)}
                               alt=""
                               className="h-full w-full object-cover"
                             />

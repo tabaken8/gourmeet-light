@@ -11,6 +11,7 @@ import {
 import type { PersonMapItem } from "@/app/api/people-map/route";
 import Link from "next/link";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 // ── shared map options (without styles — those are theme-dependent) ──
 const BASE_MAP_OPTIONS: google.maps.MapOptions = {
@@ -111,7 +112,7 @@ function AvatarPin({
         {person.avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={person.avatar_url}
+            src={avatarImageUrl(person.avatar_url, 44)}
             alt={person.display_name || ""}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             referrerPolicy="no-referrer"
@@ -252,7 +253,7 @@ function PostPin({
         {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={avatarUrl}
+            src={avatarImageUrl(avatarUrl, 36)}
             alt={displayName || ""}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             referrerPolicy="no-referrer"

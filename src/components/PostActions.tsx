@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Heart, X } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useTranslations } from "next-intl";
+import { avatarImageUrl } from "@/lib/imageUrl";
 
 export type LikerLite = {
   id: string;
@@ -74,7 +75,7 @@ function AvatarBubble({
       {user.avatar_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={user.avatar_url}
+          src={avatarImageUrl(user.avatar_url, size)}
           alt=""
           width={size}
           height={size}
@@ -192,7 +193,7 @@ function LikeListModal({
                       {u.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={u.avatar_url}
+                          src={avatarImageUrl(u.avatar_url, 44)}
                           alt=""
                           className="h-11 w-11 object-cover"
                           loading="lazy"
