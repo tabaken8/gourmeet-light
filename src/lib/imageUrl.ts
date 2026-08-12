@@ -23,6 +23,7 @@ function supabaseTransform(
   width: number,
   quality: number,
   resize: "contain" | "cover" = "contain",
+  height?: number,
 ): string {
   if (!src) return src;
   if (src.startsWith("blob:")) return src;
@@ -43,7 +44,10 @@ function supabaseTransform(
 
   const cleanPath = path.split("?")[0];
 
-  return `${base}/storage/v1/render/image/public/${cleanPath}?width=${width}&resize=${resize}&quality=${quality}`;
+  let qs = `width=${width}&resize=${resize}&quality=${quality}`;
+  if (height != null) qs += `&height=${height}`;
+
+  return `${base}/storage/v1/render/image/public/${cleanPath}?${qs}`;
 }
 
 /** タイムライン用: 1080px にリサイズ（Retina 端末でも鮮明） */
@@ -57,6 +61,6 @@ export function avatarImageUrl(
   displayPx: number,
 ): string {
   if (!src) return "";
-  const width = Math.max(displayPx * 2, 96);
-  return supabaseTransform(src, width, 80, "cover");
+  const size = Math.max(displayPx * 2, 96);
+  return supabaseTransform(src, size, 80, "cover", size);
 }
