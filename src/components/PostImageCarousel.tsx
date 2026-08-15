@@ -226,6 +226,7 @@ export default function PostImageCarousel({
     decided: boolean;    // 方向が決まったか
     isHorizontal: boolean; // 横ドラッグとして認識されたか
     tracking: boolean;   // タッチ中か
+    dragBaseX: number;   // ドラッグ開始時の x 位置
   } | null>(null);
 
   // index を最新値で参照するための ref
@@ -237,6 +238,11 @@ export default function PostImageCarousel({
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     if (total <= 1) return;
     const t = e.touches[0];
+    // 前のスプリングアニメーションが残っていたら止めて
+    // 現在の x 位置をドラッグ起点として記録する。
+    // これにより連続スワイプ時にアニメーション中間地点から
+    // index ベースの位置へ一気にジャンプする問題を防ぐ。
+    x.stop();
     touchRef.current = {
       startX: t.clientX,
       startY: t.clientY,
@@ -244,8 +250,9 @@ export default function PostImageCarousel({
       decided: false,
       isHorizontal: false,
       tracking: true,
+      dragBaseX: x.get(),
     };
-  }, [total]);
+  }, [total, x]);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
     const state = touchRef.current;
@@ -281,7 +288,10 @@ export default function PostImageCarousel({
 
     // 横スワイプ中: ブラウザのスクロールを抑止 & x を追従
     e.preventDefault();
-    const baseX = -indexRef.current * wrapWRef.current;
+    // ドラッグ起点は onTouchStart で記録した実際の x 位置を使う。
+    // index ベースで再計算すると、前のアニメーション途中で
+    // 新たにスワイプした場合にジャンプが起きる。
+    const baseX = state.dragBaseX;
     // ゴムバンド効果: 端で引っ張ると抵抗感
     const i = indexRef.current;
     const maxI = total - 1;
@@ -304,19 +314,23 @@ export default function PostImageCarousel({
 
     const w = wrapWRef.current;
     const th = w * 0.15;
-    const i = indexRef.current;
-    const canNext = i < total - 1;
-    const canPrev = i > 0;
+    // ドラッグ起点が実位置ベースなので、現在の x から最寄りの
+    // スライド index を逆算する。これにより前のアニメーション途中で
+    // スワイプしても正しいスナップ先が選ばれる。
+    const currentX = x.get();
+    const nearestIdx = clamp(Math.round(-currentX / w));
+    const canNext = nearestIdx < total - 1;
+    const canPrev = nearestIdx > 0;
 
     if ((dx < -th || vx < -250) && canNext) {
-      goto(i + 1);
+      goto(nearestIdx + 1);
     } else if ((dx > th || vx > 250) && canPrev) {
-      goto(i - 1);
+      goto(nearestIdx - 1);
     } else {
       // スナップバック
-      animate(x, -i * w, SPRING_SNAP);
+      animate(x, -nearestIdx * w, SPRING_SNAP);
     }
-  }, [total, goto, x]);
+  }, [total, goto, x, clamp]);
 
   if (total === 0) return null;
 
