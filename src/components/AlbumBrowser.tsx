@@ -7,6 +7,7 @@ import Link from "next/link";
 import { MapPin, Search, Tag, Sparkles, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { buildGoogleMapsUrl } from "@/lib/google/buildMapsUrl";
+import { timelineImageUrl } from "@/lib/imageUrl";
 
 import type { PlaceRow, AlbumPost } from "@/types";
 export type { AlbumPost } from "@/types";
@@ -20,21 +21,25 @@ function toScore(x: any): number | null {
   return null;
 }
 
+/** グリッド用サムネイル（400px — 2col 時 ~200px 表示 × Retina 2x） */
 function getThumbUrl(p: AlbumPost): string | null {
   const v = p?.image_variants;
-  if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string") return v[0].thumb;
+  if (Array.isArray(v) && v.length > 0 && typeof v[0]?.thumb === "string")
+    return timelineImageUrl(v[0].thumb, 400);
   const urls = p?.image_urls;
-  if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string") return urls[0];
+  if (Array.isArray(urls) && urls.length > 0 && typeof urls[0] === "string")
+    return timelineImageUrl(urls[0], 400);
   return null;
 }
 
+/** ライトボックス用（1080px — フルスクリーン表示） */
 function getAllFullUrls(p: AlbumPost): string[] {
   const v = p?.image_variants;
   if (Array.isArray(v) && v.length > 0) {
     const urls = v.map((x: any) => x?.full ?? x?.thumb ?? null).filter(Boolean) as string[];
-    if (urls.length > 0) return urls;
+    if (urls.length > 0) return urls.map((u) => timelineImageUrl(u));
   }
-  return (p?.image_urls ?? []).filter(Boolean) as string[];
+  return (p?.image_urls ?? []).filter(Boolean).map((u) => timelineImageUrl(u as string));
 }
 
 function areaLabel(place: PlaceRow | null | undefined): string {
@@ -386,7 +391,7 @@ export default function AlbumBrowser({
                 href={mapUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/[.12] bg-white/[.06] px-3 py-1.5 text-[11px] font-semibold text-white/70 hover:bg-white/[.12] transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-700 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-600 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >
                 <MapPin size={12} />
