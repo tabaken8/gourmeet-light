@@ -391,7 +391,7 @@ export default function AlbumBrowser({
                 href={mapUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-slate-700 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-600 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-800 hover:bg-slate-100 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >
                 <MapPin size={12} />
